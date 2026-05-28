@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Test
+        run: bun test
+
+      - name: Typecheck
+        run: bunx tsc --noEmit
+
+      - name: Build release assets
+        run: |
+          set -euo pipefail
+
+          VERSION="0.0.${GITHUB_RUN_NUMBER}"
+          PACKAGE_DIR="dist/release/envswitch"
+
+          rm -rf release dist/release
+          mkdir -p release "$PACKAGE_DIR"
+
+          cp package.json bun.lock README.md tsconfig.json "$PACKAGE_DIR/"
+          cp -R src scripts "$PACKAGE_DIR/"
+
+          tar -C dist/release -czf "release/envswitch_${VERSION}_source.tar.gz" envswitch
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          TAG="v0.0.${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" release/* --target "$GITHUB_SHA" --generate-notes --latest
