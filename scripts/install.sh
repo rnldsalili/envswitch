@@ -7,6 +7,7 @@ INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 APP_ROOT="${APP_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/envswitch}"
 APP_DIR="${APP_ROOT}/current"
 COMMAND_NAME="envswitch"
+INSTALL_TMPDIR=""
 
 log_info() {
   printf 'info: %s\n' "$1"
@@ -22,6 +23,12 @@ log_error() {
 
 command_exists() {
   command -v "$1" >/dev/null 2>&1
+}
+
+cleanup_tmpdir() {
+  if [[ -n "${INSTALL_TMPDIR:-}" && -d "$INSTALL_TMPDIR" ]]; then
+    rm -rf "$INSTALL_TMPDIR"
+  fi
 }
 
 validate_repo() {
@@ -247,7 +254,8 @@ main() {
   archive="envswitch_${version}_source.tar.gz"
 
   tmpdir="$(mktemp -d)"
-  trap 'rm -rf "$tmpdir"' EXIT
+  INSTALL_TMPDIR="$tmpdir"
+  trap cleanup_tmpdir EXIT
 
   download_archive "$latest" "$archive" "$tmpdir"
   install_source "$tmpdir/$archive" "$tmpdir"
