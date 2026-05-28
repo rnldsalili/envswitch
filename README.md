@@ -2,7 +2,107 @@
 
 `envswitch` is a reusable Bun-powered CLI for switching local project `.env` files from 1Password. Run it from the root of the project you want to update.
 
-The binary contains generic switching logic only. Project paths, clients, environments, target names, and tag rules are loaded from a 1Password config item.
+The CLI contains generic switching logic only. Project paths, clients, environments, target names, and tag rules are loaded from a 1Password config item.
+
+## Installation
+
+Source release archives are published automatically from `main`. The installer keeps the release small by installing the source package and running it with Bun instead of downloading a standalone binary.
+
+Supported platforms:
+
+- macOS
+- Linux
+- WSL
+- Windows
+
+### macOS, Linux, and WSL
+
+Install the latest `envswitch` source release from GitHub Releases:
+
+```bash
+gh api repos/rnldsalili/envswitch/contents/scripts/install.sh \
+  --jq '.content' | base64 -d | bash
+```
+
+If you do not have the GitHub CLI available, use `curl` instead:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rnldsalili/envswitch/main/scripts/install.sh | bash
+```
+
+The installer installs Bun if it is missing, downloads the source release, installs it to `${XDG_DATA_HOME:-$HOME/.local/share}/envswitch/current`, and creates a launcher at `$HOME/.local/bin/envswitch`.
+
+To install the launcher somewhere else:
+
+```bash
+gh api repos/rnldsalili/envswitch/contents/scripts/install.sh \
+  --jq '.content' | base64 -d | INSTALL_DIR="$HOME/.local/bin" bash
+```
+
+To install the source package somewhere else:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rnldsalili/envswitch/main/scripts/install.sh |
+  APP_ROOT="$HOME/.local/share/envswitch" bash
+```
+
+### Windows
+
+Install the latest `envswitch` source release from GitHub Releases:
+
+```powershell
+$repo = "rnldsalili/envswitch"
+$path = "scripts/install.ps1"
+$rawUrl = gh api repos/$repo/contents/$path --jq ".download_url"
+irm $rawUrl | iex
+```
+
+If you do not have the GitHub CLI available, use `Invoke-RestMethod` directly:
+
+```powershell
+irm https://raw.githubusercontent.com/rnldsalili/envswitch/main/scripts/install.ps1 | iex
+```
+
+The installer installs Bun if it is missing, downloads the source release, installs it to `$env:LOCALAPPDATA\Programs\envswitch\current`, creates `$env:LOCALAPPDATA\Programs\envswitch\bin\envswitch.cmd`, and adds that bin directory to the user `PATH` if needed.
+
+To install the launcher somewhere else:
+
+```powershell
+.\scripts\install.ps1 -InstallDir "$env:USERPROFILE\bin"
+```
+
+To install the source package somewhere else:
+
+```powershell
+.\scripts\install.ps1 -AppRoot "$env:LOCALAPPDATA\envswitch"
+```
+
+Verify the install:
+
+```shell
+envswitch --help
+```
+
+### Manual Installation
+
+Download the source release archive, extract it, install dependencies with Bun, and create a small launcher on your `PATH`.
+
+```bash
+gh release download --repo rnldsalili/envswitch --pattern 'envswitch_*_source.tar.gz'
+mkdir -p "$HOME/.local/share/envswitch"
+tar -xzf envswitch_*_source.tar.gz -C "$HOME/.local/share/envswitch"
+mv "$HOME/.local/share/envswitch/envswitch" "$HOME/.local/share/envswitch/current"
+(cd "$HOME/.local/share/envswitch/current" && bun install --production --frozen-lockfile)
+mkdir -p "$HOME/.local/bin"
+printf '#!/usr/bin/env bash\nexec bun "%s/src/cli.ts" "$@"\n' "$HOME/.local/share/envswitch/current" > "$HOME/.local/bin/envswitch"
+chmod +x "$HOME/.local/bin/envswitch"
+```
+
+Release assets use this naming format:
+
+```text
+envswitch_0.1.0_source.tar.gz
+```
 
 ## Commands
 
@@ -405,9 +505,11 @@ If a target receives the wrong variables, check for incorrect `client:*` or `gro
 
 ## Development
 
+These commands are for contributors and release maintainers. Normal installation uses the source release from GitHub Releases.
+
 ```bash
 bun test
 bun run build
 ```
 
-The build command creates `dist/envswitch` as a standalone executable.
+The build command runs the TypeScript check. Release packaging is handled by the GitHub Actions workflow.
