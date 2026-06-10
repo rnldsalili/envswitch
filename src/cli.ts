@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { input as inquirerInput, select as inquirerSelect } from "@inquirer/prompts";
-import { basename } from "node:path";
+import { existsSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { parseConfig, tagValues } from "./config.ts";
 import { EnvswitchError, fail } from "./errors.ts";
@@ -49,6 +50,9 @@ interface MainOptions {
   createOnePasswordClient?: (vault: string) => EnvswitchOnePasswordClient;
   log?: (event: ProgressEvent) => void;
   writeLine?: (line: string) => void;
+  appDir?: string;
+  fetchLatestVersion?: () => Promise<string | undefined>;
+  runInstaller?: (scriptPath: string, appRoot: string) => Promise<number>;
 }
 
 interface CliDeps {
@@ -61,6 +65,9 @@ interface CliDeps {
   createOnePasswordClient: (vault: string) => EnvswitchOnePasswordClient;
   log: (event: ProgressEvent) => void;
   writeLine: (line: string) => void;
+  appDir: string;
+  fetchLatestVersion: () => Promise<string | undefined>;
+  runInstaller: (scriptPath: string, appRoot: string) => Promise<number>;
 }
 
 interface ChoiceOption<T> {
@@ -87,6 +94,8 @@ const LAYERS: LayerName[] = ["shared", "group", "target", "client", "client-targ
 const SWITCH_FLAGS = new Set(["vault", "config-item", "client", "env", "target", "dry-run", "help"]);
 const LIST_FLAGS = new Set(["vault", "config-item", "help"]);
 const DOCTOR_FLAGS = new Set(["vault", "config-item", "help"]);
+const UPDATE_FLAGS = new Set(["help"]);
+const GITHUB_REPO = "rnldsalili/envswitch";
 const BOOLEAN_FLAGS = new Set(["dry-run", "help"]);
 const ANSI = {
   reset: "\x1b[0m",
@@ -159,6 +168,9 @@ export async function main(argv = Bun.argv.slice(2), options: MainOptions = {}):
         return 0;
       case "doctor":
         await runDoctor(args, deps);
+        return 0;
+      case "update":
+        await runUpdate(args, deps);
         return 0;
       default:
         fail(`unknown command: ${args.command}`);
@@ -319,6 +331,83 @@ async function runDoctor(args: ParsedArgs, deps: CliDeps): Promise<void> {
   }
 }
 
+async function runUpdate(args: ParsedArgs, deps: CliDeps): Promise<void> {
+  validateFlags(args, UPDATE_FLAGS);
+
+  if (existsSync(join(deps.appDir, ".git"))) {
+    fail("envswitch update only works for installed copies; this looks like a source checkout (use git pull instead)");
+  }
+
+  const installerName = process.platform === "win32" ? "install.ps1" : "install.sh";
+  const installer = join(deps.appDir, "scripts", installerName);
+  if (!existsSync(installer)) {
+    fail(`installer not found at ${installer}; reinstall envswitch with the install script from the README`);
+  }
+
+  const versionFile = join(deps.appDir, ".version");
+  const current = await readVersionFile(versionFile);
+  const latest = await deps.fetchLatestVersion();
+  if (latest && current && normalizeVersion(latest) === normalizeVersion(current)) {
+    deps.writeLine(`envswitch is already up to date (${current})`);
+    return;
+  }
+
+  deps.log({
+    status: "info",
+    message: `updating envswitch ${current ?? "(unknown version)"} -> ${latest ?? "latest"}`,
+  });
+  const code = await deps.runInstaller(installer, dirname(deps.appDir));
+  if (code !== 0) {
+    fail(`update failed: installer exited with code ${code}`);
+  }
+
+  const updated = await readVersionFile(versionFile);
+  deps.writeLine(`updated envswitch ${current ?? "(unknown)"} -> ${updated ?? latest ?? "latest"}`);
+}
+
+async function readVersionFile(path: string): Promise<string | undefined> {
+  try {
+    const version = (await Bun.file(path).text()).trim();
+    return version === "" ? undefined : version;
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeVersion(version: string): string {
+  return version.replace(/^v/, "");
+}
+
+async function fetchLatestReleaseTag(): Promise<string | undefined> {
+  try {
+    const headers: Record<string, string> = { Accept: "application/vnd.github+json" };
+    if (process.env.GITHUB_TOKEN) {
+      headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+    }
+    const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, { headers });
+    if (!response.ok) {
+      return undefined;
+    }
+    const body = (await response.json()) as { tag_name?: unknown };
+    return typeof body.tag_name === "string" && body.tag_name !== "" ? body.tag_name : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function runInstallScript(scriptPath: string, appRoot: string): Promise<number> {
+  const command = scriptPath.endsWith(".ps1")
+    ? ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath, "-AppRoot", appRoot]
+    : ["bash", scriptPath];
+  const proc = Bun.spawn(command, {
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+    env: { ...process.env, APP_ROOT: appRoot },
+  });
+  return proc.exited;
+}
+
 function printSwitchResults(
   results: Awaited<ReturnType<typeof switchEnvironment>>,
   root: string,
@@ -380,6 +469,9 @@ function createCliDeps(options: MainOptions): CliDeps {
     createOnePasswordClient: options.createOnePasswordClient ?? ((vault) => new OnePasswordClient(vault)),
     log: options.log ?? logProgress,
     writeLine: options.writeLine ?? ((line) => console.log(line)),
+    appDir: options.appDir ?? resolve(import.meta.dir, ".."),
+    fetchLatestVersion: options.fetchLatestVersion ?? fetchLatestReleaseTag,
+    runInstaller: options.runInstaller ?? runInstallScript,
   };
 }
 
@@ -635,9 +727,11 @@ Usage:
   envswitch switch --vault <vault> --config-item <item> --client <client> [--env local] [--target all|name] [--dry-run]
   envswitch list --vault <vault> --config-item <item> [clients|targets|layers]
   envswitch doctor --vault <vault> --config-item <item>
+  envswitch update
 
 Notes:
   Run envswitch with no arguments for guided switch prompts.
+  Run envswitch update to reinstall the latest GitHub release in place.
   Run envswitch from the root of the project you want to update.
   Project metadata, target paths, and tag rules are loaded from the 1Password config item.
 `);

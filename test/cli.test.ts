@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { formatProgressEvent, main, parseArgs } from "../src/cli.ts";
 
 describe("cli progress formatter", () => {
@@ -283,6 +286,177 @@ describe("cli progress formatter", () => {
     expect(result.stderr).toEqual([
       "envswitch: plain envswitch requires an interactive terminal; use envswitch switch --vault <vault> --config-item <item> --client <client> for scripts",
     ]);
+  });
+});
+
+describe("cli update command", () => {
+  const installerName = process.platform === "win32" ? "install.ps1" : "install.sh";
+
+  async function makeInstalledAppDir(options: {
+    version?: string;
+    installer?: boolean;
+    gitCheckout?: boolean;
+  } = {}): Promise<string> {
+    const appRoot = await mkdtemp(join(tmpdir(), "envswitch-update-"));
+    const appDir = join(appRoot, "current");
+    await mkdir(appDir, { recursive: true });
+    if (options.installer !== false) {
+      await mkdir(join(appDir, "scripts"), { recursive: true });
+      await writeFile(join(appDir, "scripts", installerName), "#!/usr/bin/env bash\n");
+    }
+    if (options.version !== undefined) {
+      await writeFile(join(appDir, ".version"), `${options.version}\n`);
+    }
+    if (options.gitCheckout) {
+      await mkdir(join(appDir, ".git"), { recursive: true });
+    }
+    return appDir;
+  }
+
+  test("short-circuits when already on the latest version", async () => {
+    const appDir = await makeInstalledAppDir({ version: "v0.0.5" });
+    const output: string[] = [];
+    const installerCalls: Array<[string, string]> = [];
+
+    const result = await runCli(["update"], {
+      appDir,
+      fetchLatestVersion: async () => "v0.0.5",
+      runInstaller: async (scriptPath, appRoot) => {
+        installerCalls.push([scriptPath, appRoot]);
+        return 0;
+      },
+      log: () => {},
+      writeLine: (line) => output.push(line),
+    });
+
+    expect(result.code).toBe(0);
+    expect(installerCalls).toEqual([]);
+    expect(output).toEqual(["envswitch is already up to date (v0.0.5)"]);
+  });
+
+  test("runs the installer and reports old -> new version", async () => {
+    const appDir = await makeInstalledAppDir({ version: "v0.0.4" });
+    const output: string[] = [];
+    const installerCalls: Array<[string, string]> = [];
+
+    const result = await runCli(["update"], {
+      appDir,
+      fetchLatestVersion: async () => "v0.0.5",
+      runInstaller: async (scriptPath, appRoot) => {
+        installerCalls.push([scriptPath, appRoot]);
+        await writeFile(join(appDir, ".version"), "v0.0.5\n");
+        return 0;
+      },
+      log: () => {},
+      writeLine: (line) => output.push(line),
+    });
+
+    expect(result.code).toBe(0);
+    expect(installerCalls).toEqual([[join(appDir, "scripts", installerName), dirname(appDir)]]);
+    expect(output).toEqual(["updated envswitch v0.0.4 -> v0.0.5"]);
+  });
+
+  test("rejects updates from a source checkout", async () => {
+    const appDir = await makeInstalledAppDir({ version: "v0.0.4", gitCheckout: true });
+    let installerCalled = false;
+
+    const result = await runCli(["update"], {
+      appDir,
+      fetchLatestVersion: async () => "v0.0.5",
+      runInstaller: async () => {
+        installerCalled = true;
+        return 0;
+      },
+      log: () => {},
+    });
+
+    expect(result.code).toBe(1);
+    expect(installerCalled).toBe(false);
+    expect(result.stderr).toEqual([
+      "envswitch: envswitch update only works for installed copies; this looks like a source checkout (use git pull instead)",
+    ]);
+  });
+
+  test("fails when the bundled installer is missing", async () => {
+    const appDir = await makeInstalledAppDir({ version: "v0.0.4", installer: false });
+
+    const result = await runCli(["update"], {
+      appDir,
+      fetchLatestVersion: async () => "v0.0.5",
+      runInstaller: async () => 0,
+      log: () => {},
+    });
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toEqual([
+      `envswitch: installer not found at ${join(appDir, "scripts", installerName)}; reinstall envswitch with the install script from the README`,
+    ]);
+  });
+
+  test("fails when the installer exits non-zero", async () => {
+    const appDir = await makeInstalledAppDir({ version: "v0.0.4" });
+
+    const result = await runCli(["update"], {
+      appDir,
+      fetchLatestVersion: async () => "v0.0.5",
+      runInstaller: async () => 1,
+      log: () => {},
+    });
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toEqual(["envswitch: update failed: installer exited with code 1"]);
+  });
+
+  test("updates when the installed version is unknown", async () => {
+    const appDir = await makeInstalledAppDir();
+    const output: string[] = [];
+
+    const result = await runCli(["update"], {
+      appDir,
+      fetchLatestVersion: async () => "v0.0.5",
+      runInstaller: async () => {
+        await writeFile(join(appDir, ".version"), "v0.0.5\n");
+        return 0;
+      },
+      log: () => {},
+      writeLine: (line) => output.push(line),
+    });
+
+    expect(result.code).toBe(0);
+    expect(output).toEqual(["updated envswitch (unknown) -> v0.0.5"]);
+  });
+
+  test("updates even when the latest version cannot be resolved", async () => {
+    const appDir = await makeInstalledAppDir({ version: "v0.0.4" });
+    const output: string[] = [];
+    let installerCalled = false;
+
+    const result = await runCli(["update"], {
+      appDir,
+      fetchLatestVersion: async () => undefined,
+      runInstaller: async () => {
+        installerCalled = true;
+        return 0;
+      },
+      log: () => {},
+      writeLine: (line) => output.push(line),
+    });
+
+    expect(result.code).toBe(0);
+    expect(installerCalled).toBe(true);
+    expect(output).toEqual(["updated envswitch v0.0.4 -> v0.0.4"]);
+  });
+
+  test("rejects unknown update flags", async () => {
+    const result = await runCli(["update", "--vault", "x"], {
+      appDir: await makeInstalledAppDir({ version: "v0.0.4" }),
+      fetchLatestVersion: async () => "v0.0.5",
+      runInstaller: async () => 0,
+      log: () => {},
+    });
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toEqual(["envswitch: unknown flag: --vault"]);
   });
 });
 

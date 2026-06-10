@@ -331,6 +331,7 @@ main() {
 
   download_archive "$latest" "$archive" "$tmpdir"
   install_source "$tmpdir/$archive" "$tmpdir"
+  printf '%s\n' "$latest" >"${APP_DIR}/.version"
   write_launcher "$tmpdir"
 
   log_success "installed envswitch ${latest}"

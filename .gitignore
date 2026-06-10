@@ -25,6 +25,9 @@ coverage/
 # TypeScript
 *.tsbuildinfo
 
+# Written by the installer in installed copies
+.version
+
 # OS and editor files
 .DS_Store
 Thumbs.db

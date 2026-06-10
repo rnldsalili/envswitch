@@ -308,6 +308,7 @@ try {
     New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
     Save-Archive -Release $release -ArchiveName $archive -TempDir $tempDir -Repository $Repo
     Install-Source -ArchivePath (Join-Path $tempDir $archive) -TempDir $tempDir -TargetAppRoot $AppRoot -TargetAppDir $appDir -Bun $bun
+    Set-Content -Path (Join-Path $appDir ".version") -Value $release.tag_name
     $launcher = Write-Launcher -TargetInstallDir $InstallDir -TargetAppDir $appDir
 
     Write-Success "installed envswitch $($release.tag_name)"

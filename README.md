@@ -4,100 +4,59 @@
 
 The CLI contains generic switching logic only. Project paths, clients, environments, target names, and tag rules are loaded from a 1Password config item.
 
-## Installation
+## Quick Start
 
-Source release archives are published automatically from `main`. The installer keeps the release small by installing the source package and running it with Bun instead of downloading a standalone binary.
+Install (macOS, Linux, WSL):
 
-Supported platforms:
+```bash
+curl -fsSL https://raw.githubusercontent.com/rnldsalili/envswitch/main/scripts/install.sh | bash
+```
 
-- macOS
-- Linux
-- WSL
-- Windows
+On Windows (PowerShell):
 
-### macOS, Linux, and WSL
+```powershell
+irm https://raw.githubusercontent.com/rnldsalili/envswitch/main/scripts/install.ps1 | iex
+```
 
-Install the latest `envswitch` source release from GitHub Releases:
+Then use it:
+
+```bash
+envswitch          # guided switch
+envswitch update   # update to the latest release
+envswitch --help   # show all commands
+```
+
+If `envswitch` is not found right after installing, restart your terminal (or run the `export PATH` command the installer prints).
+
+## Installation Details
+
+The installer installs Bun if it is missing, downloads the source release, installs it under your data directory, and creates an `envswitch` launcher on your `PATH`.
+
+- macOS, Linux, WSL: source in `${XDG_DATA_HOME:-$HOME/.local/share}/envswitch/current`, launcher at `$HOME/.local/bin/envswitch`.
+- Windows: source in `$env:LOCALAPPDATA\Programs\envswitch\current`, launcher at `$env:LOCALAPPDATA\Programs\envswitch\bin\envswitch.cmd`.
+
+If you have the GitHub CLI and prefer it over `curl`:
 
 ```bash
 gh api repos/rnldsalili/envswitch/contents/scripts/install.sh \
   --jq '.content' | base64 -d | bash
 ```
 
-If you do not have the GitHub CLI available, use `curl` instead:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/rnldsalili/envswitch/main/scripts/install.sh | bash
-```
-
-The installer installs Bun if it is missing, downloads the source release, installs it to `${XDG_DATA_HOME:-$HOME/.local/share}/envswitch/current`, and creates a launcher at `$HOME/.local/bin/envswitch`. If `$HOME/.local/bin` is not on `PATH`, the installer adds an idempotent envswitch block to your shell profile and prints the current-session `export` command.
-
-If `envswitch` is not found immediately after first install, restart your terminal or run:
-
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-envswitch --help
-```
-
-To install the launcher somewhere else:
-
-```bash
-gh api repos/rnldsalili/envswitch/contents/scripts/install.sh \
-  --jq '.content' | base64 -d | INSTALL_DIR="$HOME/.local/bin" bash
-```
-
-To install the source package somewhere else:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/rnldsalili/envswitch/main/scripts/install.sh |
-  APP_ROOT="$HOME/.local/share/envswitch" bash
-```
-
-### Windows
-
-Install the latest `envswitch` source release from GitHub Releases:
-
 ```powershell
-$repo = "rnldsalili/envswitch"
-$path = "scripts/install.ps1"
-$rawUrl = gh api repos/$repo/contents/$path --jq ".download_url"
+$rawUrl = gh api repos/rnldsalili/envswitch/contents/scripts/install.ps1 --jq ".download_url"
 irm $rawUrl | iex
 ```
 
-If you do not have the GitHub CLI available, use `Invoke-RestMethod` directly:
+Override the install locations with `INSTALL_DIR` (launcher) and `APP_ROOT` (source) on macOS/Linux, or `-InstallDir` and `-AppRoot` on Windows:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rnldsalili/envswitch/main/scripts/install.sh |
+  INSTALL_DIR="$HOME/.local/bin" APP_ROOT="$HOME/.local/share/envswitch" bash
+```
 
 ```powershell
-irm https://raw.githubusercontent.com/rnldsalili/envswitch/main/scripts/install.ps1 | iex
+.\scripts\install.ps1 -InstallDir "$env:USERPROFILE\bin" -AppRoot "$env:LOCALAPPDATA\envswitch"
 ```
-
-The installer installs Bun if it is missing, downloads the source release, installs it to `$env:LOCALAPPDATA\Programs\envswitch\current`, creates `$env:LOCALAPPDATA\Programs\envswitch\bin\envswitch.cmd`, and adds that bin directory to the user `PATH` if needed.
-
-If `envswitch` is not found immediately after first install, restart your terminal or run:
-
-```powershell
-$env:Path = "$env:LOCALAPPDATA\Programs\envswitch\bin;$env:Path"
-envswitch --help
-```
-
-To install the launcher somewhere else:
-
-```powershell
-.\scripts\install.ps1 -InstallDir "$env:USERPROFILE\bin"
-```
-
-To install the source package somewhere else:
-
-```powershell
-.\scripts\install.ps1 -AppRoot "$env:LOCALAPPDATA\envswitch"
-```
-
-Verify the install:
-
-```shell
-envswitch --help
-```
-
-The installed command is `envswitch`.
 
 ### Manual Installation
 
@@ -128,11 +87,14 @@ envswitch doctor --vault <vault> --config-item <item>
 envswitch list --vault <vault> --config-item <item> targets
 envswitch switch --vault <vault> --config-item <item> --client <client> --env local --dry-run
 envswitch switch --vault <vault> --config-item <item> --client <client> --env local
+envswitch update
 ```
 
 Run `envswitch` with no arguments for guided switch prompts. Guided mode uses arrow-key selection menus for 1Password vaults, config items, clients, environments, targets, and dry-run/write mode. It only shows vaults and config items containing the `envswitch-config` tag, auto-selects single available choices, and defaults to writing `.env` files unless you choose dry-run.
 
 Use `envswitch switch ...` for scripts and non-interactive terminals. `--env` defaults to `local`, and `--target` defaults to `all`.
+
+Use `envswitch update` to update an installed copy to the latest GitHub release. It re-runs the bundled install script in place, skips the reinstall when you are already on the latest version, and reports the old and new versions. It does not work from a git checkout; use `git pull` there instead.
 
 ## Prerequisites
 
