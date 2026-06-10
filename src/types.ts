@@ -38,6 +38,11 @@ export interface OnePasswordItemSummary {
   tags?: string[];
 }
 
+export interface OnePasswordVaultSummary {
+  id: string;
+  name: string;
+}
+
 export interface EnvLayer {
   name: string;
   rank: number;

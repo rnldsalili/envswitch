@@ -30,7 +30,14 @@ If you do not have the GitHub CLI available, use `curl` instead:
 curl -fsSL https://raw.githubusercontent.com/rnldsalili/envswitch/main/scripts/install.sh | bash
 ```
 
-The installer installs Bun if it is missing, downloads the source release, installs it to `${XDG_DATA_HOME:-$HOME/.local/share}/envswitch/current`, and creates a launcher at `$HOME/.local/bin/envswitch`.
+The installer installs Bun if it is missing, downloads the source release, installs it to `${XDG_DATA_HOME:-$HOME/.local/share}/envswitch/current`, and creates a launcher at `$HOME/.local/bin/envswitch`. If `$HOME/.local/bin` is not on `PATH`, the installer adds an idempotent envswitch block to your shell profile and prints the current-session `export` command.
+
+If `envswitch` is not found immediately after first install, restart your terminal or run:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+envswitch --help
+```
 
 To install the launcher somewhere else:
 
@@ -65,6 +72,13 @@ irm https://raw.githubusercontent.com/rnldsalili/envswitch/main/scripts/install.
 
 The installer installs Bun if it is missing, downloads the source release, installs it to `$env:LOCALAPPDATA\Programs\envswitch\current`, creates `$env:LOCALAPPDATA\Programs\envswitch\bin\envswitch.cmd`, and adds that bin directory to the user `PATH` if needed.
 
+If `envswitch` is not found immediately after first install, restart your terminal or run:
+
+```powershell
+$env:Path = "$env:LOCALAPPDATA\Programs\envswitch\bin;$env:Path"
+envswitch --help
+```
+
 To install the launcher somewhere else:
 
 ```powershell
@@ -82,6 +96,8 @@ Verify the install:
 ```shell
 envswitch --help
 ```
+
+The installed command is `envswitch`.
 
 ### Manual Installation
 
@@ -107,13 +123,16 @@ envswitch_0.1.0_source.tar.gz
 ## Commands
 
 ```bash
+envswitch
 envswitch doctor --vault <vault> --config-item <item>
 envswitch list --vault <vault> --config-item <item> targets
 envswitch switch --vault <vault> --config-item <item> --client <client> --env local --dry-run
 envswitch switch --vault <vault> --config-item <item> --client <client> --env local
 ```
 
-`--env` defaults to `local`, and `--target` defaults to `all`.
+Run `envswitch` with no arguments for guided switch prompts. Guided mode uses arrow-key selection menus for 1Password vaults, config items, clients, environments, targets, and dry-run/write mode. It only shows vaults and config items containing the `envswitch-config` tag, auto-selects single available choices, and defaults to writing `.env` files unless you choose dry-run.
+
+Use `envswitch switch ...` for scripts and non-interactive terminals. `--env` defaults to `local`, and `--target` defaults to `all`.
 
 ## Prerequisites
 
@@ -135,14 +154,14 @@ op vault list
 
 `envswitch` expects two kinds of 1Password items:
 
-1. A config item with a field named `config`.
+1. A config item with a field named `config` and the tag `envswitch-config`.
 2. Env layer items whose fields are environment variables and whose tags describe where those variables apply.
 
 Do not store env values or secrets in the config item. Put them in tagged env layer items instead.
 
 ## 1Password Config Item
 
-Create a 1Password item with a field named `config`. The field value must be JSON.
+Create a 1Password item with a field named `config`. The field value must be JSON. Add the `envswitch-config` tag so guided mode can find it.
 
 Generic example:
 
@@ -431,6 +450,12 @@ From the target project root:
 ```bash
 cd /path/to/project
 
+envswitch
+```
+
+Guided mode defaults to writing `.env` files. For scriptable checks or previews, use explicit commands:
+
+```bash
 envswitch doctor \
   --vault "<vault>" \
   --config-item "<config-item-name>"
@@ -473,6 +498,7 @@ After the dry run looks correct, remove `--dry-run`.
 ## Checklist
 
 - Config item has a non-empty field named `config`.
+- Config item has the `envswitch-config` tag for guided discovery.
 - Config JSON includes all target outputs relative to the repo root.
 - Targets that should share API or app values include `groups`, such as `apis` or `apps`.
 - Every env item has `envswitch`, `project:<project-id>`, `env:local`, and exactly one `layer:*` tag.

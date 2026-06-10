@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fail } from "./errors.ts";
 import { isRecord, parseJson } from "./validation.ts";
-import type { OnePasswordItemSummary } from "./types.ts";
+import type { OnePasswordItemSummary, OnePasswordVaultSummary } from "./types.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -36,6 +36,16 @@ export class OnePasswordClient {
 
   async assertAuthenticated(): Promise<void> {
     await this.runner.run("op", ["whoami", "--format", "json"]);
+  }
+
+  static async listVaults(runner: CommandRunner = new ExecCommandRunner()): Promise<OnePasswordVaultSummary[]> {
+    const raw = await runner.run("op", ["vault", "list", "--format", "json"]);
+    const parsed = parseJson(raw, "op vault list output");
+    if (!Array.isArray(parsed)) {
+      fail("op vault list returned non-array JSON");
+    }
+
+    return parsed.map((vault, index) => parseVaultSummary(vault, index));
   }
 
   async readConfigItem(item: string): Promise<string> {
@@ -115,6 +125,18 @@ function parseItemSummary(value: unknown, index: number): OnePasswordItemSummary
     fail(`op item list result[${index}] must include id or title`);
   }
   return { id, title, tags };
+}
+
+function parseVaultSummary(value: unknown, index: number): OnePasswordVaultSummary {
+  if (!isRecord(value)) {
+    fail(`op vault list result[${index}] must be an object`);
+  }
+  const id = typeof value.id === "string" ? value.id : "";
+  const name = typeof value.name === "string" ? value.name : "";
+  if (id === "" && name === "") {
+    fail(`op vault list result[${index}] must include id or name`);
+  }
+  return { id, name: name || id };
 }
 
 function parseField(value: unknown, index: number): { label: string; value: string } {

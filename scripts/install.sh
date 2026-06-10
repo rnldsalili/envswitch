@@ -7,6 +7,8 @@ INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 APP_ROOT="${APP_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/envswitch}"
 APP_DIR="${APP_ROOT}/current"
 COMMAND_NAME="envswitch"
+PATH_BLOCK_BEGIN="# >>> envswitch PATH >>>"
+PATH_BLOCK_END="# <<< envswitch PATH <<<"
 INSTALL_TMPDIR=""
 
 log_info() {
@@ -50,6 +52,76 @@ validate_absolute_dir() {
     log_error "${name} must be an absolute path without '..'"
     exit 1
   fi
+}
+
+path_contains_dir() {
+  local dir="$1"
+  [[ ":${PATH}:" == *":${dir}:"* ]]
+}
+
+shell_profile_path() {
+  local shell_name
+
+  shell_name="$(basename "${SHELL:-}")"
+  case "$shell_name" in
+    zsh)
+      printf '%s\n' "${HOME}/.zshrc"
+      ;;
+    bash)
+      printf '%s\n' "${HOME}/.bashrc"
+      ;;
+    *)
+      printf '%s\n' "${HOME}/.profile"
+      ;;
+  esac
+}
+
+ensure_profile_path() {
+  local install_dir="$1"
+  local profile_path="$2"
+
+  if [[ -f "$profile_path" ]] && grep -Fq "$PATH_BLOCK_BEGIN" "$profile_path"; then
+    log_info "PATH block already exists in ${profile_path}"
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$profile_path")"
+  cat >>"$profile_path" <<EOF
+
+${PATH_BLOCK_BEGIN}
+export PATH="${install_dir}:\$PATH"
+${PATH_BLOCK_END}
+EOF
+  log_info "added ${install_dir} to PATH in ${profile_path}"
+}
+
+verify_launcher() {
+  local launcher="$1"
+
+  if [[ ! -x "$launcher" ]]; then
+    log_error "launcher was not installed or is not executable: ${launcher}"
+    exit 1
+  fi
+}
+
+post_install_path_guidance() {
+  local launcher="${INSTALL_DIR}/${COMMAND_NAME}"
+  local profile_path
+
+  verify_launcher "$launcher"
+
+  if path_contains_dir "$INSTALL_DIR"; then
+    log_info "verifying ${COMMAND_NAME} launcher"
+    "${COMMAND_NAME}" --help >/dev/null
+    log_info "run '${COMMAND_NAME} --help' to verify the installation"
+    return 0
+  fi
+
+  profile_path="$(shell_profile_path)"
+  ensure_profile_path "$INSTALL_DIR" "$profile_path"
+  log_info "restart your terminal, or run this command now:"
+  log_info "export PATH=\"${INSTALL_DIR}:\$PATH\""
+  log_info "then run '${COMMAND_NAME} --help' to verify the installation"
 }
 
 detect_platform() {
@@ -264,10 +336,17 @@ main() {
   log_success "installed envswitch ${latest}"
   log_info "source: ${APP_DIR}"
   log_info "launcher: ${INSTALL_DIR}/${COMMAND_NAME}"
-  if [[ ":${PATH}:" != *":${INSTALL_DIR}:"* ]]; then
-    log_info "add ${INSTALL_DIR} to your PATH if '${COMMAND_NAME}' is not found"
-  fi
-  log_info "run '${COMMAND_NAME} --help' to verify the installation"
+  post_install_path_guidance
 }
+
+if [[ "${ENVS_SWITCH_INSTALL_TEST_MODE:-}" == "ensure-profile-path" ]]; then
+  ensure_profile_path "$1" "$2"
+  exit 0
+fi
+
+if [[ "${ENVS_SWITCH_INSTALL_TEST_MODE:-}" == "shell-profile-path" ]]; then
+  shell_profile_path
+  exit 0
+fi
 
 main "$@"

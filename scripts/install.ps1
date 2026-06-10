@@ -261,6 +261,9 @@ exit /b 127
     }
 
     Add-ToUserPath -Directory $TargetInstallDir
+    if (-not (Test-Path $targetLauncher)) {
+        Write-Failure "launcher was not installed: $targetLauncher"
+    }
     return $targetLauncher
 }
 
@@ -310,7 +313,9 @@ try {
     Write-Success "installed envswitch $($release.tag_name)"
     Write-Info "source: $appDir"
     Write-Info "launcher: $launcher"
-    Write-Info "run 'envswitch --help' in a new terminal to verify the installation"
+    Write-Info "restart your terminal, or run this command now:"
+    Write-Info "`$env:Path = `"$InstallDir;`$env:Path`""
+    Write-Info "then run 'envswitch --help' to verify the installation"
 }
 finally {
     if (Test-Path $tempDir) {

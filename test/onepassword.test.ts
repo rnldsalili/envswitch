@@ -2,6 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { OnePasswordClient, type CommandRunner } from "../src/onepassword.ts";
 
 describe("onepassword", () => {
+  test("lists vault summaries", async () => {
+    await expect(OnePasswordClient.listVaults(new StaticRunner({
+      "vault list": JSON.stringify([{ id: "vault-a", name: "Vault A" }]),
+    }))).resolves.toEqual([{ id: "vault-a", name: "Vault A" }]);
+  });
+
   test("rejects non-array item list output", async () => {
     const op = new OnePasswordClient("vault", new StaticRunner({ "item list": "{}" }));
 
@@ -41,6 +47,9 @@ class StaticRunner implements CommandRunner {
   constructor(private readonly responses: Record<string, string>) {}
 
   async run(_command: string, args: string[]): Promise<string> {
+    if (args[0] === "vault" && args[1] === "list") {
+      return this.responses["vault list"] ?? "[]";
+    }
     if (args[0] === "item" && args[1] === "list") {
       return this.responses["item list"] ?? "[]";
     }
