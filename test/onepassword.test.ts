@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { OnePasswordClient, type CommandRunner } from "../src/onepassword.ts";
+import { ExecCommandRunner, OnePasswordClient, type CommandRunner } from "../src/onepassword.ts";
 
 describe("onepassword", () => {
   test("lists vault summaries", async () => {
@@ -40,6 +40,18 @@ describe("onepassword", () => {
     }));
 
     await expect(op.readEnvItem({ id: "env", title: "env" })).resolves.toEqual({ VALID_KEY: "1" });
+  });
+
+  test("does not include failed command stdout in errors", async () => {
+    const error = await new ExecCommandRunner().run(process.execPath, [
+      "-e",
+      'process.stdout.write("SUPER_SECRET"); process.stderr.write("safe failure"); process.exit(1)',
+    ]).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(Error);
+    const message = error instanceof Error ? error.message : String(error);
+    expect(message).toContain("safe failure");
+    expect(message).not.toContain("SUPER_SECRET");
   });
 });
 

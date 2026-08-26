@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { parseConfig, resolveOutputPath, selectTargets, validateProjectRoot } from "../src/config.ts";
@@ -55,6 +55,22 @@ describe("config", () => {
   test("rejects output paths that escape the project root", () => {
     expect(() => resolveOutputPath("/tmp/project", "../outside/.env")).toThrow("escapes");
     expect(() => resolveOutputPath("/tmp/project", "/tmp/outside/.env")).toThrow("relative");
+  });
+
+  test("rejects output paths with symlinked parents", async () => {
+    const base = await mkdtemp(join(tmpdir(), "envswitch-symlink-"));
+    const root = join(base, "project");
+    const outside = join(base, "outside");
+    try {
+      await mkdir(root);
+      await mkdir(outside);
+      await symlink(outside, join(root, "linked"), process.platform === "win32" ? "junction" : "dir");
+
+      expect(() => resolveOutputPath(root, "linked/.env")).toThrow("symbolic-link parent");
+      expect(await Bun.file(join(outside, ".env")).exists()).toBe(false);
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
   });
 
   test("selects all targets or one named target", () => {

@@ -18,11 +18,8 @@ export class ExecCommandRunner implements CommandRunner {
       });
       return stdout;
     } catch (error) {
-      const maybeError = error as { stderr?: string; stdout?: string; message?: string };
-      const output = [maybeError.stderr, maybeError.stdout, maybeError.message]
-        .filter(Boolean)
-        .join("\n")
-        .trim();
+      const maybeError = error as { stderr?: string; message?: string };
+      const output = maybeError.stderr?.trim() || maybeError.message?.trim();
       throw new Error(output || `${command} ${args.join(" ")} failed`);
     }
   }

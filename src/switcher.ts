@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import {
   candidateListTags,
   compactUnique,
+  resolveOutputPath,
   resolveTargets,
   selectTargets,
   tagValues,
@@ -23,14 +24,17 @@ import type {
 } from "./types.ts";
 
 const LAYER_ORDER: LayerName[] = ["shared", "group", "target", "client", "client-target"];
+const SCOPE_SENTINEL = "__ENVSWITCH_SCOPE__";
+
+type ScopeName = "client" | "target" | "group";
 
 type OnePasswordEnvironmentClient = Pick<OnePasswordClient, "listItemsByTags" | "readEnvItem">;
 
 interface TagMatcher {
   commonTags: string[];
-  allTargetTags: Set<string>;
-  allClientTags: Set<string>;
-  allGroupTags: Set<string>;
+  targetTagPattern: RegExp;
+  clientTagPattern: RegExp;
+  groupTagPattern: RegExp;
   currentClientTag: string | undefined;
   currentTargetTagsByTarget: Map<string, Set<string>>;
   currentGroupTagsByTarget: Map<string, Set<string>>;
@@ -96,9 +100,10 @@ export async function switchEnvironment(
     const merge = await mergeTarget(op, candidates, mergeParams);
 
     if (!options.dryRun) {
-      options.log?.({ status: "info", message: `writing ${resolved.outputPath}` });
-      await writeEnvFile(resolved.outputPath, merge.values);
-      options.log?.({ status: "done", message: `wrote ${resolved.outputPath}` });
+      const outputPath = resolveOutputPath(options.root, resolved.target.output);
+      options.log?.({ status: "info", message: `writing ${outputPath}` });
+      await writeEnvFile(outputPath, merge.values);
+      options.log?.({ status: "done", message: `wrote ${outputPath}` });
     } else {
       options.log?.({ status: "dry-run", message: `would write ${resolved.outputPath}` });
     }
@@ -161,15 +166,9 @@ function buildTagMatcher(config: EnvswitchConfig, env: string, client: string): 
 
   return {
     commonTags: compactUnique([...common.base, common.project, common.env]),
-    allTargetTags: new Set(compactUnique(config.targets.map((target) =>
-      tagValues(config, { target: target.name }).target,
-    ))),
-    allClientTags: new Set(compactUnique((config.clients ?? [client]).map((knownClient) =>
-      tagValues(config, { client: knownClient }).client,
-    ))),
-    allGroupTags: new Set(compactUnique(config.targets.flatMap((target) =>
-      (target.groups ?? []).map((group) => tagValues(config, { group }).group),
-    ))),
+    targetTagPattern: scopeTagPattern(config, "target"),
+    clientTagPattern: scopeTagPattern(config, "client"),
+    groupTagPattern: scopeTagPattern(config, "group"),
     currentClientTag: tagValues(config, { client }).client,
     currentTargetTagsByTarget,
     currentGroupTagsByTarget,
@@ -189,9 +188,9 @@ function classifyItemWithMatcher(
     }
   }
 
-  const hasAnyTarget = hasAny(tags, matcher.allTargetTags);
-  const hasAnyClient = hasAny(tags, matcher.allClientTags);
-  const hasAnyGroup = hasAny(tags, matcher.allGroupTags);
+  const hasAnyTarget = hasMatchingTag(tags, matcher.targetTagPattern);
+  const hasAnyClient = hasMatchingTag(tags, matcher.clientTagPattern);
+  const hasAnyGroup = hasMatchingTag(tags, matcher.groupTagPattern);
   const hasCurrentTarget = hasAny(tags, matcher.currentTargetTagsByTarget.get(target) ?? new Set());
   const hasCurrentGroup = hasAny(tags, matcher.currentGroupTagsByTarget.get(target) ?? new Set());
   const hasCurrentClient = matcher.currentClientTag ? tags.has(matcher.currentClientTag) : false;
@@ -274,6 +273,21 @@ function hasLayerTag(matcher: TagMatcher, tags: Set<string>, layer: LayerName): 
 function hasAny(tags: Set<string>, candidates: Set<string>): boolean {
   for (const candidate of candidates) {
     if (tags.has(candidate)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function scopeTagPattern(config: EnvswitchConfig, scope: ScopeName): RegExp {
+  const rendered = tagValues(config, { [scope]: SCOPE_SENTINEL })[scope] ?? "";
+  const escaped = rendered.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^${escaped.replaceAll(SCOPE_SENTINEL, ".+")}$`);
+}
+
+function hasMatchingTag(tags: Set<string>, pattern: RegExp): boolean {
+  for (const tag of tags) {
+    if (pattern.test(tag)) {
       return true;
     }
   }

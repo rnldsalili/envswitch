@@ -1,4 +1,5 @@
-import { basename, isAbsolute, join, normalize, relative, resolve } from "node:path";
+import { lstatSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { readFile, stat } from "node:fs/promises";
 import { fail } from "./errors.ts";
 import { isRecord, parseJson, requireRecord } from "./validation.ts";
@@ -116,8 +117,21 @@ export function resolveOutputPath(root: string, output: string): string {
   if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
     fail(`target output path escapes the project root: ${output}`);
   }
+  rejectSymlinkedParents(rootAbs, outputAbs, output);
 
   return outputAbs;
+}
+
+function rejectSymlinkedParents(root: string, output: string, original: string): void {
+  // ponytail: portable lstat guard; use dirfd/openat if concurrent local path swaps become a threat.
+  for (let current = dirname(output); ; current = dirname(current)) {
+    if (lstatSync(current, { throwIfNoEntry: false })?.isSymbolicLink()) {
+      fail(`target output path contains a symbolic-link parent: ${original}`);
+    }
+    if (current === root) {
+      return;
+    }
+  }
 }
 
 export function tagValues(

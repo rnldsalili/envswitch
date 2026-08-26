@@ -1,4 +1,4 @@
-import { readFile, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, readFile, mkdtemp, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
@@ -83,6 +83,21 @@ const items: OnePasswordItemSummary[] = [
     title: "alpha-target-web",
     tags: ["envswitch", "project:demo", "env:local", "layer:client-target", "client:alpha", "target:web"],
   },
+  {
+    id: "shared-unknown-client",
+    title: "shared-unknown-client",
+    tags: ["envswitch", "project:demo", "env:local", "layer:shared", "client:gamma"],
+  },
+  {
+    id: "shared-unknown-target",
+    title: "shared-unknown-target",
+    tags: ["envswitch", "project:demo", "env:local", "layer:shared", "target:worker"],
+  },
+  {
+    id: "shared-unknown-group",
+    title: "shared-unknown-group",
+    tags: ["envswitch", "project:demo", "env:local", "layer:shared", "group:workers"],
+  },
 ];
 
 const values: Record<string, Record<string, string>> = {
@@ -99,6 +114,9 @@ const values: Record<string, Record<string, string>> = {
   "alpha-api": { API_CLIENT_ONLY: "1", COMMON: "alpha-api" },
   "beta-web": { SHOULD_NOT_APPLY: "1" },
   "alpha-target-web": { SHOULD_NOT_APPLY: "1" },
+  "shared-unknown-client": { SHOULD_NOT_APPLY: "1" },
+  "shared-unknown-target": { SHOULD_NOT_APPLY: "1" },
+  "shared-unknown-group": { SHOULD_NOT_APPLY: "1" },
 };
 
 describe("switcher", () => {
@@ -118,6 +136,32 @@ describe("switcher", () => {
     expect(classifyItemForTarget(config, items[10]!, { env: "local", client: "alpha", target: "api" })).toBe("client-target");
     expect(classifyItemForTarget(config, items[11]!, { env: "local", client: "alpha", target: "web" })).toBeUndefined();
     expect(classifyItemForTarget(config, items[12]!, { env: "local", client: "alpha", target: "web" })).toBeUndefined();
+    expect(classifyItemForTarget(config, items[13]!, { env: "local", client: "alpha", target: "api" })).toBeUndefined();
+    expect(classifyItemForTarget(config, items[14]!, { env: "local", client: "alpha", target: "api" })).toBeUndefined();
+    expect(classifyItemForTarget(config, items[15]!, { env: "local", client: "alpha", target: "api" })).toBeUndefined();
+  });
+
+  test("recognizes unknown scopes with custom tag templates", () => {
+    const customConfig = parseConfig(JSON.stringify({
+      project: { id: "demo" },
+      clients: ["alpha"],
+      targets: [{ name: "api", output: ".env", groups: ["apis"] }],
+      tags: {
+        base: ["envswitch"],
+        client: "scope/client/{client}",
+        target: "scope/target/{target}",
+        group: "scope/group/{group}",
+      },
+    }));
+    const commonTags = ["envswitch", "project:demo", "env:local", "layer:shared"];
+
+    for (const tag of ["scope/client/beta", "scope/target/worker", "scope/group/workers"]) {
+      expect(classifyItemForTarget(customConfig, {
+        id: tag,
+        title: tag,
+        tags: [...commonTags, tag],
+      }, { env: "local", client: "alpha", target: "api" })).toBeUndefined();
+    }
   });
 
   test("dry run merges supported layers without writing files", async () => {
@@ -179,7 +223,7 @@ describe("switcher", () => {
       expect(logs).toEqual([
         { status: "info", message: `validating project root ${root}` },
         { status: "info", message: "listing candidate 1Password items" },
-        { status: "done", message: "found 13 candidate item(s)" },
+        { status: "done", message: "found 16 candidate item(s)" },
         { status: "info", message: `processing api -> ${outputPath}` },
         { status: "info", message: "reading shared" },
         { status: "info", message: "reading api-group" },
@@ -261,6 +305,36 @@ describe("switcher", () => {
       expect(readCounts["alpha-web"]).toBe(1);
     } finally {
       await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("rechecks output parents immediately before writing", async () => {
+    const base = await mkdtemp(join(tmpdir(), "envswitch-symlink-write-"));
+    const root = join(base, "project");
+    const outside = join(base, "outside");
+    const outputDir = join(root, "apps/api");
+    try {
+      await mkdir(outputDir, { recursive: true });
+      await mkdir(outside);
+      const op = {
+        listItemsByTags: async () => [items[0]!],
+        readEnvItem: async () => {
+          await rm(outputDir, { recursive: true });
+          await symlink(outside, outputDir, process.platform === "win32" ? "junction" : "dir");
+          return { TOKEN: "secret" };
+        },
+      };
+
+      await expect(switchEnvironment(config, op, {
+        root,
+        env: "local",
+        client: "alpha",
+        targetName: "api",
+        dryRun: false,
+      })).rejects.toThrow("symbolic-link parent");
+      expect(await Bun.file(join(outside, ".env")).exists()).toBe(false);
+    } finally {
+      await rm(base, { recursive: true, force: true });
     }
   });
 
