@@ -19,7 +19,6 @@ pub struct InquirePrompter;
 
 impl Prompter for InquirePrompter {
     fn select(&self, spec: &SelectSpec) -> Result<usize> {
-        // shortcut: inquire 0.9.5 cannot disable wrapping, resolve at the prompt UX merge gate.
         Select::new(
             &spec.message,
             spec.choices
@@ -40,7 +39,7 @@ impl Prompter for InquirePrompter {
             prompt = prompt.with_default(default);
         }
         if spec.required {
-            prompt = prompt.with_validator(inquire::required!());
+            prompt = prompt.with_validator(inquire::required!("You must provide a value"));
         }
         prompt.prompt().map_err(prompt_error)
     }

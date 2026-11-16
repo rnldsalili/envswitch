@@ -69,7 +69,13 @@ fn real_inquire_preserves_defaults_raw_text_filtering_and_cancel() {
                 "C4 select"
             })
             .unwrap();
-        session.send(keys).unwrap();
+        if mode == "input-required" {
+            session.send("\r").unwrap();
+            session.expect("You must provide a value").unwrap();
+            session.send("alpha\r").unwrap();
+        } else {
+            session.send(keys).unwrap();
+        }
         session
             .expect(format!("C4-ANSWER:{expected}"))
             .unwrap_or_else(|error| panic!("{mode}: {error}"));

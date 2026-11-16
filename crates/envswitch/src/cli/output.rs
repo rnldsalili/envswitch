@@ -3,7 +3,7 @@
 use std::io::Write;
 use std::path::Path;
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 use crate::model::{ProgressEvent, ProgressStatus, SwitchResult};
 use crate::ports::Deps;
 
@@ -36,7 +36,8 @@ pub(crate) fn log_progress(deps: &mut Deps, event: ProgressEvent) {
 }
 
 pub(crate) fn write_line(deps: &mut Deps, line: impl std::fmt::Display) -> Result<()> {
-    writeln!(deps.out, "{line}").map_err(|err| Error::internal(err.to_string()))
+    let _ = writeln!(deps.out, "{line}");
+    Ok(())
 }
 
 pub(crate) fn print_switch_results(

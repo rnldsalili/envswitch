@@ -250,3 +250,53 @@ fn color_environment_is_rechecked_for_each_progress_event() {
         "\x1b[2menvswitch\x1b[0m \x1b[34m[info]\x1b[0m listing 1Password vaults\nenvswitch [done] found 0 vault(s)\nenvswitch: no 1Password vaults found\n"
     );
 }
+
+struct ClosedPipe;
+
+impl std::io::Write for ClosedPipe {
+    fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
+        Err(std::io::ErrorKind::BrokenPipe.into())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Err(std::io::ErrorKind::BrokenPipe.into())
+    }
+}
+
+#[test]
+fn closed_stdout_does_not_fail_help_or_version() {
+    let project = TempProject::new();
+    for argv in [vec!["--help"], vec!["switch", "--help"], vec!["--version"]] {
+        let mut test = support::deps(project.root());
+        test.deps.out = Box::new(ClosedPipe);
+        assert_eq!(test.run(&argv), 0, "{argv:?}");
+        assert!(test.err.bytes().is_empty());
+    }
+}
+
+#[test]
+fn closed_stdout_does_not_replace_a_guided_exit_code() {
+    let project = TempProject::new();
+    let prompt = ScriptedPrompter::new([]);
+    let mut test = support::deps(project.root())
+        .with_prompter(&prompt)
+        .with_vaults(FakeVaultLister::failing(Error::Cancelled));
+    test.deps.out = Box::new(ClosedPipe);
+    assert_eq!(test.run(&[]), 130);
+    assert_eq!(test.vaults.calls(), 1);
+    assert!(test.err.bytes().is_empty());
+}
+
+#[test]
+fn closed_stderr_does_not_replace_progress_or_error_exit_codes() {
+    let project = TempProject::new();
+    let prompt = ScriptedPrompter::new([]);
+    let mut test = support::deps(project.root())
+        .with_prompter(&prompt)
+        .with_vaults(FakeVaultLister::failing(Error::Cancelled))
+        .without_event_capture();
+    test.deps.err = Box::new(ClosedPipe);
+    assert_eq!(test.run(&[]), 130);
+    assert_eq!(test.vaults.calls(), 1);
+    assert_eq!(test.run(&["unknown"]), 1);
+}

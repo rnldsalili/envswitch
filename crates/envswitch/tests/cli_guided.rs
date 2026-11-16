@@ -64,6 +64,25 @@ fn rejects_no_config_vaults_and_skips_all_errors_in_vault_order() {
             vault("bad", "Bad Vault"),
             vault("bad-user", "Bad Data"),
         ]));
+    struct HeaderCheckingVaultLister {
+        inner: FakeVaultLister,
+        out: support::SharedBuf,
+        expected: String,
+    }
+    impl envswitch::ports::VaultLister for HeaderCheckingVaultLister {
+        fn list_vaults(&self) -> envswitch::Result<Vec<envswitch::model::Vault>> {
+            assert_eq!(self.out.text(), self.expected);
+            envswitch::ports::VaultLister::list_vaults(&self.inner)
+        }
+    }
+    test.deps.vault_lister = Box::new(HeaderCheckingVaultLister {
+        inner: test.vaults.clone(),
+        out: test.out.clone(),
+        expected: format!(
+            "envswitch guided switch\nProject root: {}\n",
+            project.root().display()
+        ),
+    });
     assert_eq!(test.run(&[]), 1);
     assert_eq!(
         test.err.text(),

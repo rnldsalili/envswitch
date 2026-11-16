@@ -33,7 +33,7 @@ pub fn run(argv: Vec<String>, deps: &mut Deps) -> i32 {
 
 /// One-time process setup called by `main.rs` before [`run`] and never by
 /// in-process tests: on Windows, enable VT processing for stderr
-/// (`enable-ansi-support`) and install a `ctrlc` handler that exits 130
+/// (`enable-ansi-support`) and install a Ctrl-C / Ctrl-Break handler that exits 130
 /// outside prompts (DIVERGENCES b1). No-op work on other platforms.
 pub fn init_process() {
     #[cfg(windows)]
@@ -58,23 +58,19 @@ fn dispatch(argv: &[String], deps: &mut Deps) -> Result<()> {
         return guided::run_guided(deps);
     }
     if matches!(argv[0].as_str(), "--help" | "-h") {
-        return deps
-            .out
-            .write_all(help::help_text().as_bytes())
-            .map_err(|e| Error::internal(e.to_string()));
+        let _ = deps.out.write_all(help::help_text().as_bytes());
+        return Ok(());
     }
     let args = parse_args(argv);
     if args.flags.get("help") == Some(&FlagValue::True) || args.command.as_deref() == Some("help") {
-        return deps
-            .out
-            .write_all(help::help_text().as_bytes())
-            .map_err(|e| Error::internal(e.to_string()));
+        let _ = deps.out.write_all(help::help_text().as_bytes());
+        return Ok(());
     }
     match args.command.as_deref().unwrap_or_default() {
-        "--version" => deps
-            .out
-            .write_all(version_line().as_bytes())
-            .map_err(|e| Error::internal(e.to_string())),
+        "--version" => {
+            let _ = deps.out.write_all(version_line().as_bytes());
+            Ok(())
+        }
         "switch" => commands::run_switch(&args, deps),
         "list" => commands::run_list(&args, deps),
         "doctor" => commands::run_doctor(&args, deps),
