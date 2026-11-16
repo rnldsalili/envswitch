@@ -39,7 +39,7 @@ Branches (all local until step 1):
 2. Dispatch `release.yml` with `kind=native`, `publish=true`. Required before publication: native builds, installer suites, and oracle parity on all three OSes. Assets are uploaded to a draft, the complete set is verified (including archive contents and the bundled-script bytes), and only then is the release promoted to latest. Attestations are created for the published archives.
 3. Live checks:
    - Fresh install with the one-liner on macOS arm64 and x64, glibc Linux, Alpine, WSL, and Windows (PowerShell 5.1 and 7) → `envswitch --version` prints `envswitch <ver> <target>`.
-   - Bridge install → `envswitch update` → native.
+   - Bridge install → `envswitch update` → native. On Windows, run this from the old `envswitch.cmd` launcher: the installer replaces that `.cmd` while cmd.exe is still executing it, so confirm the session ends cleanly and the next `envswitch --version` is native.
    - Native → `envswitch update` → `envswitch is already up to date (v<ver>)`.
    - Pre-bridge install that skipped the bridge → the old updater fails, and the README recovery one-liner fixes it (Light mode, INSTALLER-PROTOCOL §8.2).
    - Optional: `gh attestation verify <archive> --repo rnldsalili/envswitch`.
