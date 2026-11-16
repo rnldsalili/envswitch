@@ -133,6 +133,34 @@ fn doctor_has_exact_output() {
         .stderr(predicate::eq(stderr));
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn switch_from_non_utf8_cwd_writes_to_the_real_root() {
+    use std::{ffi::OsStr, fs, os::unix::ffi::OsStrExt};
+
+    let s = project();
+    let root = s.root.join(OsStr::from_bytes(b"proj\xff"));
+    let lossy_sibling = s.root.join("proj\u{fffd}");
+    for dir in [&root, &lossy_sibling] {
+        s.owned(dir);
+        fs::create_dir(dir).unwrap();
+    }
+    let output = root.join(".env");
+    s.owned(&output);
+    s.write(&lossy_sibling.join(".env"), b"untouched\n");
+    s.write(&root.join("package.json"), b"{\"name\":\"demo\"}");
+    s.cli().current_dir(&root).args([
+        "switch", "--vault", "vault", "--config-item", "cfg", "--client", "alpha",
+    ]).assert().code(0)
+        .stdout(predicate::eq(format!("Updated 1 target(s) from proj\u{fffd}\n- api -> {}\n  keys: 2\n  layers: shared:Shared\n", output.display())))
+        .stderr(predicate::str::contains("envswitch:").not());
+    assert_eq!(fs::read(&output).unwrap(), b"A=\"hello world\"\nZ=last\n");
+    assert_eq!(
+        fs::read(lossy_sibling.join(".env")).unwrap(),
+        b"untouched\n"
+    );
+}
+
 #[cfg(unix)]
 mod pty {
     use super::*;

@@ -70,6 +70,8 @@ impl CommandRunner for ExecCommandRunner {
         let status = child
             .wait()
             .map_err(|error| Error::internal(error.to_string()))?;
+        #[cfg(windows)]
+        check_op_interruption(status)?;
         if let Some(failure) = failure {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let stderr = js_trim(&stderr);
@@ -84,10 +86,39 @@ impl CommandRunner for ExecCommandRunner {
     }
 }
 
+#[cfg(windows)]
+fn check_op_interruption(status: std::process::ExitStatus) -> Result<()> {
+    const STATUS_CONTROL_C_EXIT: i32 = 0xC000_013A_u32 as i32;
+    if status.code() == Some(STATUS_CONTROL_C_EXIT) {
+        return Err(Error::Cancelled);
+    }
+    Ok(())
+}
+
 fn read_pipe(reader: impl Read) -> io::Result<Vec<u8>> {
     let mut bytes = Vec::new();
     reader
         .take(MAX_STDOUT_BYTES as u64 + 1)
         .read_to_end(&mut bytes)?;
     Ok(bytes)
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+    use std::os::windows::process::ExitStatusExt;
+
+    #[test]
+    fn control_c_child_status_is_cancelled_without_the_parent_handler() {
+        assert_eq!(
+            check_op_interruption(std::process::ExitStatus::from_raw(0xC000_013A)),
+            Err(Error::Cancelled)
+        );
+        for code in [0, 1, 130, 0xC000_0005] {
+            assert_eq!(
+                check_op_interruption(std::process::ExitStatus::from_raw(code)),
+                Ok(())
+            );
+        }
+    }
 }
