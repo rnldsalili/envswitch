@@ -1,0 +1,44 @@
+[package]
+name = "envswitch"
+# Stamped by CI at release time (0.0.<run_number> from release.yml).
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.100"
+description = "Write local .env files from tagged 1Password items"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "envswitch"
+path = "src/main.rs"
+
+# Every approved dependency is declared here up front (PLAN §2.2).
+# Workers never edit this file; ask the orchestrator for anything else.
+[dependencies]
+serde_json = "1.0.154"
+thiserror = "2.0.21"
+indexmap = "2.14.2"
+# No `fuzzy` feature: list filtering is a plain substring filter (DIVERGENCES c2).
+inquire = { version = "0.9.5", default-features = false, features = ["crossterm", "macros"] }
+icu_collator = "2.4.0"
+icu_locale = "2.4.0"
+regex = "1.13.1"
+uuid = { version = "1.29.2", features = ["v4"] }
+
+[target.'cfg(windows)'.dependencies]
+enable-ansi-support = "0.3.1"
+ctrlc = "3.5.2"
+
+[dev-dependencies]
+tempfile = "3.27.0"
+assert_cmd = "2.2.2"
+predicates = "3.1.4"
+insta = "1.49.0"
+
+[target.'cfg(unix)'.dev-dependencies]
+expectrl = "0.9.0"
+
+[target.'cfg(windows)'.dev-dependencies]
+junction = "2.1.0"

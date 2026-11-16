@@ -1,0 +1,13 @@
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+
+# Release builds are small single-binary CLIs. Full LTO with one codegen unit
+# and stripped symbols keeps the download small; opt-level 3 (not "z") is kept
+# because it is the most exercised optimization path and the size difference
+# after LTO + strip is small for this crate.
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+opt-level = 3
