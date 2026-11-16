@@ -11,18 +11,9 @@ use std::path::PathBuf;
 use std::process::{Command, ExitStatus, Stdio};
 
 use crate::error::{Error, Result};
-use crate::ports::{InstallPlan, InstallerRunner, ReleaseSource};
+use crate::ports::{InstallPlan, InstallerRunner};
 
 pub const GITHUB_REPO: &str = "rnldsalili/envswitch";
-
-/// Compatibility wiring for Deps; latest selection belongs to the installer.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct LatestReleaseSource;
-impl ReleaseSource for LatestReleaseSource {
-    fn latest_version(&self) -> Option<String> {
-        None
-    }
-}
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct EmbeddedInstaller;

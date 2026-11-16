@@ -60,7 +60,6 @@ fn child_status_is_forwarded_and_latest_is_not_resolved_by_rust() {
         "envswitch: update failed: installer exited with code 143\n"
     );
     assert!(t.out.text().is_empty());
-    assert_eq!(t.release.calls(), 0);
     let plans = t.installer.plans();
     assert_eq!(plans.len(), 1);
     assert_eq!(plans[0].repo, "demo/suite");
@@ -189,7 +188,6 @@ fn compiled_version_labels_update_even_when_marker_is_missing_or_stale() {
             t.err.text(),
             "envswitch [info] updating envswitch v0.0.0 -> latest\n"
         );
-        assert_eq!(t.release.calls(), 0);
     }
 }
 
@@ -325,7 +323,6 @@ fn missing_receipt_is_reinstall_guidance_and_unknown_flag_precedes_lookup() {
     assert_eq!(t.run(&["update"]), 1);
     assert_eq!(t.err.text(), RECEIPT_ERROR);
     assert!(t.installer.plans().is_empty());
-    assert_eq!(t.release.calls(), 0);
 }
 
 #[test]

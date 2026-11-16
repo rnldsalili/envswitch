@@ -10,13 +10,12 @@
 //! | [`OpFactory`]       | `op::client::OpClientFactory` (C2)      | `FakeOpFactory`             |
 //! | [`VaultLister`]     | `op::client::OpVaultLister` (C2)        | `FakeVaultLister`           |
 //! | [`Prompter`]        | `cli::guided::InquirePrompter` (C4)     | `ScriptedPrompter`          |
-//! | [`ReleaseSource`]   | `install::LatestReleaseSource` (D3)     | `FakeReleaseSource`         |
 //! | [`InstallerRunner`] | `install::EmbeddedInstaller` (D3)       | `FakeInstaller`             |
 //!
 //! # Thread rules
 //!
-//! * `OnePassword`, `OpFactory`, `VaultLister`, `CommandRunner`,
-//!   `ReleaseSource` and `InstallerRunner` are `Send + Sync`.
+//! * `OnePassword`, `OpFactory`, `VaultLister`, `CommandRunner` and
+//!   `InstallerRunner` are `Send + Sync`.
 //! * The guided vault scan (contract 01 §5.2 step 2) creates one client per
 //!   vault **on the main thread, in `list_vaults` order** (so factory calls are
 //!   deterministic), then runs each `list_items_by_tags(["envswitch-config"])`
@@ -169,12 +168,6 @@ pub struct InstallPlan {
     pub verify_attestations: bool,
 }
 
-/// Legacy resolution seam retained for shared dependency/fake compatibility.
-/// Native update never calls it: the embedded installer selects latest once.
-pub trait ReleaseSource: Send + Sync {
-    fn latest_version(&self) -> Option<String>;
-}
-
 /// Runs the installer with forwarded stdio and returns its
 /// exit code (`128 + signal` when killed by a signal). Spawn failure is
 /// `Err(Error::Internal)`.
@@ -230,7 +223,6 @@ pub struct Deps {
     /// Install-root override for `update` tests; `None` = derive from
     /// `current_exe` + receipt (D3).
     pub app_dir: Option<PathBuf>,
-    pub release_source: Box<dyn ReleaseSource>,
     pub installer: Box<dyn InstallerRunner>,
 }
 
@@ -256,7 +248,6 @@ impl Deps {
             prompter: None,
             current_exe: std::env::current_exe().ok(),
             app_dir: None,
-            release_source: Box::new(crate::install::LatestReleaseSource),
             installer: Box::new(crate::install::EmbeddedInstaller),
         })
     }

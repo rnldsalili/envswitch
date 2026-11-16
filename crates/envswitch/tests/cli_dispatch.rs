@@ -86,7 +86,6 @@ fn validates_command_allowlists_and_boolean_values_before_work() {
         );
         assert!(test.out.bytes().is_empty());
         assert!(test.factory.created().is_empty());
-        assert_eq!(test.release.calls(), 0);
         assert!(test.installer.plans().is_empty());
     }
 }

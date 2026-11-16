@@ -1,12 +1,10 @@
 use super::{
     json::J,
     model,
-    ports::{self, Calls, Factory, Installer, Prompt, Release, Runner},
+    ports::{self, Calls, Factory, Installer, Prompt, Runner},
     transport::{Bridge, CwdGuard, UmaskGuard},
 };
-use crate::support::{
-    ConcurrencyGate, EnvVars, EventLog, FakeInstaller, FakeReleaseSource, SharedBuf,
-};
+use crate::support::{ConcurrencyGate, EnvVars, EventLog, FakeInstaller, SharedBuf};
 use envswitch::{Error, Result, model::*, op::client::OnePasswordClient, ports::*};
 use serde_json::Value;
 use std::{
@@ -319,14 +317,6 @@ pub fn execute(s: &J, bundle: &Value, path: &Path, bridge: &Bridge) -> Result<J>
                             }),
                     ),
                     app_dir: Some(app.clone()),
-                    release_source: Box::new(Release {
-                        fake: FakeReleaseSource::new(if update.has("latest") {
-                            Some(update.get("latest").text())
-                        } else {
-                            None
-                        }),
-                        calls: calls.clone(),
-                    }),
                     installer: Box::new(Installer {
                         fake,
                         stdout: bundle["native"]["stdout"].as_str().unwrap_or("").into(),

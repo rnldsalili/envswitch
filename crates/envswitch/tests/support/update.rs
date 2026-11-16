@@ -3,33 +3,7 @@
 use std::sync::{Arc, Mutex};
 
 use envswitch::error::Result;
-use envswitch::ports::{InstallPlan, InstallerRunner, ReleaseSource};
-
-/// [`ReleaseSource`] returning a fixed latest version and counting calls.
-#[derive(Clone, Default)]
-pub struct FakeReleaseSource {
-    inner: Arc<Mutex<(Option<String>, usize)>>,
-}
-
-impl FakeReleaseSource {
-    pub fn new(latest: Option<&str>) -> Self {
-        FakeReleaseSource {
-            inner: Arc::new(Mutex::new((latest.map(str::to_string), 0))),
-        }
-    }
-
-    pub fn calls(&self) -> usize {
-        self.inner.lock().unwrap().1
-    }
-}
-
-impl ReleaseSource for FakeReleaseSource {
-    fn latest_version(&self) -> Option<String> {
-        let mut state = self.inner.lock().unwrap();
-        state.1 += 1;
-        state.0.clone()
-    }
-}
+use envswitch::ports::{InstallPlan, InstallerRunner};
 
 type InstallHook = Arc<dyn Fn(&InstallPlan) + Send + Sync>;
 

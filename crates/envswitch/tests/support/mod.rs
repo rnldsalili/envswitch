@@ -8,7 +8,7 @@
 //!   events, and a fake environment.
 //! * [`TempProject`]: temp project roots with `package.json` markers, files,
 //!   and directory links (symlink / junction).
-//! * [`FakeReleaseSource`], [`FakeInstaller`]: provisional `update` fakes.
+//! * [`FakeInstaller`]: `update` installer fake.
 //! * [`deps`]: a fully faked `Deps` plus handles to every fake.
 //!
 //! Every fake is `Clone` and shares state through `Arc<Mutex<_>>`, so a test
@@ -33,7 +33,7 @@ pub use fake_op::{
 };
 pub use project::{TempProject, link_dir};
 pub use prompter::{Answer, PromptRecord, ScriptedPrompter};
-pub use update::{FakeInstaller, FakeReleaseSource};
+pub use update::FakeInstaller;
 
 /// A faked [`Deps`] and handles to each fake inside it.
 pub struct TestDeps {
@@ -45,7 +45,6 @@ pub struct TestDeps {
     pub env: EnvVars,
     pub factory: FakeOpFactory,
     pub vaults: FakeVaultLister,
-    pub release: FakeReleaseSource,
     pub installer: FakeInstaller,
 }
 
@@ -57,8 +56,7 @@ pub struct TestDeps {
 /// * empty [`FakeOpFactory`] and [`FakeVaultLister`] (no vaults);
 /// * no prompter (so guided mode hits the non-TTY guard unless a test sets
 ///   one with [`TestDeps::with_prompter`]);
-/// * `current_exe`/`app_dir` `None`; release source returns `None`;
-///   installer exits 0.
+/// * `current_exe`/`app_dir` `None`; installer exits 0.
 ///
 /// Nothing here can reach a real `op`, network, or installer.
 pub fn deps(root: &Path) -> TestDeps {
@@ -68,7 +66,6 @@ pub fn deps(root: &Path) -> TestDeps {
     let env = EnvVars::new();
     let factory = FakeOpFactory::new();
     let vaults = FakeVaultLister::new(Vec::new());
-    let release = FakeReleaseSource::new(None);
     let installer = FakeInstaller::new();
     let deps = Deps {
         cwd: root.to_path_buf(),
@@ -85,7 +82,6 @@ pub fn deps(root: &Path) -> TestDeps {
         prompter: None,
         current_exe: None,
         app_dir: None,
-        release_source: Box::new(release.clone()),
         installer: Box::new(installer.clone()),
     };
     TestDeps {
@@ -96,7 +92,6 @@ pub fn deps(root: &Path) -> TestDeps {
         env,
         factory,
         vaults,
-        release,
         installer,
     }
 }
@@ -119,12 +114,6 @@ impl TestDeps {
     /// Injects a prompter (bypasses the TTY guard, like TS `prompt`).
     pub fn with_prompter(mut self, prompter: &ScriptedPrompter) -> Self {
         self.deps.prompter = Some(prompter.boxed());
-        self
-    }
-
-    pub fn with_release(mut self, release: FakeReleaseSource) -> Self {
-        self.deps.release_source = Box::new(release.clone());
-        self.release = release;
         self
     }
 

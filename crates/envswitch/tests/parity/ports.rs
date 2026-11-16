@@ -1,5 +1,5 @@
 use super::{json::J, model, transport::Bridge};
-use crate::support::{Answer, ConcurrencyGate, FakeInstaller, FakeReleaseSource, ScriptedPrompter};
+use crate::support::{Answer, ConcurrencyGate, FakeInstaller, ScriptedPrompter};
 use envswitch::op::client::{OnePasswordClient, OpVaultLister};
 use envswitch::{Error, Result, model::*, ports::*};
 use serde_json::Value;
@@ -315,20 +315,6 @@ impl Prompter for Prompt {
             return Err(self.fault("empty required input"));
         }
         Ok(value)
-    }
-}
-pub struct Release {
-    pub fake: FakeReleaseSource,
-    pub calls: Arc<Mutex<Calls>>,
-}
-impl ReleaseSource for Release {
-    fn latest_version(&self) -> Option<String> {
-        self.calls
-            .lock()
-            .unwrap()
-            .updates
-            .push(J::object([("method", J::string("fetchLatestVersion"))]));
-        self.fake.latest_version()
     }
 }
 pub struct Installer {

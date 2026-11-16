@@ -379,18 +379,7 @@ mod checks {
         }
     }
     #[test]
-    fn release_fake_records_unneeded_lookup_without_panicking() {
-        use envswitch::ports::ReleaseSource;
-        let calls = std::sync::Arc::new(std::sync::Mutex::new(ports::Calls::default()));
-        let release = ports::Release {
-            fake: crate::support::FakeReleaseSource::new(None),
-            calls: calls.clone(),
-        };
-        assert_eq!(release.latest_version(), None);
-        assert_eq!(
-            calls.lock().unwrap().updates[0].get("method").text(),
-            "fetchLatestVersion"
-        );
+    fn installer_status_errors_carry_their_exit_code() {
         for status in [4, 143] {
             assert_eq!(
                 envswitch::Error::status(status, "synthetic installer failure").exit_code(),
