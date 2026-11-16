@@ -1,0 +1,16 @@
+{
+  "id": "inspect-nonexistent-root-no-markers",
+  "kind": "inspect",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ]
+  },
+  "root": "{TMP}/missing"
+}

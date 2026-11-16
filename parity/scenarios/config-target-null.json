@@ -1,0 +1,9 @@
+{
+  "id": "config-target-null",
+  "kind": "config",
+  "config": {
+    "targets": [
+      null
+    ]
+  }
+}

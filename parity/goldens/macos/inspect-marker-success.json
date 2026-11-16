@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "id": "inspect-marker-success",
+  "kind": "inspect",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "",
+  "exitCode": 0,
+  "prompts": [],
+  "progress": [],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [
+    {
+      "path": "{ROOT}/package.json",
+      "kind": "file",
+      "bytesBase64": "eyJuYW1lIjoiZGVtby1zdWl0ZSJ9",
+      "mode": 420
+    }
+  ],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}/services",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": [
+    {
+      "target": {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      },
+      "outputPath": "{ROOT}/apps/api/.env",
+      "parentExists": false
+    }
+  ]
+}

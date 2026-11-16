@@ -1,0 +1,15 @@
+{
+  "id": "config-groups-empty-entry",
+  "kind": "config",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          ""
+        ]
+      }
+    ]
+  }
+}

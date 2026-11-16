@@ -1,0 +1,12 @@
+{
+  "id": "config-trim-untrimmed",
+  "kind": "config",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": " apps/api/.env "
+      }
+    ]
+  }
+}

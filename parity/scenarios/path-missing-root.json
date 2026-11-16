@@ -1,0 +1,6 @@
+{
+  "id": "path-missing-root",
+  "kind": "path",
+  "root": "{TMP}/missing",
+  "output": "apps/api/.env"
+}

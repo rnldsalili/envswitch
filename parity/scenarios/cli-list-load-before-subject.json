@@ -1,0 +1,13 @@
+{
+  "id": "cli-list-load-before-subject",
+  "kind": "cli",
+  "argv": [
+    "list",
+    "--vault",
+    "alpha",
+    "--config-item",
+    "cfg",
+    "bogus"
+  ],
+  "configRaw": "{}"
+}

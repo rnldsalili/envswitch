@@ -1,0 +1,21 @@
+{
+  "id": "op-vault-malformed",
+  "kind": "op",
+  "method": "vaults",
+  "divergence": "a5",
+  "op": {
+    "responses": [
+      {
+        "argv": [
+          "vault",
+          "list",
+          "--format",
+          "json"
+        ],
+        "stdout": "{",
+        "stderr": "",
+        "exitCode": 0
+      }
+    ]
+  }
+}

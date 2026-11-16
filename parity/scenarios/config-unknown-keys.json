@@ -1,0 +1,23 @@
+{
+  "id": "config-unknown-keys",
+  "kind": "config",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ],
+        "extra": 1
+      }
+    ],
+    "ignored": 1,
+    "project": {
+      "extra": true
+    },
+    "tags": {
+      "unknown": null
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "id": "tags-empty-rendered",
+  "kind": "tags",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "tags": {
+      "base": [
+        "{target}",
+        "x",
+        "x"
+      ],
+      "env": "{client}"
+    }
+  },
+  "params": {
+    "env": "local"
+  }
+}

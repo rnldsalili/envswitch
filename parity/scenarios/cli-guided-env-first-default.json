@@ -1,0 +1,49 @@
+{
+  "id": "cli-guided-env-first-default",
+  "kind": "cli",
+  "config": {
+    "project": {
+      "id": "demo-suite"
+    },
+    "clients": [
+      "alpha",
+      "beta"
+    ],
+    "environments": [
+      "dev",
+      "prod"
+    ],
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      },
+      {
+        "name": "web",
+        "output": "apps/web/.env",
+        "groups": [
+          "apps"
+        ]
+      }
+    ],
+    "tags": {
+      "base": [
+        "envswitch"
+      ]
+    }
+  },
+  "argv": [],
+  "prompts": [
+    "alpha",
+    {
+      "default": true
+    },
+    {
+      "default": true
+    },
+    true
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "id": "config-duplicate-after-tags",
+  "kind": "config",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      },
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "tags": 3
+  }
+}

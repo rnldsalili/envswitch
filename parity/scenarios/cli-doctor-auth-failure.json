@@ -1,0 +1,25 @@
+{
+  "id": "cli-doctor-auth-failure",
+  "kind": "cli",
+  "argv": [
+    "doctor",
+    "--vault",
+    "alpha",
+    "--config-item",
+    "cfg"
+  ],
+  "op": {
+    "responses": [
+      {
+        "argv": [
+          "whoami",
+          "--format",
+          "json"
+        ],
+        "stdout": "demo-suite-private",
+        "stderr": "  not signed in\n",
+        "exitCode": 1
+      }
+    ]
+  }
+}

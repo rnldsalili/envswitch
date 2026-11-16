@@ -1,0 +1,13 @@
+{
+  "id": "cli-a8-lone-surrogate",
+  "kind": "cli",
+  "argv": [
+    "list",
+    "--vault",
+    "alpha",
+    "--config-item",
+    "cfg"
+  ],
+  "configRaw": "{\"targets\":[{\"name\":\"api\",\"output\":\"apps/api/.env\"}],\"extra\":\"\\ud800\"}",
+  "divergence": "a8"
+}

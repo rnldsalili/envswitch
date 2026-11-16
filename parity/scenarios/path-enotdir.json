@@ -1,0 +1,12 @@
+{
+  "id": "path-enotdir",
+  "kind": "path",
+  "output": "afile/sub/.env",
+  "files": [
+    {
+      "path": "afile",
+      "content": "alpha"
+    }
+  ],
+  "divergence": "d1"
+}

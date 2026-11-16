@@ -1,0 +1,31 @@
+{
+  "id": "inspect-markers-and",
+  "kind": "inspect",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "project": {
+      "rootMarkers": [
+        {
+          "path": "services"
+        },
+        {
+          "path": "missing"
+        }
+      ]
+    }
+  },
+  "files": [
+    {
+      "path": "services",
+      "type": "dir"
+    }
+  ]
+}

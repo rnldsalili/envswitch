@@ -1,0 +1,23 @@
+{
+  "id": "op-item-list-malformed",
+  "kind": "op",
+  "method": "items",
+  "op": {
+    "responses": [
+      {
+        "argv": [
+          "item",
+          "list",
+          "--vault",
+          "alpha",
+          "--format",
+          "json"
+        ],
+        "stdout": "not-json",
+        "stderr": "",
+        "exitCode": 0
+      }
+    ]
+  },
+  "divergence": "a5"
+}

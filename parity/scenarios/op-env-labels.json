@@ -1,0 +1,80 @@
+{
+  "id": "op-env-labels",
+  "kind": "op",
+  "method": "env",
+  "item": {
+    "id": "alpha",
+    "title": "alpha"
+  },
+  "op": {
+    "details": {
+      "alpha": {
+        "fields": [
+          {
+            "id": "IGNORED_ID",
+            "label": " VALID_KEY ",
+            "value": "1"
+          },
+          {
+            "label": "VALID_KEY",
+            "value": "2",
+            "section": {
+              "id": "beta"
+            }
+          },
+          {
+            "label": "invalid-key",
+            "value": "ignored"
+          },
+          {
+            "label": "9KEY",
+            "value": "ignored"
+          },
+          {
+            "label": "notesPlain",
+            "value": "ignored"
+          },
+          {
+            "label": " notesPlain ",
+            "value": "ignored"
+          },
+          {
+            "label": "",
+            "value": "ignored"
+          },
+          {
+            "label": "﻿BOM﻿",
+            "value": "1"
+          },
+          {
+            "label": "NEL",
+            "value": "ignored"
+          },
+          {
+            "label": "NOVAL"
+          },
+          {
+            "label": "NUMBER",
+            "value": 5
+          },
+          {
+            "label": "username",
+            "value": "alpha"
+          },
+          {
+            "label": "password",
+            "value": "demo-suite"
+          },
+          {
+            "label": "OTP",
+            "value": "otpauth://demo-suite"
+          },
+          {
+            "label": null,
+            "value": "ignored"
+          }
+        ]
+      }
+    }
+  }
+}

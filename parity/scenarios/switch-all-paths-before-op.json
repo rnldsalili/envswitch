@@ -1,0 +1,19 @@
+{
+  "id": "switch-all-paths-before-op",
+  "kind": "switch",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      },
+      {
+        "name": "web",
+        "output": "../outside"
+      }
+    ]
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "id": "cli-guided-no-configs",
+  "kind": "cli",
+  "divergence": null,
+  "stdoutBase64": "ZW52c3dpdGNoIGd1aWRlZCBzd2l0Y2gKUHJvamVjdCByb290OiB7Uk9PVH0K",
+  "stderrBase64": "ZW52c3dpdGNoIFtpbmZvXSBsaXN0aW5nIDFQYXNzd29yZCB2YXVsdHMKZW52c3dpdGNoIFtkb25lXSBmb3VuZCAxIHZhdWx0KHMpCmVudnN3aXRjaCBbaW5mb10gY2hlY2tpbmcgdmF1bHRzIGZvciBjb25maWcgaXRlbXMgdGFnZ2VkIGVudnN3aXRjaC1jb25maWcKZW52c3dpdGNoIFtkb25lXSBmb3VuZCAwIHZhdWx0KHMpIHdpdGggY29uZmlnIGl0ZW1zCmVudnN3aXRjaDogbm8gMVBhc3N3b3JkIHZhdWx0cyBjb250YWluIGl0ZW1zIHRhZ2dlZCBlbnZzd2l0Y2gtY29uZmlnCg==",
+  "exitCode": 1,
+  "prompts": [],
+  "progress": [
+    {
+      "status": "info",
+      "message": "listing 1Password vaults"
+    },
+    {
+      "status": "done",
+      "message": "found 1 vault(s)"
+    },
+    {
+      "status": "info",
+      "message": "checking vaults for config items tagged envswitch-config"
+    },
+    {
+      "status": "done",
+      "message": "found 0 vault(s) with config items"
+    }
+  ],
+  "opCalls": [
+    [
+      "vault",
+      "list",
+      "--format",
+      "json"
+    ],
+    [
+      "item",
+      "list",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--tags",
+      "envswitch-config"
+    ]
+  ],
+  "readCounts": {},
+  "factoryCalls": [
+    "alpha"
+  ],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

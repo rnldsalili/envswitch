@@ -1,0 +1,31 @@
+{
+  "id": "cli-update-install",
+  "kind": "cli",
+  "argv": [
+    "update",
+    "ignored"
+  ],
+  "files": [
+    {
+      "path": "{APP}/scripts/{INSTALLER}",
+      "content": "fixture only; never executed"
+    },
+    {
+      "path": "{APP}/.version",
+      "content": "v0.0.4\n"
+    }
+  ],
+  "update": {
+    "latest": "v0.0.5",
+    "updatedVersion": "v0.0.5\n"
+  },
+  "divergence": [
+    "e1",
+    "e2",
+    "e3"
+  ],
+  "rustUpdate": {
+    "repo": "demo-suite/alpha",
+    "installDir": "{TMP}/launcher"
+  }
+}

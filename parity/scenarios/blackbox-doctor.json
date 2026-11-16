@@ -1,0 +1,45 @@
+{
+  "id": "blackbox-doctor",
+  "kind": "blackbox",
+  "argv": [
+    "doctor",
+    "--vault",
+    "alpha",
+    "--config-item",
+    "cfg"
+  ],
+  "config": {
+    "project": {
+      "id": "demo-suite"
+    },
+    "clients": [
+      "alpha",
+      "beta"
+    ],
+    "environments": [
+      "local",
+      "dev"
+    ],
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      },
+      {
+        "name": "web",
+        "output": "apps/web/.env",
+        "groups": [
+          "apps"
+        ]
+      }
+    ],
+    "tags": {
+      "base": [
+        "envswitch"
+      ]
+    }
+  }
+}

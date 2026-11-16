@@ -1,0 +1,21 @@
+{
+  "id": "cli-guided-vault-list-failure",
+  "kind": "cli",
+  "argv": [],
+  "prompts": [],
+  "op": {
+    "responses": [
+      {
+        "argv": [
+          "vault",
+          "list",
+          "--format",
+          "json"
+        ],
+        "stdout": "",
+        "stderr": "safe vault failure",
+        "exitCode": 7
+      }
+    ]
+  }
+}

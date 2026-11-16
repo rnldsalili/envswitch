@@ -1,0 +1,18 @@
+{
+  "id": "op-leading-dash-argv",
+  "kind": "op",
+  "method": "config",
+  "item": "-alpha",
+  "op": {
+    "details": {
+      "-alpha": {
+        "fields": [
+          {
+            "label": "config",
+            "value": "{}"
+          }
+        ]
+      }
+    }
+  }
+}

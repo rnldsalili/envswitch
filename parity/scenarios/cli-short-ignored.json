@@ -1,0 +1,8 @@
+{
+  "id": "cli-short-ignored",
+  "kind": "cli",
+  "argv": [
+    "switch",
+    "-h"
+  ]
+}

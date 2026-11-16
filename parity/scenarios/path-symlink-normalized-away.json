@@ -1,0 +1,11 @@
+{
+  "id": "path-symlink-normalized-away",
+  "kind": "path",
+  "output": "linked/../.env",
+  "files": [
+    {
+      "path": "linked",
+      "link": "{OUTSIDE}"
+    }
+  ]
+}

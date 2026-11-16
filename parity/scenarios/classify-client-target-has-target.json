@@ -1,0 +1,51 @@
+{
+  "id": "classify-client-target-has-target",
+  "kind": "classify",
+  "config": {
+    "project": {
+      "id": "demo-suite"
+    },
+    "clients": [
+      "alpha",
+      "beta"
+    ],
+    "environments": [
+      "local",
+      "dev"
+    ],
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      },
+      {
+        "name": "web",
+        "output": "apps/web/.env",
+        "groups": [
+          "apps"
+        ]
+      }
+    ],
+    "tags": {
+      "base": [
+        "envswitch"
+      ]
+    }
+  },
+  "item": {
+    "id": "alpha",
+    "title": "alpha",
+    "tags": [
+      "envswitch",
+      "project:demo-suite",
+      "env:local",
+      "layer:client-target",
+      "client:alpha",
+      "group:apis",
+      "target:api"
+    ]
+  }
+}

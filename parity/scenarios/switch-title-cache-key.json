@@ -1,0 +1,31 @@
+{
+  "id": "switch-title-cache-key",
+  "kind": "switch",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ]
+  },
+  "op": {
+    "items": [
+      {
+        "title": "alpha",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      }
+    ],
+    "values": {
+      "alpha": {
+        "A": "1"
+      }
+    }
+  }
+}

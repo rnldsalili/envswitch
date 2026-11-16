@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "id": "cli-list-load-before-subject",
+  "kind": "cli",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoIFtpbmZvXSByZWFkaW5nIGNvbmZpZyBpdGVtIGNmZwplbnZzd2l0Y2g6IGNvbmZpZy50YXJnZXRzIG11c3QgYmUgYSBub24tZW1wdHkgYXJyYXkK",
+  "exitCode": 1,
+  "prompts": [],
+  "progress": [
+    {
+      "status": "info",
+      "message": "reading config item cfg"
+    }
+  ],
+  "opCalls": [
+    [
+      "item",
+      "get",
+      "cfg",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ]
+  ],
+  "readCounts": {
+    "alpha/cfg": 1
+  },
+  "factoryCalls": [
+    "alpha"
+  ],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

@@ -1,0 +1,73 @@
+{
+  "id": "cli-guided-all-prompts",
+  "kind": "cli",
+  "config": {
+    "project": {
+      "id": "demo-suite"
+    },
+    "clients": [
+      "alpha",
+      "beta"
+    ],
+    "environments": [
+      "local",
+      "dev"
+    ],
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      },
+      {
+        "name": "web",
+        "output": "apps/web/.env",
+        "groups": [
+          "apps"
+        ]
+      }
+    ],
+    "tags": {
+      "base": [
+        "envswitch"
+      ]
+    }
+  },
+  "argv": [],
+  "op": {
+    "vaults": [
+      {
+        "id": "alpha",
+        "name": "alpha vault"
+      },
+      {
+        "id": "beta",
+        "name": "beta vault"
+      }
+    ],
+    "byVault": {
+      "beta": {
+        "configItems": [
+          {
+            "id": "cfg",
+            "title": "demo-suite"
+          },
+          {
+            "id": "cfg-beta",
+            "title": "beta config"
+          }
+        ]
+      }
+    }
+  },
+  "prompts": [
+    "beta",
+    "cfg",
+    "beta",
+    "dev",
+    "web",
+    true
+  ]
+}

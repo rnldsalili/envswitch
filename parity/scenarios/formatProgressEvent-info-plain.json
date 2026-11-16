@@ -1,0 +1,9 @@
+{
+  "id": "formatProgressEvent-info-plain",
+  "kind": "formatProgressEvent",
+  "event": {
+    "status": "info",
+    "message": "demo-suite\r\nalpha"
+  },
+  "color": false
+}

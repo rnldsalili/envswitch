@@ -1,0 +1,40 @@
+{
+  "id": "cli-guided-duplicate-item-ids",
+  "kind": "cli",
+  "argv": [],
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "clients": [
+      "alpha"
+    ],
+    "environments": [
+      "local"
+    ]
+  },
+  "op": {
+    "configItems": [
+      {
+        "id": "cfg",
+        "title": "alpha"
+      },
+      {
+        "id": "cfg",
+        "title": "beta"
+      }
+    ]
+  },
+  "prompts": [
+    {
+      "index": 1
+    },
+    true
+  ]
+}

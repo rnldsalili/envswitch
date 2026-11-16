@@ -1,0 +1,43 @@
+{
+  "id": "tags-dedup",
+  "kind": "tags",
+  "config": {
+    "project": {
+      "id": "demo-suite"
+    },
+    "clients": [
+      "alpha",
+      "beta"
+    ],
+    "environments": [
+      "local",
+      "dev"
+    ],
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      },
+      {
+        "name": "web",
+        "output": "apps/web/.env",
+        "groups": [
+          "apps"
+        ]
+      }
+    ],
+    "tags": {
+      "base": [
+        "{target}",
+        "x",
+        "x"
+      ]
+    }
+  },
+  "params": {
+    "env": "local"
+  }
+}

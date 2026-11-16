@@ -1,0 +1,24 @@
+{
+  "id": "dotenv-replace-symlink",
+  "kind": "dotenv",
+  "values": {
+    "A": "new"
+  },
+  "write": true,
+  "output": ".env",
+  "platforms": [
+    "macos",
+    "linux"
+  ],
+  "files": [
+    {
+      "path": "{OUTSIDE}/alpha",
+      "content": "A=old\n"
+    },
+    {
+      "path": ".env",
+      "link": "{OUTSIDE}/alpha",
+      "type": "file"
+    }
+  ]
+}

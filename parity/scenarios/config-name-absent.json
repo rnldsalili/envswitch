@@ -1,0 +1,11 @@
+{
+  "id": "config-name-absent",
+  "kind": "config",
+  "config": {
+    "targets": [
+      {
+        "output": ".env"
+      }
+    ]
+  }
+}

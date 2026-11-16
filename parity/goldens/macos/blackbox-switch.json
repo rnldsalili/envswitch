@@ -1,0 +1,267 @@
+{
+  "schemaVersion": 1,
+  "id": "blackbox-switch",
+  "kind": "blackbox",
+  "divergence": null,
+  "stdoutBase64": "VXBkYXRlZCAyIHRhcmdldChzKSBmcm9tIGRlbW8tc3VpdGUKLSBhcGkgLT4ge1JPT1R9L2FwcHMvYXBpLy5lbnYKICBrZXlzOiA2CiAgbGF5ZXJzOiBzaGFyZWQ6c2hhcmVkLCBncm91cDphcGktZ3JvdXAsIHRhcmdldDphcGktdGFyZ2V0LCBjbGllbnQ6YWxwaGEsIGNsaWVudC10YXJnZXQ6YWxwaGEtYXBpCiAgb3ZlcndyaXR0ZW46IENPTU1PTgotIHdlYiAtPiB7Uk9PVH0vYXBwcy93ZWIvLmVudgogIGtleXM6IDYKICBsYXllcnM6IHNoYXJlZDpzaGFyZWQsIGdyb3VwOmFwcC1ncm91cCwgdGFyZ2V0OndlYi10YXJnZXQsIGNsaWVudDphbHBoYSwgY2xpZW50LXRhcmdldDphbHBoYS13ZWIKICBvdmVyd3JpdHRlbjogQ09NTU9OCg==",
+  "stderrBase64": "ZW52c3dpdGNoIFtpbmZvXSByZWFkaW5nIGNvbmZpZyBpdGVtIGNmZwplbnZzd2l0Y2ggW2RvbmVdIGxvYWRlZCBjb25maWcgaXRlbSBjZmcKZW52c3dpdGNoIFtpbmZvXSB2YWxpZGF0aW5nIHByb2plY3Qgcm9vdCB7Uk9PVH0KZW52c3dpdGNoIFtpbmZvXSBsaXN0aW5nIGNhbmRpZGF0ZSAxUGFzc3dvcmQgaXRlbXMKZW52c3dpdGNoIFtkb25lXSBmb3VuZCA5IGNhbmRpZGF0ZSBpdGVtKHMpCmVudnN3aXRjaCBbaW5mb10gcHJvY2Vzc2luZyBhcGkgLT4ge1JPT1R9L2FwcHMvYXBpLy5lbnYKZW52c3dpdGNoIFtpbmZvXSByZWFkaW5nIHNoYXJlZAplbnZzd2l0Y2ggW2luZm9dIHJlYWRpbmcgYXBpLWdyb3VwCmVudnN3aXRjaCBbaW5mb10gcmVhZGluZyBhcGktdGFyZ2V0CmVudnN3aXRjaCBbaW5mb10gcmVhZGluZyBhbHBoYQplbnZzd2l0Y2ggW2luZm9dIHJlYWRpbmcgYWxwaGEtYXBpCmVudnN3aXRjaCBbaW5mb10gd3JpdGluZyB7Uk9PVH0vYXBwcy9hcGkvLmVudgplbnZzd2l0Y2ggW2RvbmVdIHdyb3RlIHtST09UfS9hcHBzL2FwaS8uZW52CmVudnN3aXRjaCBbaW5mb10gcHJvY2Vzc2luZyB3ZWIgLT4ge1JPT1R9L2FwcHMvd2ViLy5lbnYKZW52c3dpdGNoIFtpbmZvXSByZWFkaW5nIGFwcC1ncm91cAplbnZzd2l0Y2ggW2luZm9dIHJlYWRpbmcgd2ViLXRhcmdldAplbnZzd2l0Y2ggW2luZm9dIHJlYWRpbmcgYWxwaGEtd2ViCmVudnN3aXRjaCBbaW5mb10gd3JpdGluZyB7Uk9PVH0vYXBwcy93ZWIvLmVudgplbnZzd2l0Y2ggW2RvbmVdIHdyb3RlIHtST09UfS9hcHBzL3dlYi8uZW52Cg==",
+  "exitCode": 0,
+  "prompts": [],
+  "progress": [
+    {
+      "status": "info",
+      "message": "reading config item cfg"
+    },
+    {
+      "status": "done",
+      "message": "loaded config item cfg"
+    },
+    {
+      "status": "info",
+      "message": "validating project root {ROOT}"
+    },
+    {
+      "status": "info",
+      "message": "listing candidate 1Password items"
+    },
+    {
+      "status": "done",
+      "message": "found 9 candidate item(s)"
+    },
+    {
+      "status": "info",
+      "message": "processing api -> {ROOT}/apps/api/.env"
+    },
+    {
+      "status": "info",
+      "message": "reading shared"
+    },
+    {
+      "status": "info",
+      "message": "reading api-group"
+    },
+    {
+      "status": "info",
+      "message": "reading api-target"
+    },
+    {
+      "status": "info",
+      "message": "reading alpha"
+    },
+    {
+      "status": "info",
+      "message": "reading alpha-api"
+    },
+    {
+      "status": "info",
+      "message": "writing {ROOT}/apps/api/.env"
+    },
+    {
+      "status": "done",
+      "message": "wrote {ROOT}/apps/api/.env"
+    },
+    {
+      "status": "info",
+      "message": "processing web -> {ROOT}/apps/web/.env"
+    },
+    {
+      "status": "info",
+      "message": "reading app-group"
+    },
+    {
+      "status": "info",
+      "message": "reading web-target"
+    },
+    {
+      "status": "info",
+      "message": "reading alpha-web"
+    },
+    {
+      "status": "info",
+      "message": "writing {ROOT}/apps/web/.env"
+    },
+    {
+      "status": "done",
+      "message": "wrote {ROOT}/apps/web/.env"
+    }
+  ],
+  "opCalls": [
+    [
+      "item",
+      "get",
+      "cfg",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "list",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--tags",
+      "envswitch,project:demo-suite,env:local"
+    ],
+    [
+      "item",
+      "get",
+      "shared",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "group-api",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "target-api",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "client",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "ct-api",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "group-web",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "target-web",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "ct-web",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ]
+  ],
+  "readCounts": {
+    "alpha/cfg": 1,
+    "alpha/shared": 1,
+    "alpha/group-api": 1,
+    "alpha/target-api": 1,
+    "alpha/client": 1,
+    "alpha/ct-api": 1,
+    "alpha/group-web": 1,
+    "alpha/target-web": 1,
+    "alpha/ct-web": 1
+  },
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [
+    {
+      "path": "{ROOT}/apps/api/.env",
+      "kind": "file",
+      "bytesBase64": "Q0xJRU5UPTEKQ09NTU9OPWFscGhhLWFwaQpDVF9BUEk9MQpHUk9VUF9BUEk9MQpTSEFSRUQ9MQpUQVJHRVRfQVBJPTEK",
+      "mode": 384
+    },
+    {
+      "path": "{ROOT}/apps/web/.env",
+      "kind": "file",
+      "bytesBase64": "Q0xJRU5UPTEKQ09NTU9OPWFscGhhLXdlYgpDVF9XRUI9MQpHUk9VUF9XRUI9MQpTSEFSRUQ9MQpUQVJHRVRfV0VCPTEK",
+      "mode": 384
+    }
+  ],
+  "writtenFiles": [
+    {
+      "path": "{ROOT}/apps/api/.env",
+      "kind": "file",
+      "bytesBase64": "Q0xJRU5UPTEKQ09NTU9OPWFscGhhLWFwaQpDVF9BUEk9MQpHUk9VUF9BUEk9MQpTSEFSRUQ9MQpUQVJHRVRfQVBJPTEK",
+      "mode": 384
+    },
+    {
+      "path": "{ROOT}/apps/web/.env",
+      "kind": "file",
+      "bytesBase64": "Q0xJRU5UPTEKQ09NTU9OPWFscGhhLXdlYgpDVF9XRUI9MQpHUk9VUF9XRUI9MQpTSEFSRUQ9MQpUQVJHRVRfV0VCPTEK",
+      "mode": 384
+    }
+  ],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}/apps",
+      "mode": 488
+    },
+    {
+      "path": "{ROOT}/apps/api",
+      "mode": 488
+    },
+    {
+      "path": "{ROOT}/apps/web",
+      "mode": 488
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

@@ -1,0 +1,22 @@
+{
+  "id": "op-item-list-lenient",
+  "kind": "op",
+  "method": "items",
+  "op": {
+    "responses": [
+      {
+        "argv": [
+          "item",
+          "list",
+          "--vault",
+          "alpha",
+          "--format",
+          "json"
+        ],
+        "stdout": "[{\"id\":1,\"title\":\"alpha\",\"tags\":[\"a\",1,null,\"b\"]},{\"id\":\"beta\",\"title\":null,\"tags\":\"x\"}]",
+        "stderr": "",
+        "exitCode": 0
+      }
+    ]
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "id": "config-duplicates-json",
+  "kind": "config",
+  "configRaw": "{\"targets\":[],\"targets\":[{\"name\":\"api\",\"output\":\".env\"}]}"
+}

@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "id": "switch-nontransactional-writes",
+  "kind": "switch",
+  "divergence": "d1",
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoOiBFSVNESVI6IGlsbGVnYWwgb3BlcmF0aW9uIG9uIGEgZGlyZWN0b3J5LCByZW5hbWUgJ3tST09UfS9hcHBzL3dlYi8uLmVudi57UElEfS57VVVJRH0udG1wJyAtPiAne1JPT1R9L2FwcHMvd2ViLy5lbnYnCg==",
+  "exitCode": 2,
+  "prompts": [],
+  "progress": [
+    {
+      "status": "info",
+      "message": "validating project root {ROOT}"
+    },
+    {
+      "status": "info",
+      "message": "listing candidate 1Password items"
+    },
+    {
+      "status": "done",
+      "message": "found 1 candidate item(s)"
+    },
+    {
+      "status": "info",
+      "message": "processing api -> {ROOT}/apps/api/.env"
+    },
+    {
+      "status": "info",
+      "message": "reading alpha"
+    },
+    {
+      "status": "info",
+      "message": "writing {ROOT}/apps/api/.env"
+    },
+    {
+      "status": "done",
+      "message": "wrote {ROOT}/apps/api/.env"
+    },
+    {
+      "status": "info",
+      "message": "processing web -> {ROOT}/apps/web/.env"
+    },
+    {
+      "status": "info",
+      "message": "writing {ROOT}/apps/web/.env"
+    }
+  ],
+  "opCalls": [
+    [
+      "item",
+      "list",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--tags",
+      "envswitch,project:demo-suite,env:local"
+    ],
+    [
+      "item",
+      "get",
+      "alpha",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ]
+  ],
+  "readCounts": {
+    "alpha/alpha": 1
+  },
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [
+    {
+      "path": "{ROOT}/apps/api/.env",
+      "kind": "file",
+      "bytesBase64": "QT0xCg==",
+      "mode": 384
+    }
+  ],
+  "writtenFiles": [
+    {
+      "path": "{ROOT}/apps/api/.env",
+      "kind": "file",
+      "bytesBase64": "QT0xCg==",
+      "mode": 384
+    }
+  ],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}/apps",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}/apps/api",
+      "mode": 488
+    },
+    {
+      "path": "{ROOT}/apps/web",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}/apps/web/.env",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

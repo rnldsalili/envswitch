@@ -1,0 +1,9 @@
+{
+  "id": "cli-guided-no-vaults",
+  "kind": "cli",
+  "argv": [],
+  "prompts": [],
+  "op": {
+    "vaults": []
+  }
+}

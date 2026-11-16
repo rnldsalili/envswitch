@@ -1,0 +1,24 @@
+{
+  "id": "cli-list-none-empty",
+  "kind": "cli",
+  "argv": [
+    "list",
+    "--vault",
+    "alpha",
+    "--config-item",
+    "cfg",
+    "clients"
+  ],
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "clients": []
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "id": "parseArgs-empty-token",
+  "kind": "parseArgs",
+  "argv": [
+    "switch",
+    "",
+    "--vault",
+    "alpha"
+  ]
+}

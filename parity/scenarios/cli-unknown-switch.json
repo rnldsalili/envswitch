@@ -1,0 +1,8 @@
+{
+  "id": "cli-unknown-switch",
+  "kind": "cli",
+  "argv": [
+    "switch",
+    "--unknown"
+  ]
+}

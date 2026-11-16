@@ -1,0 +1,83 @@
+name: Oracle parity
+on:
+  workflow_call:
+  pull_request:
+    paths: ['parity/**', 'crates/**', 'Cargo.*', 'docs/rust-port/**', '.github/workflows/parity.yml']
+  push:
+    branches: [rust-port]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: parity-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  ts-parity:
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    env:
+      GIT_CONFIG_COUNT: 1
+      GIT_CONFIG_KEY_0: core.autocrlf
+      GIT_CONFIG_VALUE_0: "false"
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+      BUN_RUNTIME_TRANSPILER_CACHE_PATH: ""
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.0
+      - name: Isolate Cargo cache
+        run: |
+          echo "CARGO_HOME=${RUNNER_TEMP}/parity-cargo" >> "$GITHUB_ENV"
+          echo "ENVSWITCH_PARITY_CARGO_HOME=${RUNNER_TEMP}/parity-cargo" >> "$GITHUB_ENV"
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.100.0 --profile minimal --component rustfmt --component clippy
+          rustup default 1.100.0
+      - name: Check generated scenarios match their source
+        run: bun parity/build-scenarios.ts --check
+      - name: Materialize pinned TS oracle
+        run: bun parity/oracle/materialize.ts "${RUNNER_TEMP}/envswitch-oracle"
+      - name: Reproduce committed goldens or bootstrap Windows artifact
+        id: goldens
+        env:
+          ENVSWITCH_ORACLE_DIR: ${{ runner.temp }}/envswitch-oracle
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" && ! -f parity/goldens/windows/_metadata.json ]]; then
+            echo "windows_missing=true" >> "$GITHUB_OUTPUT"
+            bash parity/gen.sh
+          else
+            bash parity/gen.sh --check
+          fi
+      - name: Upload Windows goldens for a reviewed commit
+        if: always() && steps.goldens.outputs.windows_missing == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-parity-goldens
+          path: parity/goldens/windows/
+          if-no-files-found: error
+      - name: Validate schemas, harness assertions and types
+        env:
+          ENVSWITCH_ORACLE_DIR: ${{ runner.temp }}/envswitch-oracle
+        run: |
+          bun test parity/self-check.test.ts
+          bun "$ENVSWITCH_ORACLE_DIR/node_modules/typescript/bin/tsc" -p parity/tsconfig.json --typeRoots "$ENVSWITCH_ORACLE_DIR/node_modules/@types"
+          cargo test --locked --test parity
+      - name: Require committed Windows baseline
+        if: always() && steps.goldens.outputs.windows_missing == 'true'
+        run: |
+          echo "::error::Windows baseline missing: download windows-parity-goldens and commit these goldens under parity/goldens/windows/."
+          exit 1
+      # Integration gate: enable explicitly once C1–C4/D3 are merged.
+      # ENVSWITCH_PARITY_FILTER=<kind-or-id-prefix> cargo test --locked --test parity -- --ignored --nocapture

@@ -1,0 +1,8 @@
+{
+  "id": "cli-boolean-value",
+  "kind": "cli",
+  "argv": [
+    "switch",
+    "--dry-run=false"
+  ]
+}

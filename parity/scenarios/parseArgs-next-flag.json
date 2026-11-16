@@ -1,0 +1,10 @@
+{
+  "id": "parseArgs-next-flag",
+  "kind": "parseArgs",
+  "argv": [
+    "switch",
+    "--vault",
+    "--client",
+    "alpha"
+  ]
+}

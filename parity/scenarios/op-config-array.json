@@ -1,0 +1,10 @@
+{
+  "id": "op-config-array",
+  "kind": "op",
+  "method": "config",
+  "op": {
+    "details": {
+      "cfg": []
+    }
+  }
+}

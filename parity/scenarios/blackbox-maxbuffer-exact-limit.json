@@ -1,0 +1,29 @@
+{
+  "id": "blackbox-maxbuffer-exact-limit",
+  "kind": "blackbox",
+  "argv": [
+    "doctor",
+    "--vault",
+    "alpha",
+    "--config-item",
+    "cfg"
+  ],
+  "expectOpCalls": true,
+  "op": {
+    "responses": [
+      {
+        "argv": [
+          "whoami",
+          "--format",
+          "json"
+        ],
+        "stdoutSize": {
+          "byte": 120,
+          "size": 52428800
+        },
+        "stderr": "",
+        "exitCode": 0
+      }
+    ]
+  }
+}

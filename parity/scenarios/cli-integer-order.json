@@ -1,0 +1,11 @@
+{
+  "id": "cli-integer-order",
+  "kind": "cli",
+  "argv": [
+    "switch",
+    "--z",
+    "--1",
+    "a"
+  ],
+  "divergence": "a4"
+}

@@ -1,0 +1,16 @@
+{
+  "id": "config-project-1",
+  "kind": "config",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "project": []
+  }
+}

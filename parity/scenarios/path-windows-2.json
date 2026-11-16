@@ -1,0 +1,8 @@
+{
+  "id": "path-windows-2",
+  "kind": "path",
+  "output": "\\\\srv\\sh\\x",
+  "platforms": [
+    "windows"
+  ]
+}

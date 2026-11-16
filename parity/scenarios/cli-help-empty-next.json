@@ -1,0 +1,9 @@
+{
+  "id": "cli-help-empty-next",
+  "kind": "cli",
+  "argv": [
+    "switch",
+    "--help",
+    ""
+  ]
+}

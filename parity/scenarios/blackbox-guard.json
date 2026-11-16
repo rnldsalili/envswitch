@@ -1,0 +1,5 @@
+{
+  "id": "blackbox-guard",
+  "kind": "blackbox",
+  "argv": []
+}

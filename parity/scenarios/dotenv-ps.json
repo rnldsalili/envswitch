@@ -1,0 +1,7 @@
+{
+  "id": "dotenv-ps",
+  "kind": "dotenv",
+  "values": {
+    "K": "ps "
+  }
+}

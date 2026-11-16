@@ -1,0 +1,8 @@
+{
+  "id": "parseArgs-equals-many",
+  "kind": "parseArgs",
+  "argv": [
+    "switch",
+    "--a=b=c"
+  ]
+}

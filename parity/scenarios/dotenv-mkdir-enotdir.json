@@ -1,0 +1,16 @@
+{
+  "id": "dotenv-mkdir-enotdir",
+  "kind": "dotenv",
+  "values": {
+    "A": "1"
+  },
+  "write": true,
+  "output": "afile/sub/.env",
+  "files": [
+    {
+      "path": "afile",
+      "content": "alpha"
+    }
+  ],
+  "divergence": "d1"
+}

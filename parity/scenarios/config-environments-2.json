@@ -1,0 +1,18 @@
+{
+  "id": "config-environments-2",
+  "kind": "config",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "environments": [
+      ""
+    ]
+  }
+}

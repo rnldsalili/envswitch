@@ -1,0 +1,24 @@
+{
+  "id": "tags-comma",
+  "kind": "tags",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "tags": {
+      "base": [
+        "a,b",
+        "c"
+      ]
+    }
+  },
+  "params": {
+    "env": "local"
+  }
+}

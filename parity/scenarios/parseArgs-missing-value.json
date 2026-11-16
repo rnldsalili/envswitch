@@ -1,0 +1,8 @@
+{
+  "id": "parseArgs-missing-value",
+  "kind": "parseArgs",
+  "argv": [
+    "switch",
+    "--vault"
+  ]
+}

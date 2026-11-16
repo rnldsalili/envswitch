@@ -1,0 +1,40 @@
+{
+  "id": "cli-guided-duplicate-vault-ids",
+  "kind": "cli",
+  "argv": [],
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "clients": [
+      "alpha"
+    ],
+    "environments": [
+      "local"
+    ]
+  },
+  "op": {
+    "vaults": [
+      {
+        "id": "alpha",
+        "name": "alpha"
+      },
+      {
+        "id": "alpha",
+        "name": "beta"
+      }
+    ]
+  },
+  "prompts": [
+    {
+      "index": 1
+    },
+    true
+  ]
+}

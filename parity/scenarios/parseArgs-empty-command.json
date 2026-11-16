@@ -1,0 +1,7 @@
+{
+  "id": "parseArgs-empty-command",
+  "kind": "parseArgs",
+  "argv": [
+    ""
+  ]
+}

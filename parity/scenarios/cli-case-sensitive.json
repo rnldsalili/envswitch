@@ -1,0 +1,9 @@
+{
+  "id": "cli-case-sensitive",
+  "kind": "cli",
+  "argv": [
+    "switch",
+    "--VAULT",
+    "alpha"
+  ]
+}

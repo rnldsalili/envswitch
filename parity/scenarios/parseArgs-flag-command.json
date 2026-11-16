@@ -1,0 +1,9 @@
+{
+  "id": "parseArgs-flag-command",
+  "kind": "parseArgs",
+  "argv": [
+    "--vault",
+    "alpha",
+    "switch"
+  ]
+}

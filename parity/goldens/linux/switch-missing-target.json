@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "id": "switch-missing-target",
+  "kind": "switch",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoOiB0YXJnZXQgd29ya2VyIGlzIG5vdCBkZWZpbmVkIGluIGNvbmZpZy50YXJnZXRzCg==",
+  "exitCode": 1,
+  "prompts": [],
+  "progress": [
+    {
+      "status": "info",
+      "message": "validating project root {ROOT}"
+    }
+  ],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

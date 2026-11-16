@@ -1,0 +1,43 @@
+{
+  "id": "switch-collation-accent-winner",
+  "kind": "switch",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ]
+  },
+  "op": {
+    "items": [
+      {
+        "id": "alpha-0",
+        "title": "z",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha-1",
+        "title": "ä",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      }
+    ],
+    "values": {
+      "alpha-0": {
+        "WINNER": "0:z"
+      },
+      "alpha-1": {
+        "WINNER": "1:ä"
+      }
+    }
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "id": "op-vault-entry-empty",
+  "kind": "op",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoOiBvcCB2YXVsdCBsaXN0IHJlc3VsdFswXSBtdXN0IGluY2x1ZGUgaWQgb3IgbmFtZQo=",
+  "exitCode": 1,
+  "prompts": [],
+  "progress": [],
+  "opCalls": [
+    [
+      "vault",
+      "list",
+      "--format",
+      "json"
+    ]
+  ],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

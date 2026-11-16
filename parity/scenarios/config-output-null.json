@@ -1,0 +1,12 @@
+{
+  "id": "config-output-null",
+  "kind": "config",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": null
+      }
+    ]
+  }
+}

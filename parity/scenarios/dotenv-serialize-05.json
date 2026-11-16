@@ -1,0 +1,7 @@
+{
+  "id": "dotenv-serialize-05",
+  "kind": "dotenv",
+  "values": {
+    "K": "q\"x"
+  }
+}

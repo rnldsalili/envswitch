@@ -1,0 +1,16 @@
+{
+  "id": "config-tags-1",
+  "kind": "config",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "tags": []
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "id": "dotenv-invalid-before-mkdir",
+  "kind": "dotenv",
+  "values": {
+    "BAD-KEY": "nope"
+  },
+  "write": true,
+  "output": "missing/.env"
+}

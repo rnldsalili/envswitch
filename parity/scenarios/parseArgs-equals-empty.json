@@ -1,0 +1,8 @@
+{
+  "id": "parseArgs-equals-empty",
+  "kind": "parseArgs",
+  "argv": [
+    "switch",
+    "--vault="
+  ]
+}

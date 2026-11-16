@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "id": "cli-switch-dry",
+  "kind": "cli",
+  "divergence": null,
+  "stdoutBase64": "RHJ5IHJ1biAyIHRhcmdldChzKSBmcm9tIGRlbW8tc3VpdGUKLSBhcGkgLT4ge1JPT1R9L2FwcHMvYXBpLy5lbnYKICBrZXlzOiAyCiAgbGF5ZXJzOiBzaGFyZWQ6YWxwaGEKLSB3ZWIgLT4ge1JPT1R9L2FwcHMvd2ViLy5lbnYKICBrZXlzOiAyCiAgbGF5ZXJzOiBzaGFyZWQ6YWxwaGEK",
+  "stderrBase64": "ZW52c3dpdGNoIFtpbmZvXSByZWFkaW5nIGNvbmZpZyBpdGVtIGNmZwplbnZzd2l0Y2ggW2RvbmVdIGxvYWRlZCBjb25maWcgaXRlbSBjZmcKZW52c3dpdGNoIFtpbmZvXSB2YWxpZGF0aW5nIHByb2plY3Qgcm9vdCB7Uk9PVH0KZW52c3dpdGNoIFtpbmZvXSBsaXN0aW5nIGNhbmRpZGF0ZSAxUGFzc3dvcmQgaXRlbXMKZW52c3dpdGNoIFtkb25lXSBmb3VuZCAxIGNhbmRpZGF0ZSBpdGVtKHMpCmVudnN3aXRjaCBbaW5mb10gcHJvY2Vzc2luZyBhcGkgLT4ge1JPT1R9L2FwcHMvYXBpLy5lbnYKZW52c3dpdGNoIFtpbmZvXSByZWFkaW5nIGFscGhhCmVudnN3aXRjaCBbZHJ5LXJ1bl0gd291bGQgd3JpdGUge1JPT1R9L2FwcHMvYXBpLy5lbnYKZW52c3dpdGNoIFtpbmZvXSBwcm9jZXNzaW5nIHdlYiAtPiB7Uk9PVH0vYXBwcy93ZWIvLmVudgplbnZzd2l0Y2ggW2RyeS1ydW5dIHdvdWxkIHdyaXRlIHtST09UfS9hcHBzL3dlYi8uZW52Cg==",
+  "exitCode": 0,
+  "prompts": [],
+  "progress": [
+    {
+      "status": "info",
+      "message": "reading config item cfg"
+    },
+    {
+      "status": "done",
+      "message": "loaded config item cfg"
+    },
+    {
+      "status": "info",
+      "message": "validating project root {ROOT}"
+    },
+    {
+      "status": "info",
+      "message": "listing candidate 1Password items"
+    },
+    {
+      "status": "done",
+      "message": "found 1 candidate item(s)"
+    },
+    {
+      "status": "info",
+      "message": "processing api -> {ROOT}/apps/api/.env"
+    },
+    {
+      "status": "info",
+      "message": "reading alpha"
+    },
+    {
+      "status": "dry-run",
+      "message": "would write {ROOT}/apps/api/.env"
+    },
+    {
+      "status": "info",
+      "message": "processing web -> {ROOT}/apps/web/.env"
+    },
+    {
+      "status": "dry-run",
+      "message": "would write {ROOT}/apps/web/.env"
+    }
+  ],
+  "opCalls": [
+    [
+      "item",
+      "get",
+      "cfg",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "list",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--tags",
+      "envswitch,project:demo-suite,env:local"
+    ],
+    [
+      "item",
+      "get",
+      "alpha",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ]
+  ],
+  "readCounts": {
+    "alpha/cfg": 1,
+    "alpha/alpha": 1
+  },
+  "factoryCalls": [
+    "alpha"
+  ],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

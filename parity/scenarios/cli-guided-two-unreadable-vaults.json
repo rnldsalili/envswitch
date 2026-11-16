@@ -1,0 +1,95 @@
+{
+  "id": "cli-guided-two-unreadable-vaults",
+  "kind": "cli",
+  "config": {
+    "project": {
+      "id": "demo-suite"
+    },
+    "clients": [
+      "alpha",
+      "beta"
+    ],
+    "environments": [
+      "local",
+      "dev"
+    ],
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      },
+      {
+        "name": "web",
+        "output": "apps/web/.env",
+        "groups": [
+          "apps"
+        ]
+      }
+    ],
+    "tags": {
+      "base": [
+        "envswitch"
+      ]
+    }
+  },
+  "argv": [],
+  "parallelScans": 3,
+  "divergence": "h1",
+  "op": {
+    "vaults": [
+      {
+        "id": "alpha-bad",
+        "name": "alpha"
+      },
+      {
+        "id": "beta-bad",
+        "name": "beta"
+      },
+      {
+        "id": "alpha",
+        "name": "demo-suite"
+      }
+    ],
+    "responses": [
+      {
+        "argv": [
+          "item",
+          "list",
+          "--vault",
+          "alpha-bad",
+          "--format",
+          "json",
+          "--tags",
+          "envswitch-config"
+        ],
+        "stdout": "",
+        "stderr": "unreadable",
+        "exitCode": 1
+      },
+      {
+        "argv": [
+          "item",
+          "list",
+          "--vault",
+          "beta-bad",
+          "--format",
+          "json",
+          "--tags",
+          "envswitch-config"
+        ],
+        "stdout": "",
+        "stderr": "unreadable",
+        "exitCode": 1
+      }
+    ]
+  },
+  "prompts": [
+    "alpha",
+    "local",
+    "all",
+    true
+  ]
+}

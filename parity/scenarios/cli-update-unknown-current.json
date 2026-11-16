@@ -1,0 +1,27 @@
+{
+  "id": "cli-update-unknown-current",
+  "kind": "cli",
+  "argv": [
+    "update",
+    "ignored"
+  ],
+  "files": [
+    {
+      "path": "{APP}/scripts/{INSTALLER}",
+      "content": "fixture only; never executed"
+    }
+  ],
+  "update": {
+    "latest": "v0.0.5",
+    "updatedVersion": "v0.0.5\n"
+  },
+  "divergence": [
+    "e1",
+    "e2",
+    "e3"
+  ],
+  "rustUpdate": {
+    "repo": "demo-suite/alpha",
+    "installDir": "{TMP}/launcher"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "id": "inspect-marker-path-symlink",
+  "kind": "inspect",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "project": {
+      "rootMarkers": [
+        {
+          "path": "linked"
+        }
+      ]
+    }
+  },
+  "files": [
+    {
+      "path": "linked",
+      "link": "{OUTSIDE}"
+    }
+  ]
+}

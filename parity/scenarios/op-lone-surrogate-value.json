@@ -1,0 +1,29 @@
+{
+  "id": "op-lone-surrogate-value",
+  "kind": "op",
+  "divergence": "a7",
+  "method": "env",
+  "item": {
+    "id": "alpha",
+    "title": "alpha"
+  },
+  "op": {
+    "responses": [
+      {
+        "argv": [
+          "item",
+          "get",
+          "alpha",
+          "--vault",
+          "alpha",
+          "--format",
+          "json",
+          "--reveal"
+        ],
+        "stdout": "{\"fields\":[{\"label\":\"A\",\"value\":\"\\ud800\"}]}",
+        "stderr": "",
+        "exitCode": 0
+      }
+    ]
+  }
+}

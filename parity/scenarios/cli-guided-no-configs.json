@@ -1,0 +1,9 @@
+{
+  "id": "cli-guided-no-configs",
+  "kind": "cli",
+  "argv": [],
+  "prompts": [],
+  "op": {
+    "configItems": []
+  }
+}

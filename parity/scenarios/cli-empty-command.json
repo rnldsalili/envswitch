@@ -1,0 +1,7 @@
+{
+  "id": "cli-empty-command",
+  "kind": "cli",
+  "argv": [
+    ""
+  ]
+}

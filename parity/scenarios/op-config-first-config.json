@@ -1,0 +1,21 @@
+{
+  "id": "op-config-first-config",
+  "kind": "op",
+  "method": "config",
+  "op": {
+    "details": {
+      "cfg": {
+        "fields": [
+          {
+            "label": "config",
+            "value": ""
+          },
+          {
+            "label": "config",
+            "value": "{}"
+          }
+        ]
+      }
+    }
+  }
+}

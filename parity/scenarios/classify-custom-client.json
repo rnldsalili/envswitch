@@ -1,0 +1,52 @@
+{
+  "id": "classify-custom-client",
+  "kind": "classify",
+  "config": {
+    "project": {
+      "id": "demo-suite"
+    },
+    "clients": [
+      "alpha",
+      "beta"
+    ],
+    "environments": [
+      "local",
+      "dev"
+    ],
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      },
+      {
+        "name": "web",
+        "output": "apps/web/.env",
+        "groups": [
+          "apps"
+        ]
+      }
+    ],
+    "tags": {
+      "base": [
+        "envswitch"
+      ],
+      "client": "scope/client/[{client}]",
+      "target": "scope/target/({target})",
+      "group": "scope/group/{group}."
+    }
+  },
+  "item": {
+    "id": "alpha",
+    "title": "alpha",
+    "tags": [
+      "envswitch",
+      "project:demo-suite",
+      "env:local",
+      "layer:shared",
+      "scope/client/[beta]"
+    ]
+  }
+}

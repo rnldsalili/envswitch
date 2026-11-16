@@ -1,0 +1,8 @@
+{
+  "id": "path-windows-0",
+  "kind": "path",
+  "output": "\\foo",
+  "platforms": [
+    "windows"
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "cli-help-command",
+  "kind": "cli",
+  "divergence": null,
+  "stdoutBase64": "ZW52c3dpdGNoCgpVc2FnZToKICBlbnZzd2l0Y2gKICBlbnZzd2l0Y2ggc3dpdGNoIC0tdmF1bHQgPHZhdWx0PiAtLWNvbmZpZy1pdGVtIDxpdGVtPiAtLWNsaWVudCA8Y2xpZW50PiBbLS1lbnYgbG9jYWxdIFstLXRhcmdldCBhbGx8bmFtZV0gWy0tZHJ5LXJ1bl0KICBlbnZzd2l0Y2ggbGlzdCAtLXZhdWx0IDx2YXVsdD4gLS1jb25maWctaXRlbSA8aXRlbT4gW2NsaWVudHN8dGFyZ2V0c3xsYXllcnNdCiAgZW52c3dpdGNoIGRvY3RvciAtLXZhdWx0IDx2YXVsdD4gLS1jb25maWctaXRlbSA8aXRlbT4KICBlbnZzd2l0Y2ggdXBkYXRlCgpOb3RlczoKICBSdW4gZW52c3dpdGNoIHdpdGggbm8gYXJndW1lbnRzIGZvciBndWlkZWQgc3dpdGNoIHByb21wdHMuCiAgUnVuIGVudnN3aXRjaCB1cGRhdGUgdG8gcmVpbnN0YWxsIHRoZSBsYXRlc3QgR2l0SHViIHJlbGVhc2UgaW4gcGxhY2UuCiAgUnVuIGVudnN3aXRjaCBmcm9tIHRoZSByb290IG9mIHRoZSBwcm9qZWN0IHlvdSB3YW50IHRvIHVwZGF0ZS4KICBQcm9qZWN0IG1ldGFkYXRhLCB0YXJnZXQgcGF0aHMsIGFuZCB0YWcgcnVsZXMgYXJlIGxvYWRlZCBmcm9tIHRoZSAxUGFzc3dvcmQgY29uZmlnIGl0ZW0uCgo=",
+  "stderrBase64": "",
+  "exitCode": 0,
+  "prompts": [],
+  "progress": [],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

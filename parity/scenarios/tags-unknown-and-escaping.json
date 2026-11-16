@@ -1,0 +1,27 @@
+{
+  "id": "tags-unknown-and-escaping",
+  "kind": "tags",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "tags": {
+      "base": [
+        "{unknown}",
+        "{ env }",
+        "{{env}}",
+        "{bad.dot}",
+        "{env}-{target}"
+      ]
+    }
+  },
+  "params": {
+    "env": "local"
+  }
+}

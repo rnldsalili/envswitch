@@ -1,0 +1,10 @@
+{
+  "id": "op-config-no-fields",
+  "kind": "op",
+  "method": "config",
+  "op": {
+    "details": {
+      "cfg": {}
+    }
+  }
+}

@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "id": "switch-empty-lists-allow",
+  "kind": "switch",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "",
+  "exitCode": 0,
+  "prompts": [],
+  "progress": [
+    {
+      "status": "info",
+      "message": "validating project root {ROOT}"
+    },
+    {
+      "status": "info",
+      "message": "listing candidate 1Password items"
+    },
+    {
+      "status": "done",
+      "message": "found 0 candidate item(s)"
+    },
+    {
+      "status": "info",
+      "message": "processing api -> {ROOT}/apps/api/.env"
+    },
+    {
+      "status": "info",
+      "message": "writing {ROOT}/apps/api/.env"
+    },
+    {
+      "status": "done",
+      "message": "wrote {ROOT}/apps/api/.env"
+    }
+  ],
+  "opCalls": [
+    [
+      "item",
+      "list",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--tags",
+      "env:other"
+    ]
+  ],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [
+    {
+      "path": "{ROOT}/apps/api/.env",
+      "kind": "file",
+      "bytesBase64": "Cg==",
+      "mode": 384
+    }
+  ],
+  "writtenFiles": [
+    {
+      "path": "{ROOT}/apps/api/.env",
+      "kind": "file",
+      "bytesBase64": "Cg==",
+      "mode": 384
+    }
+  ],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}/apps",
+      "mode": 488
+    },
+    {
+      "path": "{ROOT}/apps/api",
+      "mode": 488
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": [
+    {
+      "target": {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      },
+      "outputPath": "{ROOT}/apps/api/.env",
+      "written": true,
+      "keyCount": 0,
+      "layers": [],
+      "overwrittenKeys": []
+    }
+  ]
+}

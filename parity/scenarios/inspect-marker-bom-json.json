@@ -1,0 +1,29 @@
+{
+  "id": "inspect-marker-bom-json",
+  "kind": "inspect",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "project": {
+      "rootMarkers": [
+        {
+          "packageJsonName": "demo-suite"
+        }
+      ]
+    }
+  },
+  "files": [
+    {
+      "path": "package.json",
+      "content": "﻿{\"name\":\"demo-suite\"}"
+    }
+  ],
+  "divergence": "a5"
+}

@@ -1,0 +1,9 @@
+{
+  "id": "dotenv-sort-empty",
+  "kind": "dotenv",
+  "values": {
+    "B": "two words",
+    "A": "1",
+    "EMPTY": ""
+  }
+}

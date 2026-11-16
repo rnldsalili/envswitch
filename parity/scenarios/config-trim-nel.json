@@ -1,0 +1,12 @@
+{
+  "id": "config-trim-nel",
+  "kind": "config",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": ""
+      }
+    ]
+  }
+}

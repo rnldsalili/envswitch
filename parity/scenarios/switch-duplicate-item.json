@@ -1,0 +1,40 @@
+{
+  "id": "switch-duplicate-item",
+  "kind": "switch",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ]
+  },
+  "op": {
+    "items": [
+      {
+        "id": "alpha",
+        "title": "alpha",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha",
+        "title": "alpha",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      }
+    ],
+    "values": {
+      "alpha": {
+        "A": "1"
+      }
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "id": "op-vault-entry-empty",
+  "kind": "op",
+  "method": "vaults",
+  "op": {
+    "responses": [
+      {
+        "argv": [
+          "vault",
+          "list",
+          "--format",
+          "json"
+        ],
+        "stdout": "[{}]",
+        "stderr": "",
+        "exitCode": 0
+      }
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "id": "op-auth-stdout-ignored",
+  "kind": "op",
+  "method": "auth",
+  "op": {
+    "responses": [
+      {
+        "argv": [
+          "whoami",
+          "--format",
+          "json"
+        ],
+        "stdout": "not-json",
+        "stderr": "",
+        "exitCode": 0
+      }
+    ]
+  }
+}

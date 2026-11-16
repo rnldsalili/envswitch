@@ -1,0 +1,37 @@
+{
+  "id": "cli-guided-id-title-fallback",
+  "kind": "cli",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "clients": [
+      "alpha"
+    ],
+    "environments": [
+      "local"
+    ]
+  },
+  "argv": [],
+  "op": {
+    "vaults": [
+      {
+        "name": "alpha"
+      }
+    ],
+    "configItems": [
+      {
+        "title": "cfg"
+      }
+    ]
+  },
+  "prompts": [
+    true
+  ]
+}

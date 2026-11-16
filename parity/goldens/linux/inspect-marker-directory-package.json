@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "id": "inspect-marker-directory-package",
+  "kind": "inspect",
+  "divergence": "d1",
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoOiBmYWlsZWQgdG8gcmVhZCBwYWNrYWdlLmpzb24gZm9yIHByb2plY3Qgcm9vdCB2YWxpZGF0aW9uOiBFSVNESVI6IGlsbGVnYWwgb3BlcmF0aW9uIG9uIGEgZGlyZWN0b3J5LCByZWFkCg==",
+  "exitCode": 1,
+  "prompts": [],
+  "progress": [],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}/package.json",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

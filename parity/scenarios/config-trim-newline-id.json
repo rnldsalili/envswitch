@@ -1,0 +1,12 @@
+{
+  "id": "config-trim-newline-id",
+  "kind": "config",
+  "config": {
+    "targets": [
+      {
+        "name": "alpha\n",
+        "output": ".env"
+      }
+    ]
+  }
+}

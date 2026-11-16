@@ -1,0 +1,6 @@
+{
+  "id": "config-malformed",
+  "kind": "config",
+  "configRaw": "{",
+  "divergence": "a5"
+}

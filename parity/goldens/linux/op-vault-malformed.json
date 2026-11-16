@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "id": "op-vault-malformed",
+  "kind": "op",
+  "divergence": "a5",
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoOiBvcCB2YXVsdCBsaXN0IG91dHB1dCBpcyBub3QgdmFsaWQgSlNPTjogSlNPTiBQYXJzZSBlcnJvcjogRXhwZWN0ZWQgJ30nCg==",
+  "exitCode": 1,
+  "prompts": [],
+  "progress": [],
+  "opCalls": [
+    [
+      "vault",
+      "list",
+      "--format",
+      "json"
+    ]
+  ],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

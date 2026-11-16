@@ -1,0 +1,9 @@
+{
+  "id": "cli-unknown-doctor",
+  "kind": "cli",
+  "argv": [
+    "doctor",
+    "--client",
+    "alpha"
+  ]
+}

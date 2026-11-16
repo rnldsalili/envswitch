@@ -1,0 +1,7 @@
+{
+  "id": "dotenv-serialize-08",
+  "kind": "dotenv",
+  "values": {
+    "K": "$HOME"
+  }
+}

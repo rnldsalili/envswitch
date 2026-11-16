@@ -1,0 +1,1055 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "envswitch parity transcript v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "kind",
+    "divergence",
+    "stdoutBase64",
+    "stderrBase64",
+    "exitCode",
+    "prompts",
+    "progress",
+    "opCalls",
+    "readCounts",
+    "factoryCalls",
+    "updateCalls",
+    "files",
+    "writtenFiles",
+    "directories",
+    "leftoverTempFiles",
+    "result"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "parseArgs",
+        "formatProgressEvent",
+        "cli",
+        "switch",
+        "inspect",
+        "classify",
+        "blackbox",
+        "config",
+        "tags",
+        "path",
+        "dotenv",
+        "op"
+      ]
+    },
+    "divergence": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "enum": [
+            "a1",
+            "a2",
+            "a3",
+            "a4",
+            "a5",
+            "a6",
+            "a7",
+            "a8",
+            "b1",
+            "c1",
+            "c2",
+            "c3",
+            "d1",
+            "e1",
+            "e2",
+            "e3",
+            "e4",
+            "e5",
+            "e6",
+            "f1",
+            "g1",
+            "h1",
+            "i1"
+          ]
+        },
+        {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "a1",
+              "a2",
+              "a3",
+              "a4",
+              "a5",
+              "a6",
+              "a7",
+              "a8",
+              "b1",
+              "c1",
+              "c2",
+              "c3",
+              "d1",
+              "e1",
+              "e2",
+              "e3",
+              "e4",
+              "e5",
+              "e6",
+              "f1",
+              "g1",
+              "h1",
+              "i1"
+            ]
+          }
+        }
+      ]
+    },
+    "stdoutBase64": {
+      "type": "string",
+      "contentEncoding": "base64"
+    },
+    "stderrBase64": {
+      "type": "string",
+      "contentEncoding": "base64"
+    },
+    "exitCode": {
+      "type": "integer"
+    },
+    "prompts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "message",
+          "choices",
+          "default",
+          "required"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "select",
+              "input"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "choices": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "object",
+              "required": [
+                "label",
+                "value"
+              ],
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "value": {}
+              }
+            }
+          },
+          "default": {},
+          "required": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "progress": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "status",
+          "message"
+        ],
+        "properties": {
+          "status": {
+            "enum": [
+              "info",
+              "done",
+              "dry-run"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "opCalls": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "readCounts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "factoryCalls": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "updateCalls": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "method"
+            ],
+            "properties": {
+              "method": {
+                "const": "fetchLatestVersion"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "method",
+              "scriptPath",
+              "appRoot"
+            ],
+            "properties": {
+              "method": {
+                "const": "runInstaller"
+              },
+              "scriptPath": {
+                "type": "string"
+              },
+              "appRoot": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "method",
+              "source",
+              "plan"
+            ],
+            "properties": {
+              "method": {
+                "const": "runInstaller"
+              },
+              "source": {
+                "const": "embedded"
+              },
+              "plan": {
+                "$ref": "#/$defs/installPlan"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/file"
+      }
+    },
+    "writtenFiles": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/file"
+      }
+    },
+    "directories": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "mode"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "mode": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 511
+          }
+        }
+      }
+    },
+    "leftoverTempFiles": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "result": {}
+  },
+  "$defs": {
+    "file": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "kind",
+            "bytesBase64",
+            "mode"
+          ],
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "file"
+            },
+            "bytesBase64": {
+              "type": "string",
+              "contentEncoding": "base64"
+            },
+            "mode": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 511
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "kind",
+            "target",
+            "mode"
+          ],
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "symlink"
+            },
+            "target": {
+              "type": "string"
+            },
+            "mode": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 511
+            }
+          }
+        }
+      ]
+    },
+    "stringArray": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "envMap": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "output"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        },
+        "groups": {
+          "$ref": "#/$defs/stringArray"
+        }
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "tags": {
+          "$ref": "#/$defs/stringArray"
+        }
+      }
+    },
+    "vault": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "configResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targets"
+      ],
+      "properties": {
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/target"
+          }
+        },
+        "project": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "rootMarkers": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [],
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "packageJsonName": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "clients": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "environments": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "tags": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [],
+          "properties": {
+            "base": {
+              "$ref": "#/$defs/stringArray"
+            },
+            "project": {
+              "type": "string"
+            },
+            "env": {
+              "type": "string"
+            },
+            "client": {
+              "type": "string"
+            },
+            "target": {
+              "type": "string"
+            },
+            "group": {
+              "type": "string"
+            },
+            "layer": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "parseArgsResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "positional",
+        "flags"
+      ],
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "positional": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "flags": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    "formatProgressEventResult": {
+      "type": "string"
+    },
+    "tagsResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tags",
+        "candidates"
+      ],
+      "properties": {
+        "tags": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "base"
+          ],
+          "properties": {
+            "base": {
+              "$ref": "#/$defs/stringArray"
+            },
+            "project": {
+              "type": "string"
+            },
+            "env": {
+              "type": "string"
+            },
+            "client": {
+              "type": "string"
+            },
+            "target": {
+              "type": "string"
+            },
+            "group": {
+              "type": "string"
+            },
+            "layer": {
+              "type": "string"
+            }
+          }
+        },
+        "candidates": {
+          "$ref": "#/$defs/stringArray"
+        }
+      }
+    },
+    "pathResult": {
+      "type": "string"
+    },
+    "classifyResult": {
+      "enum": [
+        "shared",
+        "group",
+        "target",
+        "client",
+        "client-target",
+        null
+      ]
+    },
+    "inspectResult": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "target",
+          "outputPath",
+          "parentExists"
+        ],
+        "properties": {
+          "target": {
+            "$ref": "#/$defs/target"
+          },
+          "outputPath": {
+            "type": "string"
+          },
+          "parentExists": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "layer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "rank",
+        "item",
+        "values"
+      ],
+      "properties": {
+        "name": {
+          "enum": [
+            "shared",
+            "group",
+            "target",
+            "client",
+            "client-target"
+          ]
+        },
+        "rank": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        },
+        "item": {
+          "$ref": "#/$defs/item"
+        },
+        "values": {
+          "$ref": "#/$defs/envMap"
+        }
+      }
+    },
+    "switchResult": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "target",
+          "outputPath",
+          "written",
+          "keyCount",
+          "layers",
+          "overwrittenKeys"
+        ],
+        "properties": {
+          "target": {
+            "$ref": "#/$defs/target"
+          },
+          "outputPath": {
+            "type": "string"
+          },
+          "written": {
+            "type": "boolean"
+          },
+          "keyCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "layers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/layer"
+            }
+          },
+          "overwrittenKeys": {
+            "$ref": "#/$defs/stringArray"
+          }
+        }
+      }
+    },
+    "dotenvResult": {
+      "type": "string"
+    },
+    "cliResult": {
+      "type": "null"
+    },
+    "blackboxResult": {
+      "type": "null"
+    },
+    "opResult": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/envMap"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/item"
+          }
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/vault"
+          }
+        }
+      ]
+    },
+    "installPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repo",
+        "appRoot",
+        "installDir",
+        "version",
+        "currentVersion"
+      ],
+      "properties": {
+        "repo": {
+          "type": "string"
+        },
+        "appRoot": {
+          "type": "string"
+        },
+        "installDir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "currentVersion": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "parseArgs"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/$defs/parseArgsResult"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "formatProgressEvent"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/$defs/formatProgressEventResult"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "cli"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/$defs/cliResult"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "switch"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/$defs/switchResult"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "inspect"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/$defs/inspectResult"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "classify"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/$defs/classifyResult"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "blackbox"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/$defs/blackboxResult"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "config"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/$defs/configResult"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "tags"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/$defs/tagsResult"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "path"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/$defs/pathResult"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "dotenv"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/$defs/dotenvResult"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "op"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/$defs/opResult"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

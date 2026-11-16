@@ -1,0 +1,7 @@
+{
+  "id": "dotenv-invalid-4",
+  "kind": "dotenv",
+  "values": {
+    "é": "alpha"
+  }
+}

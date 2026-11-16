@@ -1,0 +1,9 @@
+{
+  "id": "cli-dry-empty-next",
+  "kind": "cli",
+  "argv": [
+    "switch",
+    "--dry-run",
+    ""
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "id": "cli-guided-vault-list-malformed",
+  "kind": "cli",
+  "argv": [],
+  "prompts": [],
+  "divergence": "a5",
+  "op": {
+    "responses": [
+      {
+        "argv": [
+          "vault",
+          "list",
+          "--format",
+          "json"
+        ],
+        "stdout": "{",
+        "stderr": "",
+        "exitCode": 0
+      }
+    ]
+  }
+}

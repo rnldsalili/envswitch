@@ -1,0 +1,9 @@
+{
+  "id": "cli-boolean-greedy",
+  "kind": "cli",
+  "argv": [
+    "switch",
+    "--dry-run",
+    "foo"
+  ]
+}

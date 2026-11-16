@@ -1,0 +1,16 @@
+{
+  "id": "dotenv-invalid-preserves-existing",
+  "kind": "dotenv",
+  "values": {
+    "BAD-KEY": "nope"
+  },
+  "write": true,
+  "output": ".env",
+  "files": [
+    {
+      "path": ".env",
+      "content": "EXISTING=1\n",
+      "mode": 384
+    }
+  ]
+}

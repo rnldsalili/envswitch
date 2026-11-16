@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "cli-version",
+  "kind": "cli",
+  "divergence": "f1",
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoOiB1bmtub3duIGNvbW1hbmQ6IC0tdmVyc2lvbgo=",
+  "exitCode": 1,
+  "prompts": [],
+  "progress": [],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}
