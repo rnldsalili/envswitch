@@ -1567,14 +1567,17 @@ describe.skipIf(!WINDOWS)("update installer runner (Windows)", () => {
     "  if ($null -eq $value) { $lines += \"$name unset\" } else { $lines += \"$name=$value\" }",
     "}",
     "[IO.File]::WriteAllLines($env:FAKE_LOG, [string[]]$lines)",
+    "if ($env:FAKE_MODE -eq 'echo') { [Console]::Out.WriteLine(\"info: binary: $AppRoot\\current\\bin\\envswitch.exe\") }",
     "[Console]::Out.WriteLine('info: from fake installer')",
     "if ($env:FAKE_MODE -eq 'status') { exit 7 }",
     "exit 0",
     "",
   ].join("\r\n");
 
-  function arrange() {
-    const root = realTempDir("envswitch-winrunner-");
+  function arrange(label = "") {
+    const base = realTempDir("envswitch-winrunner-");
+    const root = label === "" ? base : join(base, label);
+    mkdirSync(root, { recursive: true });
     const appRoot = join(root, "app");
     const installer = join(appRoot, "current", "scripts", "install.ps1");
     mkdirSync(dirname(installer), { recursive: true });
@@ -1612,8 +1615,45 @@ describe.skipIf(!WINDOWS)("update installer runner (Windows)", () => {
           .split(/\r?\n/)
           .map((line) => (line.endsWith(" unset") ? [line.slice(0, -6), undefined] : [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)])),
       ) as Record<string, string | undefined>;
-    return { plan, env, tempRoot, readLog };
+    return { base, plan, env, tempRoot, readLog };
   }
+
+  test("non-ASCII profile, app root, install dir, and temp: the real Bun -> Windows PowerShell 5.1 handoff decodes output", () => {
+    const { base, plan, env, tempRoot, readLog } = arrange("José-雪");
+    // A fresh Bun process runs the handoff exactly as `envswitch update` would.
+    const driver = join(base, "run-handoff.ts");
+    const input = join(base, "handoff-input.json");
+    const output = join(base, "handoff-output.json");
+    writeFileSync(
+      driver,
+      [
+        `import { readFileSync, writeFileSync } from "node:fs";`,
+        `import { runInstallScript } from ${JSON.stringify(join(REPO_ROOT, "src", "cli.ts"))};`,
+        `const input = JSON.parse(readFileSync(process.argv[2], "utf8"));`,
+        `const run = await runInstallScript(input.plan, { windows: true, tempRoot: input.tempRoot, stdout: { write: () => {} } });`,
+        `writeFileSync(process.argv[3], JSON.stringify(run));`,
+        "",
+      ].join("\n"),
+      { flag: "wx" },
+    );
+    writeFileSync(input, JSON.stringify({ plan, tempRoot }), { flag: "wx" });
+    const result = Bun.spawnSync([process.execPath, driver, input, output], {
+      env: { ...env, FAKE_MODE: "echo" } as Record<string, string>,
+      stdout: "pipe",
+      stderr: "pipe",
+      timeout: 120_000,
+    });
+    expect({ code: result.exitCode, stderr: result.stderr.toString() }).toEqual({ code: 0, stderr: "" });
+
+    const run = JSON.parse(readFileSync(output, "utf8"));
+    expect(plan.appRoot).toContain("José-雪");
+    expect(run).toEqual({
+      code: 0,
+      stdout: `info: binary: ${plan.appRoot}\\current\\bin\\envswitch.exe\r\ninfo: from fake installer\r\n`,
+    });
+    expect(readLog()).toMatchObject({ AppRoot: plan.appRoot, InstallDir: plan.installDir, Version: "v0.0.5" });
+    expect(readdirSync(tempRoot)).toEqual([]);
+  }, 120_000);
 
   test("copies the installer outside current, restricts its directory, passes exact parameters, and cleans up", async () => {
     const { plan, env, tempRoot, readLog } = arrange();
@@ -2180,6 +2220,34 @@ function windowsLegacyLauncher(appDir: string): string {
   ].join("\r\n");
 }
 
+/** D2b install.ps1 New-Launcher output (UTF-8, CRLF); checked against real PowerShell. */
+function windowsSourceLauncher(cli: string): string {
+  const path = cli.replace(/%/g, "%%");
+  return [
+    "@echo off",
+    "setlocal DisableDelayedExpansion",
+    "for /f \"tokens=2 delims=:.\" %%C in ('chcp') do set \"_ENVSWITCH_CP=%%C\"",
+    "chcp 65001 >nul",
+    "where bun >NUL 2>NUL",
+    "if %ERRORLEVEL% EQU 0 goto envswitch_bun_path",
+    'if exist "%USERPROFILE%\\.bun\\bin\\bun.exe" goto envswitch_bun_home',
+    "echo envswitch: bun is not installed or not on PATH 1>&2",
+    'set "_ENVSWITCH_EXIT=127"',
+    "goto envswitch_finish",
+    ":envswitch_bun_path",
+    `bun "${path}" %*`,
+    'set "_ENVSWITCH_EXIT=%ERRORLEVEL%"',
+    "goto envswitch_finish",
+    ":envswitch_bun_home",
+    `"%USERPROFILE%\\.bun\\bin\\bun.exe" "${path}" %*`,
+    'set "_ENVSWITCH_EXIT=%ERRORLEVEL%"',
+    ":envswitch_finish",
+    "chcp %_ENVSWITCH_CP% >nul 2>&1",
+    "exit /b %_ENVSWITCH_EXIT%",
+    "",
+  ].join("\r\n");
+}
+
 let windowsPayloadPath: string | undefined;
 
 /** A real .NET Framework console EXE (as D2b's Windows suite builds), compiled once. */
@@ -2218,20 +2286,33 @@ function lf(text: string): string {
  * paths, and every installer run uses the mocked persistent User PATH file.
  */
 class WindowsBridgeSandbox {
-  readonly root = realTempDir("envswitch-winbridge-");
-  readonly home = join(this.root, "home");
-  readonly localAppData = join(this.root, "localappdata");
-  readonly tools = join(this.root, "tools");
-  readonly temp = join(this.root, "temp");
-  readonly project = join(this.root, "project");
-  readonly appRoot = join(this.localAppData, "Programs", "envswitch");
-  readonly appDir = join(this.appRoot, "current");
-  readonly binDir = join(this.appRoot, "bin");
-  readonly launcher = join(this.binDir, "envswitch.cmd");
-  readonly userPathFile = join(this.home, "user-path.txt");
+  readonly root: string;
+  readonly home: string;
+  readonly localAppData: string;
+  readonly tools: string;
+  readonly temp: string;
+  readonly project: string;
+  readonly appRoot: string;
+  readonly appDir: string;
+  readonly binDir: string;
+  readonly launcher: string;
+  readonly userPathFile: string;
   readonly env: Record<string, string>;
 
-  constructor() {
+  /** `label` (e.g. non-ASCII) becomes part of every profile, temp, and install path. */
+  constructor(label = "") {
+    const base = realTempDir("envswitch-winbridge-");
+    this.root = label === "" ? base : join(base, label);
+    this.home = join(this.root, "home");
+    this.localAppData = join(this.root, "localappdata");
+    this.tools = join(this.root, "tools");
+    this.temp = join(this.root, "temp");
+    this.project = join(this.root, "project");
+    this.appRoot = join(this.localAppData, "Programs", "envswitch");
+    this.appDir = join(this.appRoot, "current");
+    this.binDir = join(this.appRoot, "bin");
+    this.launcher = join(this.binDir, "envswitch.cmd");
+    this.userPathFile = join(this.home, "user-path.txt");
     for (const dir of [this.home, this.localAppData, this.tools, this.temp, join(this.project, ".git"), this.appDir, this.binDir]) {
       mkdirSync(dir, { recursive: true });
     }
@@ -2296,8 +2377,12 @@ class WindowsBridgeSandbox {
     return this.run([process.execPath, join(this.appDir, "src", "cli.ts"), ...args], extra);
   }
 
-  /** A pre-receipt install laid out as the old PowerShell installer left it. */
-  installCopy(kind: "pre-bridge" | "bridge", tag: string): void {
+  /**
+   * "legacy": a pre-receipt install as the old PowerShell installer left it
+   * (ASCII-only launcher). "receipt": a bridge source install as the
+   * dual-mode installer leaves it (protocol launcher, source receipt).
+   */
+  installCopy(kind: "pre-bridge" | "bridge", tag: string, layout: "legacy" | "receipt" = "legacy"): void {
     const files: Record<string, Uint8Array | string> =
       kind === "bridge"
         ? Object.fromEntries(
@@ -2319,8 +2404,26 @@ class WindowsBridgeSandbox {
       // Read-only dependency tree from the checkout (a junction needs no privilege).
       symlinkSync(join(REPO_ROOT, "node_modules"), join(this.appDir, "node_modules"), "junction");
     }
-    writeFileSync(join(this.appDir, ".version"), `${tag}\r\n`);
-    writeFileSync(this.launcher, windowsLegacyLauncher(this.appDir), { flag: "wx" });
+    if (layout === "legacy") {
+      writeFileSync(join(this.appDir, ".version"), `${tag}\r\n`);
+      writeFileSync(this.launcher, windowsLegacyLauncher(this.appDir), { flag: "wx" });
+      return;
+    }
+    const cli = join(this.appDir, "src", "cli.ts");
+    writeFileSync(join(this.appDir, ".version"), `${tag}\n`);
+    writeFileSync(this.launcher, windowsSourceLauncher(cli), { flag: "wx" });
+    const receipt = {
+      schemaVersion: 1,
+      kind: "source",
+      repo: DEFAULT_REPO,
+      appRoot: this.appRoot,
+      installDir: this.binDir,
+      launcherPath: this.launcher,
+      target: null,
+      tag,
+      payloadPath: cli,
+    };
+    writeFileSync(join(this.appDir, "install.json"), `${JSON.stringify(receipt, null, 4)}\n`);
   }
 
   /** Read-only check that the real persistent User PATH is never written. */
@@ -2406,6 +2509,46 @@ describe.skipIf(!WINDOWS)("bridge migration end-to-end (Windows)", () => {
     expect(sandbox.realUserPath()).toBe(realUserPath);
     expect(existsSync(join(sandbox.home, "op.log"))).toBe(false);
     expect(readFileSync(join(sandbox.project, ".env"), "utf8")).toBe("SECRET=keep\r\n");
+  }, 300_000);
+
+  test("non-ASCII USERPROFILE, app root, install dir, and temp: receipt, launcher, and printed lines decode correctly", async () => {
+    // The old PowerShell installer wrote ASCII-only launchers, so a non-ASCII
+    // bridge install is the dual-mode installer's receipt-bearing layout.
+    const sandbox = new WindowsBridgeSandbox("José-雪");
+    sandbox.installCopy("bridge", "v0.0.41", "receipt");
+    expect(sandbox.appRoot).toContain("José-雪");
+    const realUserPath = sandbox.realUserPath();
+    const server = await MockReleaseServer.start(sandbox, { repo: DEFAULT_REPO, windowsBinary: windowsPayload() });
+    let update: ProcessResult;
+    try {
+      update = sandbox.runLauncher(["update"], server.hooks());
+    } finally {
+      await server.close();
+    }
+    expectSuccess(update);
+    expect(update.stderr).not.toContain("warning");
+
+    const receipt = JSON.parse(readFileSync(join(sandbox.appDir, "install.json"), "utf8"));
+    const payload = join(sandbox.appDir, "bin", "envswitch_0.0.42_x86_64-pc-windows-msvc.exe");
+    expect(receipt).toMatchObject({ kind: "native", repo: DEFAULT_REPO, tag: "v0.0.42", target: "x86_64-pc-windows-msvc" });
+    expect(receipt.appRoot.toLowerCase()).toBe(sandbox.appRoot.toLowerCase());
+    expect(receipt.installDir.toLowerCase()).toBe(sandbox.binDir.toLowerCase());
+    expect(receipt.launcherPath.toLowerCase()).toBe(sandbox.launcher.toLowerCase());
+    expect(receipt.payloadPath.toLowerCase()).toBe(payload.toLowerCase());
+
+    const out = lf(update.stdout);
+    expect(out).toContain(`info: binary: ${receipt.payloadPath}\n`);
+    expect(out).toContain(`info: launcher: ${receipt.launcherPath}\n`);
+    expect(out.endsWith("updated envswitch v0.0.41 -> v0.0.42\n")).toBe(true);
+
+    const launcher = readFileSync(sandbox.launcher);
+    expect(isManagedLauncher(launcher, sandbox.appRoot, true)).toBe(true);
+    expect(launcher.toString("utf8")).toContain(`"${receipt.payloadPath}" %*`);
+    expect(readFileSync(join(sandbox.appDir, ".version"), "utf8")).toBe("v0.0.42\n");
+    expect(sandbox.runLauncher(["--version"]).stdout.trim()).toBe("envswitch 0.0.42 x86_64-pc-windows-msvc");
+    expect(readFileSync(sandbox.userPathFile, "utf8").toLowerCase()).toContain(sandbox.binDir.toLowerCase());
+    expect(sandbox.leftovers()).toEqual([]);
+    expect(sandbox.realUserPath()).toBe(realUserPath);
   }, 300_000);
 
   test("bridge failures leave the bridge install usable", async () => {
