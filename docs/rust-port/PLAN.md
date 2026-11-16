@@ -378,6 +378,7 @@ These each get their own PR:
 | D7 | Deferred |
 | D8 | Fixed `en-US` ICU collation |
 | D9 | Add `--version` → `envswitch <version> <target-triple>\n`, exit 0 |
+| D2a gate | The historical-source checksum gate (INSTALLER-PROTOCOL §1.3) is solved by splitting M1 into **M1a**: `release.yml` publishes `SHA256SUMS` and the standalone `install.sh`/`install.ps1` with the source release, installers unchanged. That push yields a checksummed source latest. Then **M1b**: dual-mode installers and the TS bridge `update`. No fail window. INSTALLER-PROTOCOL.md is **frozen** (protocol v1). |
 | P0.2 | Not blocking. Rust reproduces TS behavior for whatever `op` prints (invalid JSON → the same error). |
 
 ## 11. Risk register
