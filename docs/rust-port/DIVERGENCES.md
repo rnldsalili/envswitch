@@ -11,7 +11,7 @@ The oracle is commit `53de029` running on Bun 1.4.0. Any difference not listed h
 | a5 | JSON parse error suffix | malformed config JSON | `... is not valid JSON: <engine text>` | same prefix + serde_json text | C1 | Match the prefix up to `: ` |
 | a6 | Spawn failure when `op` is missing | `op` not on PATH | `Executable not found in $PATH: "op"` (Bun) | `failed to run op: <io error>` | C2 | Exit 2 + prefix `envswitch: ` |
 | a7 | Lone UTF-16 surrogate escapes in `op` JSON | item field value `"\ud800"` | JS keeps the lone surrogate; written as U+FFFD | serde_json rejects → `op item get output is not valid JSON: …`, exit 2 | C2 | Scenario marked `a7`; assert the prefix and exit 2 |
-| b1 | Ctrl-C on Windows outside prompts | Ctrl-C during `op` call | process killed (0xC000013A) | exit 130 via handler | C4 | Windows-only test where possible |
+| b1 | Ctrl-C / Ctrl-Break on Windows outside prompts | Ctrl-C or Ctrl-Break during `op` call | process killed (0xC000013A) | exit 130 via handler | C4 | Windows-only test where possible |
 | c1 | Prompt render stream | guided mode | prompts drawn on stdout | prompts drawn on stderr (`inquire`) | C4 | Prompt log is compared through the `Prompter` trait, not the stream |
 | c2 | Prompt navigation | arrow keys at list ends; typing | no wraparound (`loop: false`); prefix jump | `inquire` behavior: wraps at list ends; substring filter | C4 | PTY smoke only |
 | c3 | Esc key in prompts | Esc | ignored | cancel → exit 130, nothing printed | C4 | Scripted prompter returns Cancelled → 130 |
