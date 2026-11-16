@@ -1,5 +1,5 @@
-//! DIVERGENCES j1: a project root whose name is not valid UTF-8 (Linux only;
-//! macOS APFS and Windows reject such names). Bun decodes the cwd lossily and
+//! DIVERGENCES j1: a project root whose name is not valid UTF-8 (tested on
+//! Linux; macOS APFS rejects such names, and Windows keeps lossy parity). Bun decodes the cwd lossily and
 //! writes into a sibling directory named with U+FFFD; Rust writes into the
 //! actual root the user ran from. Owner: orchestrator (R1 finding).
 
