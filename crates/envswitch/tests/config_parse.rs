@@ -197,7 +197,29 @@ fn rejects_malformed_config_fields_with_specific_messages() {
 }
 
 #[test]
+fn json_rejected_only_by_serde_uses_the_parse_error_prefix() {
+    // DIVERGENCES a8: `JSON.parse` accepts these (even under unknown keys);
+    // serde_json rejects them, so they take the a5 parse-error path.
+    let target = r#""targets":[{"name":"api","output":"x"}]"#;
+    let deep = format!("{}{}", "[".repeat(129), "]".repeat(129));
+    for raw in [
+        format!(r#"{{{target},"extra":1e400}}"#),
+        format!(r#"{{{target},"extra":-1e400}}"#),
+        format!(r#"{{{target},"extra":"\ud800"}}"#),
+        format!(r#"{{{target},"extra":"\udc00x"}}"#),
+        format!(r#"{{{target},"extra":{deep}}}"#),
+    ] {
+        let message = parse_error(&raw);
+        let suffix = message
+            .strip_prefix("config field is not valid JSON: ")
+            .unwrap_or_else(|| panic!("{raw:?}: {message}"));
+        assert!(!suffix.is_empty(), "{raw:?}");
+    }
+}
+
+#[test]
 fn invalid_json_is_a_user_error_with_the_oracle_prefix() {
+    // DIVERGENCES a5: only the prefix matches Bun; the suffix is serde_json's.
     for raw in [
         "",
         "   ",

@@ -38,27 +38,50 @@ pub fn resolve_output_path(root: &Path, output: &str) -> Result<PathBuf> {
         &process_cwd,
         &process_drive_cwd,
     )?;
-    for parent in flavor.parent_chain(&lexical) {
-        if parent.contains(&0) {
-            // Bun's `lstatSync` argument validation (a TypeError, exit 2).
-            let received = serde_json::Value::String(String::from_utf8_lossy(&parent).into_owned());
-            return Err(Error::internal(format!(
-                "The argument 'path' must be a string, Uint8Array, or URL without null bytes. Received {received}"
-            )));
-        }
-        let parent = bytes_to_path(&parent);
-        match fs::symlink_metadata(&parent) {
-            Ok(meta) if meta.file_type().is_symlink() => {
-                return fail(format!(
-                    "target output path contains a symbolic-link parent: {output}"
-                ));
-            }
-            Ok(_) => {}
-            Err(err) if is_no_entry(&err) => {}
-            Err(err) => return Err(io_error(&err, "lstat", &parent)),
-        }
-    }
+    flavor.walk_parents(&lexical, |parent| lstat_parent(parent, output))?;
     Ok(bytes_to_path(&lexical.output_abs))
+}
+
+/// Bun copies a path into a fixed `PATH_MAX`-sized buffer before the
+/// syscall. A path of this many UTF-8 bytes or more fails right there with
+/// `ENAMETOOLONG: name too long, open` (no path), before the NUL check.
+/// Probed on macOS (1024); Linux uses its `PATH_MAX` (4096).
+#[cfg(target_os = "macos")]
+const BUN_MAX_PATH_BYTES: Option<usize> = Some(1024);
+#[cfg(target_os = "linux")]
+const BUN_MAX_PATH_BYTES: Option<usize> = Some(4096);
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+const BUN_MAX_PATH_BYTES: Option<usize> = None;
+
+/// One step of the TS loop: `lstatSync(parent, { throwIfNoEntry: false })`
+/// followed by the `isSymbolicLink()` test.
+fn lstat_parent(parent: &[u8], output: &str) -> Result<()> {
+    if BUN_MAX_PATH_BYTES.is_some_and(|max| parent.len() >= max) {
+        return Err(Error::internal("ENAMETOOLONG: name too long, open"));
+    }
+    if parent.contains(&0) {
+        // Bun's `lstatSync` argument validation (a TypeError, exit 2).
+        let received = serde_json::Value::String(String::from_utf8_lossy(parent).into_owned());
+        return Err(Error::internal(format!(
+            "The argument 'path' must be a string, Uint8Array, or URL without null bytes. Received {received}"
+        )));
+    }
+    let parent = bytes_to_path(parent);
+    match fs::symlink_metadata(&parent) {
+        Ok(meta) if meta.file_type().is_symlink() => fail(format!(
+            "target output path contains a symbolic-link parent: {output}"
+        )),
+        Ok(_) => Ok(()),
+        Err(err) if is_no_entry(&err) => Ok(()),
+        // ENAMETOOLONG from the OS (a component over NAME_MAX, or a path
+        // that grows past PATH_MAX through a symlink); outside the six
+        // codes `error::io_error` formats.
+        Err(err) if err.kind() == io::ErrorKind::InvalidFilename => Err(Error::internal(format!(
+            "ENAMETOOLONG: name too long, lstat '{}'",
+            parent.display()
+        ))),
+        Err(err) => Err(io_error(&err, "lstat", &parent)),
+    }
 }
 
 /// The result of the string-only steps 1–5 of 02 §2.1.
@@ -182,31 +205,36 @@ impl Flavor {
         })
     }
 
-    /// The directories the TS `rejectSymlinkedParents` loop lstats, in order:
-    /// `dirname(outputAbs)` upward to and including `rootAbs`.
+    /// The TS `rejectSymlinkedParents` loop: calls `visit` for each directory
+    /// from `dirname(outputAbs)` upward to and including `rootAbs`, one at a
+    /// time and in that order, and stops at the first error. Only the current
+    /// directory is held in memory, so a deeply nested output costs one path
+    /// buffer and fails on the first `lstat`, like TS.
     ///
     /// TS stops only when `current === rootAbs`. On win32 a drive-relative
     /// output whose drive letter differs in case from the root's (`c:x` under
     /// `C:\Proj`) passes the case-insensitive `relative` check but never
     /// reaches a byte-equal root, and the TS loop spins forever at `c:\`.
-    /// Rust stops at the case-insensitive root instead (that is the directory
-    /// TS meant to reach), and also at any `dirname` fixed point.
-    pub(crate) fn parent_chain(self, lexical: &Lexical) -> Vec<Vec<u8>> {
-        let mut chain = Vec::new();
+    /// Rust stops at the case-insensitive root instead (DIVERGENCES i1), and
+    /// also at any `dirname` fixed point.
+    pub(crate) fn walk_parents(
+        self,
+        lexical: &Lexical,
+        mut visit: impl FnMut(&[u8]) -> Result<()>,
+    ) -> Result<()> {
         let mut current = self.dirname(&lexical.output_abs);
         loop {
+            visit(&current)?;
             let at_root = current == lexical.root_abs
                 || (self == Flavor::Win32 && current.eq_ignore_ascii_case(&lexical.root_abs));
-            let next = if at_root {
-                None
-            } else {
-                Some(self.dirname(&current))
-            };
-            chain.push(current);
-            match next {
-                Some(next) if Some(&next) != chain.last() => current = next,
-                _ => return chain,
+            if at_root {
+                return Ok(());
             }
+            let next = self.dirname(&current);
+            if next == current {
+                return Ok(());
+            }
+            current = next;
         }
     }
 }

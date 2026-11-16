@@ -242,6 +242,25 @@ fn package_json_read_and_parse_failures() {
         "{message}"
     );
 
+    // DIVERGENCES a8: JSON that `JSON.parse` accepts but serde_json rejects
+    // fails here with the same prefix (TS would compare the name instead).
+    for contents in [
+        r#"{"name":"demo-suite","n":1e400}"#,
+        r#"{"name":"demo-suite","s":"\ud800"}"#,
+        &format!(
+            r#"{{"name":"demo-suite","d":{}{}}}"#,
+            "[".repeat(129),
+            "]".repeat(129)
+        ),
+    ] {
+        project.file("package.json", contents);
+        let message = user_error(root, json!([{ "packageJsonName": "demo-suite" }]));
+        assert!(
+            message.starts_with(prefix) && message.len() > prefix.len(),
+            "{message}"
+        );
+    }
+
     // Invalid UTF-8 decodes to U+FFFD instead of failing.
     fs::write(project.path("package.json"), b"{\"name\":\"\xff\"}").unwrap();
     assert_eq!(
@@ -270,6 +289,33 @@ fn an_unreadable_package_json_reports_the_open_error() {
     let readable = fs::read(&path).is_ok();
     let result = check(project.root(), json!([{ "packageJsonName": "demo-suite" }]));
     fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+    if readable {
+        // Running as root: permissions are not enforced.
+        return;
+    }
+    assert_eq!(
+        result,
+        Err(Error::User(format!(
+            "failed to read package.json for project root validation: EACCES: permission denied, open '{}'",
+            path.display()
+        )))
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn an_unreadable_package_json_directory_reports_the_open_error() {
+    // `readFile` opens before it reads, so a mode-000 directory fails with
+    // EACCES on open, not EISDIR on read.
+    use std::os::unix::fs::PermissionsExt;
+
+    let project = TempProject::new();
+    project.dir("package.json");
+    let path = project.path("package.json");
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+    let readable = fs::read_dir(&path).is_ok();
+    let result = check(project.root(), json!([{ "packageJsonName": "demo-suite" }]));
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
     if readable {
         // Running as root: permissions are not enforced.
         return;

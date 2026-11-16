@@ -461,6 +461,18 @@ fn text(bytes: &[u8]) -> String {
     String::from_utf8(bytes.to_vec()).expect("utf-8")
 }
 
+/// Every directory `walk_parents` visits, in order.
+fn walked(flavor: Flavor, lexical: &Lexical) -> Vec<String> {
+    let mut visited = Vec::new();
+    flavor
+        .walk_parents(lexical, |dir| {
+            visited.push(text(dir));
+            Ok(())
+        })
+        .unwrap();
+    visited
+}
+
 fn cwd_for(flavor: Flavor) -> fn() -> Result<Vec<u8>> {
     match flavor {
         Flavor::Posix => posix_cwd,
@@ -568,25 +580,17 @@ fn output_path_decisions_match_ts() {
                 Accept(output_abs, chain) => {
                     let lexical = got.unwrap_or_else(|err| panic!("{context}: {err}"));
                     assert_eq!(text(&lexical.output_abs), *output_abs, "{context}");
-                    let walked: Vec<String> = flavor
-                        .parent_chain(&lexical)
-                        .iter()
-                        .map(|dir| text(dir))
-                        .collect();
-                    assert_eq!(walked, *chain, "{context}");
+                    assert_eq!(walked(flavor, &lexical), *chain, "{context}");
                 }
                 Reject(message) => {
                     assert_eq!(got, Err(Error::User(message.to_string())), "{context}");
                 }
                 Loops(output_abs, stop) => {
+                    // DIVERGENCES i1: TS never terminates; Rust stops at the
+                    // case-insensitive root and accepts.
                     let lexical = got.unwrap_or_else(|err| panic!("{context}: {err}"));
                     assert_eq!(text(&lexical.output_abs), *output_abs, "{context}");
-                    let walked: Vec<String> = flavor
-                        .parent_chain(&lexical)
-                        .iter()
-                        .map(|dir| text(dir))
-                        .collect();
-                    assert_eq!(walked, [*stop], "{context}");
+                    assert_eq!(walked(flavor, &lexical), [*stop], "{context}");
                 }
             }
         }
@@ -686,27 +690,58 @@ fn checks_run_in_ts_order() {
 }
 
 #[test]
-fn parent_chain_stops_at_a_dirname_fixed_point() {
+fn walk_stops_at_a_dirname_fixed_point() {
     // Defensive: never reachable from `resolve_lexically`, but the walk must
     // terminate even for a root that is not an ancestor.
     let lexical = Lexical {
         root_abs: b"/elsewhere".to_vec(),
         output_abs: b"/a/b".to_vec(),
     };
-    let chain: Vec<String> = Flavor::Posix
-        .parent_chain(&lexical)
-        .iter()
-        .map(|dir| text(dir))
-        .collect();
-    assert_eq!(chain, ["/a", "/"]);
+    assert_eq!(walked(Flavor::Posix, &lexical), ["/a", "/"]);
     let lexical = Lexical {
         root_abs: b"D:\\x".to_vec(),
         output_abs: b"C:\\a\\b".to_vec(),
     };
-    let chain: Vec<String> = Flavor::Win32
-        .parent_chain(&lexical)
-        .iter()
-        .map(|dir| text(dir))
-        .collect();
-    assert_eq!(chain, ["C:\\a", "C:\\"]);
+    assert_eq!(walked(Flavor::Win32, &lexical), ["C:\\a", "C:\\"]);
+}
+
+#[test]
+fn walk_is_lazy_and_stops_at_the_first_error() {
+    // 8,000 levels: the walk visits the deepest parent first and stops on
+    // its error without computing any other ancestor.
+    for flavor in [Flavor::Posix, Flavor::Win32] {
+        let root: &[u8] = if flavor == Flavor::Posix {
+            b"/r"
+        } else {
+            b"C:\\r"
+        };
+        let output = format!("{}.env", "a/".repeat(8000));
+        let lexical = flavor
+            .resolve_lexically(root, &output, &cwd_for(flavor), &no_drive_cwd)
+            .unwrap();
+        let mut visits = Vec::new();
+        let result = flavor.walk_parents(&lexical, |dir| {
+            visits.push(dir.len());
+            Err(Error::internal("stop"))
+        });
+        assert_eq!(result, Err(Error::internal("stop")), "{flavor:?}");
+        assert_eq!(
+            visits,
+            [lexical.output_abs.len() - b"/.env".len()],
+            "{flavor:?}"
+        );
+
+        // Without errors it visits every level once, root last.
+        let mut count = 0usize;
+        let mut last = Vec::new();
+        flavor
+            .walk_parents(&lexical, |dir| {
+                count += 1;
+                last = dir.to_vec();
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(count, 8001, "{flavor:?}");
+        assert_eq!(last, root, "{flavor:?}");
+    }
 }

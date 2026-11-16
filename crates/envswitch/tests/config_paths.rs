@@ -305,6 +305,63 @@ fn an_unsearchable_parent_surfaces_eacces() {
     );
 }
 
+/// Deep nesting: Bun rejects a parent of `PATH_MAX` bytes or more before the
+/// syscall (`ENAMETOOLONG: name too long, open`, no path, exit 2). Rust must
+/// fail on that first parent too, holding one path at a time (the review
+/// measured ~75 MB for 8,000 levels before the walk became lazy, and a
+/// 128 KiB path would have needed ~4 GiB).
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[test]
+fn deep_nesting_fails_on_the_first_parent_like_bun() {
+    let project = TempProject::new();
+    for levels in [8_000, 65_536] {
+        let output = format!("{}.env", "a/".repeat(levels));
+        let err = resolve_output_path(project.root(), &output).unwrap_err();
+        assert_eq!(
+            err,
+            Error::internal("ENAMETOOLONG: name too long, open"),
+            "{levels}"
+        );
+        assert_eq!(err.exit_code(), 2);
+    }
+    // The length check runs before the NUL check.
+    let output = format!("{}\u{0}/.env", "a".repeat(5_000));
+    assert_eq!(
+        resolve_output_path(project.root(), &output),
+        Err(Error::internal("ENAMETOOLONG: name too long, open"))
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn an_os_enametoolong_reports_the_lstat_path() {
+    // Under PATH_MAX, but one component exceeds NAME_MAX (255).
+    let project = TempProject::new();
+    let long = "x".repeat(300);
+    let err = resolve_output_path(project.root(), &format!("{long}/.env")).unwrap_err();
+    assert_eq!(
+        err,
+        Error::Internal(format!(
+            "ENAMETOOLONG: name too long, lstat '{}'",
+            project.path(&long).display()
+        ))
+    );
+    assert_eq!(err.exit_code(), 2);
+}
+
+#[cfg(windows)]
+#[test]
+fn deep_nesting_terminates_on_windows() {
+    // Bun's Windows limit is unverified; the walk must still finish and
+    // never report a link or other user error.
+    let project = TempProject::new();
+    let output = format!("{}.env", "a/".repeat(8_000));
+    match resolve_output_path(project.root(), &output) {
+        Ok(_) | Err(Error::Internal(_)) => {}
+        other => panic!("unexpected {other:?}"),
+    }
+}
+
 #[test]
 fn a_nul_byte_in_a_parent_is_rejected_like_bun() {
     let project = TempProject::new();
@@ -423,8 +480,9 @@ mod windows {
             resolve_output_path(root, &same).unwrap().to_string_lossy(),
             root.join("x").to_string_lossy()
         );
-        // Same drive, other letter case: accepted like TS; TS would then spin
-        // forever in its lstat loop, Rust stops at the root.
+        // DIVERGENCES i1: same drive, other letter case. TS passes the escape
+        // check, then spins forever in its lstat loop; Rust stops at the root
+        // and accepts.
         let lower = format!("{}:x", letter.to_ascii_lowercase());
         let resolved = resolve_output_path(root, &lower).unwrap();
         assert!(
