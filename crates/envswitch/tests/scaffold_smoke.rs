@@ -98,6 +98,18 @@ fn io_errors_map_raw_errno() {
     );
 }
 
+#[cfg(windows)]
+#[test]
+fn io_errors_map_windows_missing_path_codes_like_the_path_walker() {
+    let path = Path::new("C:\\missing");
+    for code in [2, 3, 15, 123, 161, 267, 4392] {
+        assert_eq!(
+            io_error(&io::Error::from_raw_os_error(code), "lstat", path).to_string(),
+            "ENOENT: no such file or directory, lstat 'C:\\missing'"
+        );
+    }
+}
+
 #[test]
 fn layer_names_and_statuses() {
     let names: Vec<&str> = LayerName::ALL.iter().map(|layer| layer.as_str()).collect();

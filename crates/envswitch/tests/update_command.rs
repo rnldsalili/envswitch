@@ -170,6 +170,39 @@ fn equal_version_still_invokes_installer_and_reports_unchanged_or_repaired() {
     }
 }
 
+#[cfg(windows)]
+#[test]
+fn decoded_installer_location_warning_uses_injected_stderr() {
+    let (_temp, mut t) = installed();
+    let transcript = result_fixture(&mut t, "v0.0.42", "installed");
+    let stdout = transcript
+        .lines()
+        .map(|line| {
+            if line.starts_with("info: binary: ") || line.starts_with("info: launcher: ") {
+                format!("{}: decoded?", line.rsplit_once(": ").unwrap().0)
+            } else {
+                line.to_owned()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n";
+    t.deps.installer = Box::new(TranscriptInstaller {
+        fake: t.installer.clone(),
+        stdout,
+    });
+    assert_eq!(t.run(&["update"]), 0, "{}", t.err.text());
+    assert_eq!(
+        t.err.text(),
+        "envswitch: warning: installer locations could not be matched after console decoding; validated the installed receipt instead\n"
+    );
+    assert!(
+        t.out
+            .text()
+            .ends_with("updated envswitch v0.0.0 -> v0.0.42\n")
+    );
+}
+
 #[test]
 fn compiled_version_labels_update_even_when_marker_is_missing_or_stale() {
     for marker in [None, Some("v0.0.999\n")] {

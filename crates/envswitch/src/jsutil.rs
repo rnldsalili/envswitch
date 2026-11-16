@@ -5,6 +5,11 @@ use std::path::Path;
 
 use crate::error::{Error, Result};
 
+/// JS `Array.prototype.sort()` default order for strings: UTF-16 code units.
+pub(crate) fn compare_utf16(left: &str, right: &str) -> std::cmp::Ordering {
+    left.encode_utf16().cmp(right.encode_utf16())
+}
+
 /// JS `\s` / `String.prototype.trim` whitespace set (02 §1.4):
 /// `\t \n \v \f \r`, space, U+00A0, U+1680, U+2000–U+200A, U+2028, U+2029,
 /// U+202F, U+205F, U+3000, U+FEFF. **Not** U+0085.

@@ -146,8 +146,8 @@ fn node_code(err: &io::Error) -> Option<(&'static str, &'static str)> {
         #[cfg(windows)]
         let mapped = match raw {
             // FILE_NOT_FOUND, PATH_NOT_FOUND, INVALID_DRIVE, INVALID_NAME,
-            // BAD_PATHNAME, DIRECTORY (libuv maps ERROR_DIRECTORY to ENOENT)
-            2 | 3 | 15 | 123 | 161 | 267 => Some(ENOENT),
+            // BAD_PATHNAME, DIRECTORY, INVALID_REPARSE_DATA
+            2 | 3 | 15 | 123 | 161 | 267 | 4392 => Some(ENOENT),
             5 => Some(EPERM),         // ACCESS_DENIED
             80 | 183 => Some(EEXIST), // FILE_EXISTS, ALREADY_EXISTS
             _ => None,

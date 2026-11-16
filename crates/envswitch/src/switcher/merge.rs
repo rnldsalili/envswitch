@@ -11,6 +11,7 @@ use icu_collator::{Collator, CollatorBorrowed, CollatorPreferences};
 use icu_locale::locale;
 
 use crate::error::Result;
+use crate::jsutil::compare_utf16;
 use crate::model::{EnvLayer, EnvMap, ItemSummary, MergeResult, ProgressEvent, ResolvedTarget};
 use crate::ports::OnePassword;
 
@@ -49,11 +50,6 @@ fn collator() -> &'static CollatorBorrowed<'static> {
 /// see `known_divergence_han_ideographs_use_code_point_order`.
 pub(crate) fn compare_titles(left: &str, right: &str) -> Ordering {
     collator().compare(left, right)
-}
-
-/// JS `Array.prototype.sort()` default order for strings: UTF-16 code units.
-fn compare_utf16(left: &str, right: &str) -> Ordering {
-    left.encode_utf16().cmp(right.encode_utf16())
 }
 
 /// TS `mergeTarget(op, candidates, params)` (02 §4.3).

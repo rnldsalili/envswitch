@@ -269,7 +269,7 @@ fn ask_selection(prompt: &dyn Prompter, config: Config, deps: &Deps) -> Result<S
 
 /// TS `runGuidedSwitch(deps)` (01 §5.1–5.2). Vault scans follow `ports` thread rules.
 pub(crate) fn run_guided(deps: &mut Deps) -> Result<()> {
-    if !(deps.stdin_is_tty && deps.stdout_is_tty) && deps.prompter.is_none() {
+    if !(deps.stdin_is_tty && deps.stdout_is_tty && deps.stderr_is_tty) && deps.prompter.is_none() {
         return fail(
             "plain envswitch requires an interactive terminal; use envswitch switch --vault <vault> --config-item <item> --client <client> for scripts",
         );

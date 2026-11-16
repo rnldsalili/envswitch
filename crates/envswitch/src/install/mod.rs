@@ -13,7 +13,9 @@ use std::process::{Command, ExitStatus, Stdio};
 use crate::error::{Error, Result};
 use crate::ports::{InstallPlan, InstallerRunner};
 
-pub const GITHUB_REPO: &str = "rnldsalili/envswitch";
+/// Restrict the handoff directory before writing executable installer bytes.
+#[cfg(windows)]
+const SECURE_TEMP_DIRECTORY: &str = "$ErrorActionPreference='Stop'; $p=$env:ENVSWITCH_INSTALLER_TEMP; $a=New-Object System.Security.AccessControl.DirectorySecurity; $a.SetAccessRuleProtection($true,$false); $u=[System.Security.Principal.WindowsIdentity]::GetCurrent().User; foreach($s in @($u,(New-Object System.Security.Principal.SecurityIdentifier 'S-1-5-18'),(New-Object System.Security.Principal.SecurityIdentifier 'S-1-5-32-544'))) { $r=New-Object System.Security.AccessControl.FileSystemAccessRule($s,'FullControl','ContainerInherit,ObjectInherit','None','Allow'); $a.AddAccessRule($r) }; Set-Acl -LiteralPath $p -AclObject $a";
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct EmbeddedInstaller;
@@ -25,7 +27,16 @@ impl InstallerRunner for EmbeddedInstaller {
     }
 
     fn run_with_output(&self, plan: &InstallPlan, out: &mut dyn Write) -> Result<(i32, String)> {
-        run_embedded(plan, out)
+        self.run_with_writers(plan, out, &mut std::io::stderr())
+    }
+
+    fn run_with_writers(
+        &self,
+        plan: &InstallPlan,
+        out: &mut dyn Write,
+        err: &mut dyn Write,
+    ) -> Result<(i32, String)> {
+        run_embedded(plan, out, err)
     }
 }
 
@@ -57,9 +68,16 @@ impl PrivateDir {
         {
             // Set an owner-only ACL before writing any executable script bytes.
             let status = Command::new("powershell")
-                .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
-                    "$ErrorActionPreference='Stop'; $p=$env:ENVSWITCH_INSTALLER_TEMP; $a=New-Object System.Security.AccessControl.DirectorySecurity; $a.SetAccessRuleProtection($true,$false); $u=[System.Security.Principal.WindowsIdentity]::GetCurrent().User; foreach($s in @($u,(New-Object System.Security.Principal.SecurityIdentifier 'S-1-5-18'),(New-Object System.Security.Principal.SecurityIdentifier 'S-1-5-32-544'))) { $r=New-Object System.Security.AccessControl.FileSystemAccessRule($s,'FullControl','ContainerInherit,ObjectInherit','None','Allow'); $a.AddAccessRule($r) }; Set-Acl -LiteralPath $p -AclObject $a"])
-                .env("ENVSWITCH_INSTALLER_TEMP", &dir.0).status().map_err(spawn_error)?;
+                .args([
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-Command",
+                    SECURE_TEMP_DIRECTORY,
+                ])
+                .env("ENVSWITCH_INSTALLER_TEMP", &dir.0)
+                .status()
+                .map_err(spawn_error)?;
             if !status.success() {
                 return Err(Error::user(
                     "update failed: could not run installer: could not secure temporary directory",
@@ -97,7 +115,11 @@ fn status_code(status: ExitStatus) -> i32 {
     }
 }
 
-fn run_embedded(plan: &InstallPlan, out: &mut dyn Write) -> Result<(i32, String)> {
+fn run_embedded(
+    plan: &InstallPlan,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<(i32, String)> {
     let install_dir = plan
         .install_dir
         .as_ref()
@@ -221,13 +243,13 @@ fn run_embedded(plan: &InstallPlan, out: &mut dyn Write) -> Result<(i32, String)
         read_result.map_err(launch_error)?;
         if let Some(e) = write_error {
             let _ = writeln!(
-                std::io::stderr(),
+                err,
                 "envswitch: warning: could not forward installer stdout: {e}"
             );
         }
         if let Err(e) = cleanup {
             let _ = writeln!(
-                std::io::stderr(),
+                err,
                 "envswitch: warning: could not remove installer temporary directory {}: {e}",
                 temp.0.display()
             );

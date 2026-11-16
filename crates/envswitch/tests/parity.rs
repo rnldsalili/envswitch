@@ -3,7 +3,7 @@ mod parity;
 mod support;
 
 #[test]
-#[ignore = "parity: enable at integration"]
+#[ignore = "requires Bun and the pinned TS oracle; run with --ignored"]
 fn scenario_parity() {
     parity::run();
 }

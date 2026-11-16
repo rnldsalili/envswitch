@@ -125,8 +125,9 @@ fn valid_path(path: &Path) -> bool {
     }
 }
 
-// Value keeps the last duplicate; inspect every object's raw decoded keys too.
-fn unique_keys(bytes: &[u8]) -> Option<Value> {
+/// Parse an object while rejecting duplicate decoded keys in every nested object.
+/// `Value` alone would silently keep the last duplicate, including escaped keys.
+fn parse_receipt_without_duplicate_keys(bytes: &[u8]) -> Option<Value> {
     let value: Value = serde_json::from_slice(bytes).ok()?;
     value.as_object()?;
     let mut i = 0;
@@ -166,7 +167,7 @@ pub fn read_receipt(app_root: &Path, env: &crate::ports::EnvLookup) -> Option<Re
     if !valid_path(app_root) || !no_links(&path) {
         return None;
     }
-    let v = unique_keys(&fs::read(path).ok()?)?;
+    let v = parse_receipt_without_duplicate_keys(&fs::read(path).ok()?)?;
     if v.get("schemaVersion")?.as_u64()? != 1 {
         return None;
     }

@@ -34,7 +34,9 @@ pub(crate) fn run_update(_args: &ParsedArgs, deps: &mut Deps) -> Result<()> {
             message: format!("updating envswitch {old} -> latest"),
         },
     );
-    let (code, output) = deps.installer.run_with_output(&plan, deps.out.as_mut())?;
+    let (code, output) =
+        deps.installer
+            .run_with_writers(&plan, deps.out.as_mut(), deps.err.as_mut())?;
     if code != 0 {
         return Err(Error::status(
             code,
@@ -55,7 +57,8 @@ pub(crate) fn run_update(_args: &ParsedArgs, deps: &mut Deps) -> Result<()> {
     {
         return Err(Error::user(POSTCONDITION));
     }
-    let outcome = disposition(&output, &after).ok_or_else(|| Error::user(POSTCONDITION))?;
+    let outcome = disposition(&output, &after, deps.err.as_mut())
+        .ok_or_else(|| Error::user(POSTCONDITION))?;
     let line = if after.tag != old || outcome == "installed" {
         format!("updated envswitch {old} -> {}", after.tag)
     } else if outcome == "repaired" {
@@ -66,7 +69,11 @@ pub(crate) fn run_update(_args: &ParsedArgs, deps: &mut Deps) -> Result<()> {
     write_line(deps, line)
 }
 
-fn disposition(output: &str, receipt: &Receipt) -> Option<&'static str> {
+fn disposition(
+    output: &str,
+    receipt: &Receipt,
+    err: &mut dyn std::io::Write,
+) -> Option<&'static str> {
     if !output.ends_with('\n') {
         return None;
     }
@@ -119,9 +126,8 @@ fn disposition(output: &str, receipt: &Receipt) -> Option<&'static str> {
         return None;
     }
     if cfg!(windows) && (suffix[0] != location || suffix[1] != launcher) {
-        use std::io::Write;
         let _ = writeln!(
-            std::io::stderr(),
+            err,
             "envswitch: warning: installer locations could not be matched after console decoding; validated the installed receipt instead"
         );
     }
