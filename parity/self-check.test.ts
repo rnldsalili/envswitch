@@ -129,6 +129,21 @@ describe("parity harness invariants", () => {
     expect(cancel.readCounts["alpha/cfg"]).toBe(1);
     if (process.platform !== "win32") expect((await golden("path-eacces")).exitCode).toBe(2);
   });
+  test("a8 TS acceptance, e6 source status and h1 skip order stay explicit", async () => {
+    for (const name of ["overflow", "depth-129", "lone-surrogate"]) for (const kind of ["config", "cli"]) {
+      const t = await golden(`${kind}-a8-${name}`);
+      expect(t.exitCode).toBe(0); expect(t.divergence).toBe("a8");
+    }
+    for (const name of ["status-4", ...(process.platform !== "win32" ? ["sigterm"] : [])]) {
+      const t = await golden(`cli-update-installer-${name}`);
+      expect(t.exitCode).toBe(1); expect(t.divergence).toContain("e6");
+    }
+    const skipped = await golden("cli-guided-two-unreadable-vaults");
+    expect(skipped.exitCode).toBe(0); expect(skipped.divergence).toBe("h1");
+    expect(skipped.progress.filter((p: any) => p.message.startsWith("skipping vault")).map((p: any) => p.message)).toEqual([
+      "skipping vault alpha (could not list items)", "skipping vault beta (could not list items)",
+    ]);
+  });
   test("parser empty-next errata and scope terminators stay covered", async () => {
     const t = await golden("parseArgs-empty-help-next");
     expect(t.result.flags.help).toBe(true); expect(t.result.positional).toEqual([""]);

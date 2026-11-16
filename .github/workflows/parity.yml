@@ -1,5 +1,6 @@
 name: Oracle parity
 on:
+  workflow_call:
   pull_request:
     paths: ['parity/**', 'crates/**', 'Cargo.*', 'docs/rust-port/**', '.github/workflows/parity.yml']
   push:

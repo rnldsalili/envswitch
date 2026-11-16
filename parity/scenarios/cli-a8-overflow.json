@@ -1,0 +1,13 @@
+{
+  "id": "cli-a8-overflow",
+  "kind": "cli",
+  "argv": [
+    "list",
+    "--vault",
+    "alpha",
+    "--config-item",
+    "cfg"
+  ],
+  "configRaw": "{\"targets\":[{\"name\":\"api\",\"output\":\"apps/api/.env\"}],\"extra\":1e400}",
+  "divergence": "a8"
+}

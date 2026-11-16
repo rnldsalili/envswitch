@@ -107,6 +107,7 @@ fn one(bridge: &Bridge, scenario: &Path, golden: &Path, kind: &str) -> Result<()
         if !fake.exists() {
             return Err("build fake-op first: cargo build --locked -p envswitch-fake-op".into());
         }
+        let (_binaries, cli, fake) = isolated_binaries(&cli, &fake).map_err(|e| e.to_string())?;
         let actual = J::decode(&bridge.run(
             &[
                 "blackbox".into(),
@@ -208,6 +209,24 @@ fn one(bridge: &Bridge, scenario: &Path, golden: &Path, kind: &str) -> Result<()
     divergences::apply(&s, &mut expected, &actual, bridge)?;
     compare(&expected, &actual)
 }
+fn isolated_binaries(
+    cli: &Path,
+    fake: &Path,
+) -> std::io::Result<(tempfile::TempDir, PathBuf, PathBuf)> {
+    let root = tempfile::Builder::new()
+        .prefix("envswitch-parity-binaries-")
+        .tempdir()?;
+    let cli_dir = root.path().join("cli");
+    let fake_dir = root.path().join("fake-op");
+    fs::create_dir(&cli_dir)?;
+    fs::create_dir(&fake_dir)?;
+    let copied_cli = cli_dir.join(cli.file_name().unwrap());
+    let copied_fake = fake_dir.join(fake.file_name().unwrap());
+    fs::copy(cli, &copied_cli)?;
+    fs::copy(fake, &copied_fake)?;
+    Ok((root, copied_cli, copied_fake))
+}
+
 fn worker(path: &Path) -> ! {
     panic::set_hook(Box::new(|_| {}));
     let result = panic::catch_unwind(AssertUnwindSafe(|| {
@@ -309,6 +328,60 @@ pub fn scaffold_version_smoke() {
 #[cfg(test)]
 mod checks {
     use super::*;
+    #[test]
+    fn blackbox_binaries_have_separate_private_directories() {
+        let original = tempfile::tempdir().unwrap();
+        let cli = original.path().join("envswitch.exe");
+        let fake = original.path().join("op.exe");
+        fs::write(&cli, b"synthetic CLI").unwrap();
+        fs::write(&fake, b"synthetic op").unwrap();
+        let (_private, copied_cli, copied_fake) = isolated_binaries(&cli, &fake).unwrap();
+        assert_ne!(copied_cli.parent(), copied_fake.parent());
+        assert_ne!(copied_cli.parent(), cli.parent());
+        assert!(!copied_cli.parent().unwrap().join("op.exe").exists());
+        assert!(!copied_cli.parent().unwrap().join("op").exists());
+        assert_eq!(fs::read(copied_cli).unwrap(), b"synthetic CLI");
+        assert_eq!(fs::read(copied_fake).unwrap(), b"synthetic op");
+    }
+    #[test]
+    fn a8_fixtures_are_rejected_by_serde_json() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap();
+        for suffix in ["overflow", "depth-129", "lone-surrogate"] {
+            let scenario: serde_json::Value = serde_json::from_slice(
+                &fs::read(repo.join(format!("parity/scenarios/config-a8-{suffix}.json"))).unwrap(),
+            )
+            .unwrap();
+            assert!(
+                serde_json::from_str::<serde_json::Value>(scenario["configRaw"].as_str().unwrap())
+                    .is_err(),
+                "a8 {suffix} must require a replacement assertion"
+            );
+        }
+    }
+    #[test]
+    fn release_fake_records_unneeded_lookup_without_panicking() {
+        use envswitch::ports::ReleaseSource;
+        let calls = std::sync::Arc::new(std::sync::Mutex::new(ports::Calls::default()));
+        let release = ports::Release {
+            fake: crate::support::FakeReleaseSource::new(None),
+            calls: calls.clone(),
+        };
+        assert_eq!(release.latest_version(), None);
+        assert_eq!(
+            calls.lock().unwrap().updates[0].get("method").text(),
+            "fetchLatestVersion"
+        );
+        for status in [4, 143] {
+            assert_eq!(
+                envswitch::Error::status(status, "synthetic installer failure").exit_code(),
+                status
+            );
+        }
+    }
     #[test]
     fn object_order_is_observable() {
         let e = J::object([("b", J::number(1)), ("a", J::number(2))]);

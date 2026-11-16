@@ -95,6 +95,49 @@ pub fn apply(s: &J, expected: &mut J, actual: &J, b: &Bridge) -> Result<(), Stri
                 )?;
                 expected.set("stderrBase64", actual.get("stderrBase64").clone());
             }
+            "a8" => {
+                require(
+                    actual.get("exitCode").int() == 1,
+                    "a8 config/package parse failures are exit 1",
+                )?;
+                require(
+                    text(actual, "stdoutBase64", b).is_empty(),
+                    "a8 emits no success output",
+                )?;
+                let prefix = if s.get("kind").text() == "cli" {
+                    let progress = expected.get("progress").items();
+                    let end = progress
+                        .iter()
+                        .position(|e| e.get("message").text().starts_with("reading config item "))
+                        .ok_or("a8 CLI config-read event missing")?
+                        + 1;
+                    let retained = J::array(progress[..end].iter().cloned());
+                    require(
+                        actual.get("progress") == &retained,
+                        "a8 stops at config parsing",
+                    )?;
+                    expected.set("progress", retained);
+                    let old = text(expected, "stderrBase64", b);
+                    let header: String = old.split_inclusive('\n').take(end).collect();
+                    format!("{header}envswitch: config field is not valid JSON: ")
+                } else if s.get("kind").text() == "inspect" {
+                    "envswitch: failed to read package.json for project root validation: "
+                        .to_owned()
+                } else {
+                    "envswitch: config field is not valid JSON: ".to_owned()
+                };
+                let error = text(actual, "stderrBase64", b);
+                require(
+                    error.starts_with(&prefix)
+                        && error.ends_with('\n')
+                        && error.len() > prefix.len() + 1,
+                    "a8 preserves JSON parse diagnostic prefix",
+                )?;
+                expected.set("exitCode", J::number(1));
+                expected.set("stdoutBase64", J::string(""));
+                expected.set("stderrBase64", actual.get("stderrBase64").clone());
+                expected.set("result", J::null());
+            }
             "a6" => {
                 require(actual.get("exitCode").int() == 2, "a6 exit 2")?;
                 let e = text(actual, "stderrBase64", b);
@@ -128,7 +171,25 @@ pub fn apply(s: &J, expected: &mut J, actual: &J, b: &Bridge) -> Result<(), Stri
                     expected.set("stderrBase64", actual.get("stderrBase64").clone());
                 }
             }
-            "e1" | "e2" | "e3" => {}
+            "e1" | "e2" | "e3" | "h1" => {}
+            "e6" => {
+                let status = s.get("update").get("exitCode").int();
+                require(
+                    status != 0 && actual.get("exitCode").int() == status,
+                    "e6 forwards the fake installer's status",
+                )?;
+                require(
+                    text(actual, "stderrBase64", b).ends_with(&format!(
+                        "envswitch: update failed: installer exited with code {status}\n"
+                    )),
+                    "e6 preserves installer failure message",
+                )?;
+                require(
+                    text(actual, "stdoutBase64", b).is_empty(),
+                    "e6 prints no success",
+                )?;
+                expected.set("exitCode", J::number(status));
+            }
             "e4" => {
                 require(
                     actual.get("exitCode").int() == 1
@@ -200,6 +261,12 @@ fn update(s: &J, e: &mut J, a: &J, b: &Bridge, rows: &[&str]) -> Result<(), Stri
         plan.get("version").is_null(),
         "ordinary D3 installer resolves latest once",
     )?;
+    if s.get("update").get("exitCode").int() != 0 {
+        require(
+            rows.contains(&"e6"),
+            "installer exit-status replacement requires e6",
+        )?;
+    }
     let status = if s.get("update").has("installerError") {
         1
     } else {

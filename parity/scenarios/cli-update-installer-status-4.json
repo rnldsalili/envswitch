@@ -1,0 +1,30 @@
+{
+  "id": "cli-update-installer-status-4",
+  "kind": "cli",
+  "argv": [
+    "update"
+  ],
+  "files": [
+    {
+      "path": "{APP}/scripts/{INSTALLER}",
+      "content": "fixture only; never executed"
+    },
+    {
+      "path": "{APP}/.version",
+      "content": "v0.0.4\n"
+    }
+  ],
+  "update": {
+    "exitCode": 4
+  },
+  "divergence": [
+    "e1",
+    "e2",
+    "e3",
+    "e6"
+  ],
+  "rustUpdate": {
+    "repo": "demo-suite/alpha",
+    "installDir": "{TMP}/launcher"
+  }
+}

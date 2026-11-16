@@ -320,7 +320,6 @@ impl Prompter for Prompt {
 pub struct Release {
     pub fake: FakeReleaseSource,
     pub calls: Arc<Mutex<Calls>>,
-    pub unsupported: bool,
 }
 impl ReleaseSource for Release {
     fn latest_version(&self) -> Option<String> {
@@ -329,10 +328,6 @@ impl ReleaseSource for Release {
             .unwrap()
             .updates
             .push(J::object([("method", J::string("fetchLatestVersion"))]));
-        assert!(
-            !self.unsupported,
-            "frozen ReleaseSource::latest_version -> Option cannot represent TS fetchError; API decision required"
-        );
         self.fake.latest_version()
     }
 }

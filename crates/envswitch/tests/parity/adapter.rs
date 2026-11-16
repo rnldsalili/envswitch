@@ -326,7 +326,6 @@ pub fn execute(s: &J, bundle: &Value, path: &Path, bridge: &Bridge) -> Result<J>
                             None
                         }),
                         calls: calls.clone(),
-                        unsupported: update.has("fetchError"),
                     }),
                     installer: Box::new(Installer {
                         fake,

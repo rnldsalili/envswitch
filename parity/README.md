@@ -1,7 +1,7 @@
 # envswitch parity harness (F1, TS phase)
 
 The frozen oracle is `53de029a25a717c8ac824ca8553035e2b0fec991`, Bun **1.4.0**,
-ICU **78.1**, Unicode **17.0**, default locale **en-US**. The corpus contains **474** scenarios (465 on macOS/Linux; 472 on Windows).
+ICU **78.1**, Unicode **17.0**, default locale **en-US**. The corpus contains **483** scenarios (474 on macOS/Linux; 480 on Windows).
 No oracle source or
 production test is edited. Everything uses synthetic data and fresh temporary
 projects. No real 1Password invocation, installer, network update, or user profile
@@ -210,7 +210,10 @@ also traced. No subprocess is ever started by the fake.
 
 The black-box runner requires an existing native fake at the given absolute path,
 prepends its directory to PATH, verifies PATH resolution, and calls that exact
-binary's handshake **before every CLI child**. An alternate `op`/`op.exe` in the CLI executable directory (or Windows System32)
+binary's handshake **before every CLI child**. Each native black-box run copies the CLI and fake into **separate private
+directories**, so the missing-op case cannot resolve a sibling op.exe through
+Windows executable-directory lookup. The copies are removed after the run.
+An alternate `op`/`op.exe` in the CLI executable directory (or Windows System32)
 is rejected before any handshake or CLI launch. CLI executables must be absolute.
 The a6 scenario verifies the fake first, then uses a separate empty PATH directory
 for the absolute CLI. A golden expecting opCalls cannot reproduce with an empty
@@ -293,7 +296,10 @@ an absolute Bun executable. `SharedBuf`, `EventLog`, `EnvVars`, `ScriptedPrompte
 
 Each marked row has an explicit replacement assertion in `parity/divergences.rs`:
 prototype fields/flags and integer order get exact replacement objects/messages;
-JSON/spawn suffix rules check prefixes and exit status; a7 checks exit 2; listed
+JSON/spawn suffix rules check prefixes and exit status; a7 checks exit 2; a8
+checks config/package parse-error prefixes and exit 1. e6 forwards installer
+status (including Unix 128+signal); h1 preserves the full deterministic fake
+transcript without relaxing message order. Listed
 d1 filesystem codes remain exact; f1 checks `version_line()` bytes. No marker
 waives unrelated fields. Prompt UX/signal/installer-only rows require their
 separate lanes instead of granting a blanket exemption.
@@ -306,8 +312,8 @@ compiled version through the real frozen ports. Assertions require one embedded
 installer-port call, no separate latest lookup, the exact persisted settings,
 compiled-version/latest progress, status/summary, and unchanged cleanup checks.
 A TS `fetchError` has no throwing equivalent in frozen `ReleaseSource -> Option`;
-the fake fails loudly if called, and native update must not call it because the
-installer owns resolution. No support or production file was changed.
+the fake records any lookup without throwing; replacement assertions reject
+that call because the embedded installer owns resolution. No support or production file was changed.
 
 ## Result shapes and defaults
 
@@ -349,3 +355,7 @@ This intentionally models the runner seam; only blackbox exercises real spawn,
 raw bytes, stdout-cap enforcement and the runtime-specific empty-stderr suffix.
 `transcript.schema.json` has per-kind `$defs` and conditional result validation;
 the self-check validates **every committed OS golden** against it.
+
+The a8 corpus covers overflow (`1e400`), total nesting depth 129, and lone UTF-16
+surrogates in config item JSON, through both parseConfig and CLI config loading.
+No i1 TS scenario is generated: that source case hangs; C1 owns its Rust-only test.

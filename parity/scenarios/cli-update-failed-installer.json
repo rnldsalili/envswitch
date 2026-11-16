@@ -22,7 +22,8 @@
   "divergence": [
     "e1",
     "e2",
-    "e3"
+    "e3",
+    "e6"
   ],
   "rustUpdate": {
     "repo": "demo-suite/alpha",

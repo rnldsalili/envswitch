@@ -1,0 +1,6 @@
+{
+  "id": "config-a8-lone-surrogate",
+  "kind": "config",
+  "configRaw": "{\"targets\":[{\"name\":\"api\",\"output\":\"apps/api/.env\"}],\"extra\":\"\\ud800\"}",
+  "divergence": "a8"
+}

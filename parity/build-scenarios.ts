@@ -261,8 +261,25 @@ add("blackbox", "non-utf8-json", { divergence: "a5", argv: listArgs, expectOpCal
 scenarios.at(-1).op.responses[0].stdoutBase64 = Buffer.concat([Buffer.from('{"fields":[{"label":"config","value":"'), Buffer.from([255]), Buffer.from('"}]}')]).toString("base64");
 add("path", "eacces", { output: "locked/sub/.env", platforms: ["macos", "linux"], divergence: "d1", files: [{ path: "locked", type: "dir", mode: 0 }] });
 add("cli", "update-extra-positional", { argv: ["update", "extra"], files: installed, update: { latest: "0.0.4" }, divergence: ["e1", "e2", "e3"] });
+// Unknown fields leave the TS config valid while exercising serde_json's rejected JSON.
+const a8Values = {
+  overflow: '1e400',
+  "depth-129": "[".repeat(128) + "0" + "]".repeat(128),
+  "lone-surrogate": '"\\ud800"',
+};
+for (const [name, value] of Object.entries(a8Values)) {
+  const configRaw = '{"targets":[{"name":"api","output":"apps/api/.env"}],"extra":' + value + '}';
+  add("config", `a8-${name}`, { configRaw, divergence: "a8" });
+  add("cli", `a8-${name}`, { argv: listArgs, configRaw, divergence: "a8" });
+}
+add("cli", "update-installer-status-4", { argv: ["update"], files: installed, update: { exitCode: 4 } });
+add("cli", "update-installer-sigterm", { argv: ["update"], files: installed, update: { exitCode: 143 }, platforms: ["macos", "linux"] });
+add("cli", "guided-two-unreadable-vaults", { config, argv: [], parallelScans: 3, divergence: "h1", op: {
+  vaults: [{ id: "alpha-bad", name: "alpha" }, { id: "beta-bad", name: "beta" }, { id: "alpha", name: "demo-suite" }],
+  responses: [raw(list("envswitch-config", "alpha-bad"), "", 1, "unreadable"), raw(list("envswitch-config", "beta-bad"), "", 1, "unreadable")],
+}, prompts: ["alpha", "local", "all", true] });
 for (const s of scenarios) if (s.id.startsWith("cli-update-")) {
-  s.divergence = ["e1", "e2", "e3"];
+  s.divergence = ["e1", "e2", "e3", ...(s.update?.exitCode ? ["e6"] : [])];
   s.rustUpdate = { repo: "demo-suite/alpha", installDir: "{TMP}/launcher" };
 }
 for (const s of scenarios) if (["path-enotdir", "dotenv-mkdir-enotdir", "dotenv-rename-cleanup", "switch-nontransactional-writes", "inspect-marker-directory-package"].includes(s.id)) s.divergence = "d1";

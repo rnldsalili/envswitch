@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "id": "cli-update-installer-sigterm",
+  "kind": "cli",
+  "divergence": [
+    "e1",
+    "e2",
+    "e3",
+    "e6"
+  ],
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoIFtpbmZvXSB1cGRhdGluZyBlbnZzd2l0Y2ggdjAuMC40IC0+IGxhdGVzdAplbnZzd2l0Y2g6IHVwZGF0ZSBmYWlsZWQ6IGluc3RhbGxlciBleGl0ZWQgd2l0aCBjb2RlIDE0Mwo=",
+  "exitCode": 1,
+  "prompts": [],
+  "progress": [
+    {
+      "status": "info",
+      "message": "updating envswitch v0.0.4 -> latest"
+    }
+  ],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [
+    {
+      "method": "fetchLatestVersion"
+    },
+    {
+      "method": "runInstaller",
+      "scriptPath": "{APP}/scripts/install.sh",
+      "appRoot": "{TMP}/app"
+    }
+  ],
+  "files": [
+    {
+      "path": "{APP}/.version",
+      "kind": "file",
+      "bytesBase64": "djAuMC40Cg==",
+      "mode": 420
+    },
+    {
+      "path": "{APP}/scripts/install.sh",
+      "kind": "file",
+      "bytesBase64": "Zml4dHVyZSBvbmx5OyBuZXZlciBleGVjdXRlZA==",
+      "mode": 420
+    }
+  ],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{APP}/scripts",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}
