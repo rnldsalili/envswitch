@@ -23,5 +23,6 @@ The oracle is commit `53de029` running on Bun 1.4.0. Any difference not listed h
 | e5 | Installer output lines | install/update | Bun/source lines | native lines per `INSTALLER-PROTOCOL.md` | D2b | Installer test suites |
 | f1 | `--version` | `envswitch --version` | `unknown command: --version`, exit 1 | `envswitch <ver> <target>\n`, exit 0 | C4 | Snapshot |
 | g1 | Same-layer title ordering | two same-rank items with titles `ä…` / `z…` on a Swedish-locale host | host-locale `localeCompare` | fixed `en-US` ICU collation | C3 | Goldens generated with oracle in en-US |
+| h1 | Guided vault-scan skip messages | two unreadable vaults scanned concurrently | emitted in completion order (nondeterministic with real `op`; vault order with synchronous fakes) | always emitted in vault order | C4 | Goldens (fakes) match exactly; no extra assertion |
 
 Windows drive-relative paths (`C:x`) keep **parity**; no tightening.
