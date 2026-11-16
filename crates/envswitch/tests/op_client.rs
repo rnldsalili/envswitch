@@ -308,12 +308,27 @@ fn failed_commands_use_trimmed_stderr_or_safe_command_fallback() {
             ..StaticRunner::default()
         });
         let op = OnePasswordClient::new("vault", runner.clone());
-        for error in [
-            op.assert_authenticated().unwrap_err(),
-            op.list_items_by_tags(&[]).unwrap_err(),
-            op.read_config_item("cfg").unwrap_err(),
-            op.read_env_item(&item("env", "")).unwrap_err(),
-            list_vaults(runner.as_ref()).unwrap_err(),
+        for (error, command) in [
+            (
+                op.assert_authenticated().unwrap_err(),
+                "Command failed: op whoami --format json",
+            ),
+            (
+                op.list_items_by_tags(&[]).unwrap_err(),
+                "Command failed: op item list --vault vault --format json",
+            ),
+            (
+                op.read_config_item("cfg").unwrap_err(),
+                "Command failed: op item get cfg --vault vault --format json --reveal",
+            ),
+            (
+                op.read_env_item(&item("env", "")).unwrap_err(),
+                "Command failed: op item get env --vault vault --format json --reveal",
+            ),
+            (
+                list_vaults(runner.as_ref()).unwrap_err(),
+                "Command failed: op vault list --format json",
+            ),
         ] {
             assert_eq!(error.exit_code(), 2);
             let message = error.to_string();
@@ -321,7 +336,7 @@ fn failed_commands_use_trimmed_stderr_or_safe_command_fallback() {
             if stderr.contains("safe failure") {
                 assert_eq!(message, "safe failure");
             } else {
-                assert!(message.starts_with("Command failed: op "));
+                assert_eq!(message, command);
             }
         }
     }

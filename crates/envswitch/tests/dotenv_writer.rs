@@ -142,10 +142,12 @@ fn mkdir_failure_reports_node_syscall_without_leaving_files() {
     fs::write(&parent, "original").unwrap();
     let error = write_env_file(&parent.join("nested/.env"), &EnvMap::new()).unwrap_err();
     let message = error.to_string();
-    #[cfg(unix)]
-    assert!(
-        message.starts_with("ENOTDIR: not a directory, mkdir '"),
-        "{message}"
+    assert_eq!(
+        message,
+        format!(
+            "ENOTDIR: not a directory, mkdir '{}'",
+            parent.join("nested").display()
+        )
     );
     assert!(message.contains(", mkdir '"), "{message}");
     assert_eq!(fs::read_to_string(parent).unwrap(), "original");
@@ -201,4 +203,37 @@ fn replaces_final_symlink_without_modifying_referent() {
     );
     assert_eq!(fs::read_to_string(output).unwrap(), "\n");
     assert_eq!(fs::read_to_string(referent).unwrap(), "untouched");
+}
+
+#[test]
+#[cfg(unix)]
+fn cleanup_permission_failure_replaces_original_error_with_node_rm_error() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path().join("restricted");
+    fs::create_dir(&dir).unwrap();
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o600)).unwrap();
+    let result = write_env_file(&dir.join(".env"), &EnvMap::new());
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).unwrap();
+    let error = result.unwrap_err();
+    let message = error.to_string();
+    let temp = message.split('\'').nth(1).unwrap();
+    let base = format!("..env.{}.", std::process::id());
+    let name = std::path::Path::new(temp)
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap();
+    let uuid = name
+        .strip_prefix(&base)
+        .unwrap()
+        .strip_suffix(".tmp")
+        .unwrap();
+    assert_eq!(uuid::Uuid::parse_str(uuid).unwrap().get_version_num(), 4);
+    assert_eq!(std::path::Path::new(temp).parent().unwrap(), dir);
+    assert_eq!(
+        error,
+        Error::internal(format!("EACCES: permission denied, rm '{temp}'"))
+    );
+    assert_eq!(fs::read_dir(&dir).unwrap().count(), 0);
 }

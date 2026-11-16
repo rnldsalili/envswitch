@@ -24,11 +24,12 @@ impl CommandRunner for ExecCommandRunner {
     fn run(&self, program: &str, args: &[String]) -> Result<CommandOutput> {
         let mut child = Command::new(program)
             .args(args)
-            .stdin(Stdio::null())
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|error| Error::internal(format!("failed to run {program}: {error}")))?;
+        drop(child.stdin.take());
         let stdout = child.stdout.take().expect("piped stdout");
         let stderr = child.stderr.take().expect("piped stderr");
         let mut output = CommandOutput::default();
@@ -71,6 +72,7 @@ impl CommandRunner for ExecCommandRunner {
             .map_err(|error| Error::internal(error.to_string()))?;
         if let Some(failure) = failure {
             let stderr = String::from_utf8_lossy(&output.stderr);
+            // TODO(C1 merge): call js_trim directly once the helper is implemented.
             let stderr = if stderr.is_empty() {
                 ""
             } else {

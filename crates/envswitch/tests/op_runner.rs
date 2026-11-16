@@ -18,6 +18,16 @@ fn process_child() {
             .any(|arg| arg == "literal space ; $HOME `no-shell`")
     );
     match marker.as_str() {
+        #[cfg(unix)]
+        "envswitch-child-stdin" => {
+            use std::os::fd::AsFd;
+            use std::os::unix::fs::FileTypeExt;
+            let mut stdin =
+                std::fs::File::from(std::io::stdin().as_fd().try_clone_to_owned().unwrap());
+            assert!(!stdin.metadata().unwrap().file_type().is_char_device());
+            assert_eq!(stdin.read(&mut [0]).unwrap(), 0);
+            std::process::exit(0);
+        }
         "envswitch-child-failure" => {
             std::io::stdout().write_all(b"SUPER_SECRET").unwrap();
             std::io::stderr().write_all(b"  safe failure  \n").unwrap();
@@ -165,5 +175,16 @@ fn spawn_failure_uses_approved_message_format() {
         error
             .to_string()
             .starts_with(&format!("failed to run {program}: "))
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn stdin_is_a_non_char_device_pipe_at_eof() {
+    let output = child("envswitch-child-stdin").unwrap();
+    assert!(
+        output.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
     );
 }

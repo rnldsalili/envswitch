@@ -43,7 +43,8 @@ pub fn stringify_env(values: &EnvMap) -> Result<String> {
 
 /// TS `writeEnvFile(path, values)` (02 §6.2): serialize first, `mkdir -p`
 /// (0o750 on unix), temp file `.<base>.<pid>.<uuid v4>.tmp` (0o600), rename
-/// over `path`, remove the temp file on failure, then chmod 0o600. io errors
+/// over `path`, remove the temp file on failure (cleanup errors take precedence),
+/// then chmod 0o600. io errors
 /// use `crate::error::io_error` (DIVERGENCES d1).
 pub fn write_env_file(path: &Path, values: &EnvMap) -> Result<()> {
     let content = stringify_env(values)?;
@@ -63,9 +64,17 @@ pub fn write_env_file(path: &Path, values: &EnvMap) -> Result<()> {
     builder.recursive(true);
     #[cfg(unix)]
     builder.mode(0o750);
-    builder
-        .create(dir)
-        .map_err(|error| io_error(&error, "mkdir", dir))?;
+    builder.create(dir).map_err(|error| {
+        #[cfg(windows)]
+        if error.kind() == std::io::ErrorKind::AlreadyExists && !dir.is_dir() {
+            return io_error(
+                &std::io::Error::from(std::io::ErrorKind::NotADirectory),
+                "mkdir",
+                dir,
+            );
+        }
+        io_error(&error, "mkdir", dir)
+    })?;
 
     let result = (|| {
         let mut options = OpenOptions::new();
@@ -81,8 +90,11 @@ pub fn write_env_file(path: &Path, values: &EnvMap) -> Result<()> {
         chmod_private(&temp)?;
         fs::rename(&temp, path).map_err(|error| io_error_dest(&error, "rename", &temp, path))
     })();
-    if result.is_err() {
-        let _ = fs::remove_file(&temp);
+    if result.is_err()
+        && let Err(error) = fs::remove_file(&temp)
+        && error.kind() != std::io::ErrorKind::NotFound
+    {
+        return Err(io_error(&error, "rm", &temp));
     }
     result?;
     chmod_private(path)
