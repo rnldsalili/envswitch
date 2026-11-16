@@ -4,13 +4,16 @@ import argparse
 import gzip
 import hashlib
 import io
+import json
+import os
 import re
+import stat
 import shutil
 import subprocess
 import tarfile
 import tomllib
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 TARGETS = (
     'aarch64-apple-darwin', 'x86_64-apple-darwin',
@@ -23,6 +26,39 @@ def version_number(version):
     if not re.fullmatch(r'0\.0\.(0|[1-9][0-9]*)', version):
         raise ValueError(f'invalid release version: {version!r}')
     return int(version[4:])
+
+
+def plan(root, environ):
+    version = '0.0.' + environ['GITHUB_RUN_NUMBER']
+    if version_number(version) == 0 or not re.fullmatch(r'[0-9a-f]{40}', environ['GITHUB_SHA']):
+        raise ValueError('invalid release run number or source SHA')
+    dispatch = environ['GITHUB_EVENT_NAME'] == 'workflow_dispatch'
+    if dispatch:
+        kind = environ['DISPATCH_KIND']
+    else:
+        kind = ('native' if (root / 'crates/envswitch/Cargo.toml').is_file()
+                and (root / 'rust-toolchain.toml').is_file() else 'source')
+    if kind not in ('source', 'native'):
+        raise ValueError('dispatch requires an explicit source or native kind')
+    publish = dispatch and environ.get('PUBLISH_REQUESTED') == 'true'
+    if publish and environ['GITHUB_REF'] != 'refs/heads/main':
+        raise ValueError('publication is restricted to refs/heads/main')
+    return dict(version=version, tag='v' + version, sha=environ['GITHUB_SHA'], kind=kind,
+                publish=str(publish).lower(), bun=str((root / 'package.json').is_file()).lower())
+
+
+def check_linkage_output(target, output):
+    if not output.strip():
+        raise ValueError('linkage tool returned an empty report')
+    if target.endswith('windows-msvc'):
+        if re.search(r'\bvcruntime[^\s]*\.dll\b', output, re.IGNORECASE):
+            raise ValueError('Windows executable imports a dynamic VCRUNTIME DLL')
+    elif target.endswith('apple-darwin'):
+        libraries = [line.strip().split(' (', 1)[0] for line in output.splitlines()[1:] if line.strip()]
+        if not libraries or any(not lib.startswith(('/usr/lib/', '/System/Library/')) for lib in libraries):
+            raise ValueError('macOS executable imports a non-system library')
+    else:
+        raise ValueError(f'unsupported linkage report target: {target}')
 
 
 def archive_name(version, target):
@@ -52,7 +88,7 @@ def stamp(root, version):
     version_number(version)
     manifest = root / 'crates/envswitch/Cargo.toml'
     lock = root / 'Cargo.lock'
-    manifest_text, lock_text = manifest.read_text(), lock.read_text()
+    manifest_text, lock_text = manifest.read_text(encoding='utf-8'), lock.read_text(encoding='utf-8')
     manifest_before = tomllib.loads(manifest_text)
     lock_before = tomllib.loads(lock_text)
     package = manifest_before['package']
@@ -89,8 +125,8 @@ def stamp(root, version):
             entry['version'] = package['version']
     if manifest_before != manifest_after or lock_before != lock_after:
         raise ValueError('dependency graph changed during stamping')
-    manifest.write_bytes(stamped_manifest.encode())
-    lock.write_bytes(stamped_lock.encode())
+    manifest.write_bytes(stamped_manifest.encode('utf-8'))
+    lock.write_bytes(stamped_lock.encode('utf-8'))
 
 
 def regular_file(path):
@@ -189,6 +225,79 @@ def package_source(root, output, version):
     return write_archive(output / archive_name(version, 'source'), files)
 
 
+def archive_members(path):
+    if path.suffix == '.zip':
+        with zipfile.ZipFile(path) as archive:
+            for member in archive.infolist():
+                mode = member.external_attr >> 16
+                if (stat.S_IFMT(mode) not in (stat.S_IFREG, stat.S_IFDIR)
+                        or stat.S_ISDIR(mode) != member.is_dir() or member.external_attr & 0x400):
+                    raise ValueError(f'non-regular ZIP member: {member.filename}')
+                yield member.filename, member.is_dir(), stat.S_IMODE(mode), archive.read(member)
+    else:
+        with tarfile.open(path) as archive:
+            for member in archive:
+                if not member.isfile() and not member.isdir():
+                    raise ValueError(f'non-regular tar member: {member.name}')
+                name = member.name.removeprefix('./')
+                yield name, member.isdir(), member.mode, archive.extractfile(member).read() if member.isfile() else b''
+
+
+def verify_archive(path, target, standalone):
+    """Validate all members without extracting anything (protocol 1)."""
+    files, directories, seen = {}, set(), set()
+    for raw_name, directory, mode, data in archive_members(path):
+        name = raw_name.removesuffix('/') if directory else raw_name
+        parts = name.split('/')
+        if (not name or '\\' in name or ':' in name or any(p in ('', '.', '..') for p in parts)
+                or any(ord(c) < 32 or 127 <= ord(c) <= 159 for c in name)):
+            raise ValueError(f'unsafe archive path: {raw_name!r}')
+        if name.casefold() in seen or mode & 0o7000:
+            raise ValueError(f'duplicate path or privileged mode: {name}')
+        seen.add(name.casefold())
+        if directory:
+            directories.add(name)
+        else:
+            files[name] = (mode, data)
+    if target == 'source':
+        prefix = 'envswitch/'
+        required = {'package.json', 'bun.lock', 'src/cli.ts', 'scripts/install.sh', 'scripts/install.ps1'}
+        if not {prefix + n for n in required} <= files.keys():
+            raise ValueError('source archive is missing required files under envswitch/')
+        for name in files:
+            relative = name.removeprefix(prefix)
+            if (not name.startswith(prefix)
+                    or not (relative in ('package.json', 'bun.lock', 'README.md', 'tsconfig.json')
+                            or relative.startswith(('src/', 'scripts/')))
+                    or any(p in ('.git', 'node_modules', '.env', '.version', 'install.json', '.install.lock')
+                           or p.startswith('.env.') for p in name.split('/'))):
+                raise ValueError(f'unexpected source archive member: {name}')
+        package = json.loads(files[prefix + 'package.json'][1])
+        if not isinstance(package, dict) or package.get('name') != 'envswitch':
+            raise ValueError('source package name must be envswitch')
+    else:
+        prefix = ''
+        binary = 'envswitch.exe' if target.endswith('windows-msvc') else 'envswitch'
+        if set(files) != {binary, 'scripts/install.sh', 'scripts/install.ps1', 'README.md'}:
+            raise ValueError('native archive contents do not match protocol 1')
+        if files[binary][0] != 0o755:
+            raise ValueError('native executable mode must be 0755')
+    needed_directories = {str(parent) for name in files for parent in PurePosixPath(name).parents if str(parent) != '.'}
+    if not directories <= needed_directories:
+        raise ValueError('archive has unnecessary directories')
+    for script in ('install.sh', 'install.ps1'):
+        if files[prefix + 'scripts/' + script][1] != (standalone / script).read_bytes():
+            raise ValueError(f'bundled {script} differs from the standalone release script')
+
+
+def verify_archives(directory, kind, version):
+    for target in TARGETS if kind == 'native' else ('source',):
+        try:
+            verify_archive(directory / archive_name(version, target), target, directory)
+        except (tarfile.TarError, zipfile.BadZipFile, json.JSONDecodeError) as error:
+            raise ValueError(f'invalid release archive: {error}') from error
+
+
 def collect(artifacts, output, kind, version):
     expected = {'release-common'}
     if kind == 'native':
@@ -209,6 +318,7 @@ def collect(artifacts, output, kind, version):
     output.mkdir()  # refuse to mix this run with previous outputs
     for path in files:
         shutil.copyfile(path, output / path.name)
+    verify_archives(output, kind, version)
     checksums(output)
     verify_checksums(output)
 
@@ -235,6 +345,11 @@ def check_version(binary, version, target):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
+    p = sub.add_parser('plan')
+    p.add_argument('root', type=Path)
+    p = sub.add_parser('check-linkage')
+    p.add_argument('target', choices=TARGETS)
+    p.add_argument('report', type=Path)
     p = sub.add_parser('stamp')
     p.add_argument('root', type=Path)
     p.add_argument('version')
@@ -255,7 +370,14 @@ def main():
             p.add_argument('--root', type=Path, default=Path('.'))
             p.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    if args.command == 'stamp':
+    if args.command == 'plan':
+        values = plan(args.root, os.environ)
+        with Path(os.environ['GITHUB_OUTPUT']).open('a', encoding='utf-8', newline='\n') as output:
+            output.writelines(f'{key}={value}\n' for key, value in values.items())
+        print(values)
+    elif args.command == 'check-linkage':
+        check_linkage_output(args.target, args.report.read_text(encoding='utf-8'))
+    elif args.command == 'stamp':
         stamp(args.root, args.version)
     elif args.command == 'checksums':
         checksums(args.directory)

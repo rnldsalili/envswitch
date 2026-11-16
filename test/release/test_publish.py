@@ -14,8 +14,7 @@ import release as r
 
 spec = importlib.util.spec_from_file_location('publish', ROOT / 'scripts/release/publish.py')
 p = importlib.util.module_from_spec(spec)
-if Path(spec.origin).exists():
-    spec.loader.exec_module(p)
+spec.loader.exec_module(p)
 
 SHA = 'a' * 40
 
@@ -29,16 +28,21 @@ class GitHub:
         self.events = []
         self.published = []
         self.annotated = {}
+        self.states = {}
+        self.ids = {}
 
     def gh(self, *args, raw=False, optional=False):
-        if args[:2] == ('release', 'upload'):
-            path = Path(args[3])
-            self.assets[path.name] = path.read_bytes()
-            self.events.append('upload')
-            return b''
         path = args[1]
         method = args[args.index('--method') + 1] if '--method' in args else 'GET'
         fields = dict(args[i + 1].split('=', 1) for i, arg in enumerate(args) if arg in ('-f', '-F'))
+        if path.startswith('https://uploads.github.com/'):
+            assert '/releases/7/assets?name=' in path
+            name = path.split('?name=', 1)[1]
+            file = Path(args[args.index('--input') + 1])
+            self.assets[name] = file.read_bytes()
+            self.states[name] = 'uploaded'
+            self.events.append('upload')
+            return {}
         if '/git/ref/tags/' in path:
             return None if self.tag is None else {'object': copy.deepcopy(self.tag)}
         if '/git/tags/' in path:
@@ -48,20 +52,32 @@ class GitHub:
             self.events.append('tag')
             return {}
         if '/releases/tags/' in path:
+            if self.release is None or self.release['draft']:
+                if optional:
+                    return None
+                raise RuntimeError('gh failed: HTTP 404')
             return copy.deepcopy(self.release)
         if '/assets?per_page=' in path:
-            return [[{'id': i + 1, 'name': n, 'state': 'uploaded'} for i, n in enumerate(self.assets)]]
+            for name in self.assets:
+                self.ids.setdefault(name, len(self.ids) + 1)
+            return [[{'id': self.ids[n], 'name': n, 'state': self.states.get(n, 'uploaded')} for n in self.assets]]
         if '/releases/assets/' in path:
-            return list(self.assets.values())[int(path.rsplit('/', 1)[-1]) - 1]
+            name, = [n for n, asset_id in self.ids.items() if asset_id == int(path.rsplit('/', 1)[-1])]
+            if method == 'DELETE':
+                del self.assets[name]
+                self.events.append('delete')
+                return b''
+            return self.assets[name]
         if path.endswith('/releases?per_page=100'):
-            return [copy.deepcopy(self.published)]
+            return [copy.deepcopy(self.published), [copy.deepcopy(self.release)] if self.release else []]
         if path.endswith('/releases') and method == 'POST':
-            self.release = {'id': 7, 'draft': True, 'prerelease': False, 'tag_name': fields['tag_name']}
+            self.release = {'id': 7, 'draft': True, 'prerelease': False, 'tag_name': fields['tag_name'], 'body': fields['body']}
             self.events.append('draft')
             return copy.deepcopy(self.release)
         if path.endswith('/releases/7'):
             if method == 'PATCH':
                 self.release['draft'] = False
+                self.release['body'] = fields['body']
                 self.events.append('promote')
             return copy.deepcopy(self.release)
         raise AssertionError(f'unexpected GitHub operation: {args}')
@@ -130,7 +146,7 @@ class Publisher(unittest.TestCase):
         self.publish()
         self.assertEqual(self.remote.events, ['upload', 'promote'])
 
-    def test_extra_duplicate_or_corrupt_draft_assets_cannot_be_promoted(self):
+    def test_extra_draft_assets_are_refused_and_conflicting_draft_bytes_can_be_replaced(self):
         self.existing(draft=True)
         self.remote.assets['unexpected'] = b'extra'
         with self.assertRaises(ValueError):
@@ -138,15 +154,15 @@ class Publisher(unittest.TestCase):
         self.assertEqual(self.remote.events, [])
         del self.remote.assets['unexpected']
         self.remote.assets['install.ps1'] = b'bad'
-        with self.assertRaises(ValueError):
-            self.publish()
-        self.assertEqual(self.remote.events, [])
+        self.publish()
+        self.assertEqual(self.remote.events, ['delete', 'upload', 'promote'])
+        self.assertEqual(self.remote.assets['install.ps1'], (self.directory / 'install.ps1').read_bytes())
 
     def test_corrupt_uploaded_asset_leaves_release_in_draft(self):
         original = self.remote.gh
         def corrupt_upload(*args, **kwargs):
             result = original(*args, **kwargs)
-            if args[:2] == ('release', 'upload') and Path(args[3]).name == 'install.sh':
+            if args[1].startswith('https://uploads.github.com/') and args[1].endswith('?name=install.sh'):
                 self.remote.assets['install.sh'] = b'corrupted in transit'
             return result
         with patch.object(p, 'gh', corrupt_upload), self.assertRaises(ValueError):
@@ -166,6 +182,48 @@ class Publisher(unittest.TestCase):
             p.publish('demo-suite/envswitch', self.directory, 'source', '0.0.42', 'v0.0.42', SHA)
         self.assertEqual(self.remote.events, [])
 
+    def test_starter_asset_is_removed_and_uploaded_again_only_in_draft(self):
+        self.existing(draft=True)
+        self.remote.states['install.sh'] = 'starter'
+        self.publish()
+        self.assertEqual(self.remote.events, ['delete', 'upload', 'promote'])
+        self.existing(draft=False)
+        self.remote.events.clear()
+        self.remote.states['install.sh'] = 'starter'
+        with self.assertRaises(ValueError):
+            self.publish()
+        self.assertEqual(self.remote.events, [])
+
+    def test_duplicate_tag_matches_from_listing_fail_without_writes(self):
+        self.existing(draft=True)
+        self.remote.published.append(copy.deepcopy(self.remote.release))
+        with self.assertRaises(ValueError):
+            self.publish()
+        self.assertEqual(self.remote.events, [])
+
+    def test_source_release_notes_do_not_instruct_users_to_reinstall(self):
+        self.publish()
+        self.assertNotIn('reinstall', self.remote.release['body'])
+
+    def test_resumed_source_draft_gets_source_release_notes(self):
+        self.existing(draft=True)
+        self.remote.release['body'] = 'must reinstall'
+        self.publish()
+        self.assertNotIn('reinstall', self.remote.release['body'])
+
+    def test_published_during_draft_inspection_cannot_have_assets_deleted(self):
+        self.existing(draft=True)
+        self.remote.assets['install.sh'] = b'conflict'
+        original = self.remote.gh
+        def published_during_read(*args, **kwargs):
+            result = original(*args, **kwargs)
+            if '/releases/assets/' in args[1] and '--method' not in args:
+                self.remote.release['draft'] = False
+            return result
+        with patch.object(p, 'gh', published_during_read), self.assertRaises(ValueError):
+            p.publish('demo-suite/envswitch', self.directory, 'source', '0.0.42', 'v0.0.42', SHA)
+        self.assertEqual(self.remote.events, [])
+
     def test_annotated_tag_is_peeled_to_commit(self):
         self.existing()
         self.remote.tag = {'type': 'tag', 'sha': 'c' * 40}
@@ -177,7 +235,7 @@ class Publisher(unittest.TestCase):
         original = self.remote.gh
         def concurrent_release(*args, **kwargs):
             result = original(*args, **kwargs)
-            if args[:2] == ('release', 'upload'):
+            if args[1].startswith('https://uploads.github.com/'):
                 self.remote.published = [{'tag_name': 'v0.0.100', 'draft': False}]
             return result
         with patch.object(p, 'gh', concurrent_release), self.assertRaises(ValueError):

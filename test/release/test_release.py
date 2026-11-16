@@ -1,6 +1,6 @@
 """Release helper contracts; run with python3 -m unittest discover -s test/release."""
 import hashlib
-import importlib.util
+import io
 import os
 from pathlib import Path
 import shutil
@@ -12,13 +12,9 @@ import unittest
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
-HELPER = ROOT / 'scripts/release/release.py'
 sys.dont_write_bytecode = True
-spec = importlib.util.spec_from_file_location('release', HELPER)
-r = importlib.util.module_from_spec(spec)
-# Missing helpers are an expected failure until implementation lands.
-if HELPER.exists():
-    spec.loader.exec_module(r)
+sys.path.insert(0, str(ROOT / 'scripts/release'))
+import release as r
 
 NATIVE = [
     'envswitch_0.0.42_aarch64-apple-darwin.tar.gz',
@@ -38,16 +34,22 @@ class Helpers(unittest.TestCase):
         self.root = Path(self.tmp.name)
 
     def test_stamp_changes_only_workspace_package_version_in_temp_copy(self):
-        if not (ROOT / 'Cargo.toml').exists():
-            self.skipTest('M1a source-only checkout has no Rust workspace')
         for name in ['Cargo.toml', 'Cargo.lock', 'crates/envswitch/Cargo.toml']:
             dest = self.root / name
             dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(ROOT / name, dest)
-        before = tomllib.loads((self.root / 'Cargo.lock').read_text())
+            if (ROOT / name).exists():
+                shutil.copyfile(ROOT / name, dest)
+            else:
+                fixtures = {
+                    'Cargo.toml': '[workspace]\nmembers = ["crates/envswitch"]\n',
+                    'crates/envswitch/Cargo.toml': '[package]\nname = "envswitch"\nversion = "0.0.0"\ndescription = "café"\n',
+                    'Cargo.lock': 'version = 4\n\n[[package]]\nname = "envswitch"\nversion = "0.0.0"\n',
+                }
+                dest.write_text(fixtures[name], encoding='utf-8')
+        before = tomllib.loads((self.root / 'Cargo.lock').read_text(encoding='utf-8'))
         r.stamp(self.root, '0.0.42')
-        after = tomllib.loads((self.root / 'Cargo.lock').read_text())
-        self.assertEqual(tomllib.loads((self.root / 'crates/envswitch/Cargo.toml').read_text())['package']['version'], '0.0.42')
+        after = tomllib.loads((self.root / 'Cargo.lock').read_text(encoding='utf-8'))
+        self.assertEqual(tomllib.loads((self.root / 'crates/envswitch/Cargo.toml').read_text(encoding='utf-8'))['package']['version'], '0.0.42')
         local = [p for p in after['package'] if p['name'] == 'envswitch' and 'source' not in p]
         self.assertEqual(len(local), 1)
         self.assertEqual(local[0]['version'], '0.0.42')
@@ -128,7 +130,7 @@ class Helpers(unittest.TestCase):
         (self.root / 'src').mkdir()
         (self.root / 'src/cli.ts').write_text('console.log("fixture");\n')
         for name in ['package.json', 'bun.lock', 'tsconfig.json']:
-            (self.root / name).write_text('{}\n')
+            (self.root / name).write_text('{"name": "envswitch"}\n', encoding='utf-8')
         out = self.root / 'out'
         out.mkdir()
         archive = r.package_source(self.root, out, '0.0.42')
@@ -141,39 +143,132 @@ class Helpers(unittest.TestCase):
             with self.assertRaises(ValueError):
                 r.package_source(self.root, out, '0.0.42')
 
-    def test_artifact_collection_requires_exact_container_names_and_payloads(self):
-        artifacts = self.root / 'artifacts'
-        common = artifacts / 'release-common'
-        common.mkdir(parents=True)
-        for name in SOURCE[:-1]:
-            (common / name).write_bytes(b'x')
-        out = self.root / 'release'
-        r.collect(artifacts, out, 'source', '0.0.42')
-        r.verify_assets('source', '0.0.42', [p.name for p in out.iterdir()])
-        r.verify_checksums(out)
-        (artifacts / 'release-unexpected').mkdir()
-        with self.assertRaises(ValueError):
-            r.collect(artifacts, self.root / 'other', 'source', '0.0.42')
-
-    def test_native_artifact_collection_rejects_missing_target_and_wrong_container_payload(self):
-        artifacts = self.root / 'artifacts'
+    def artifacts(self, kind):
+        fixture = Path(tempfile.mkdtemp(dir=self.root))
+        payload = fixture / 'payload'
+        (payload / 'scripts').mkdir(parents=True)
+        (payload / 'src').mkdir()
+        for name in ['scripts/install.sh', 'scripts/install.ps1', 'README.md', 'src/cli.ts', 'bun.lock', 'tsconfig.json']:
+            (payload / name).write_bytes(name.encode())
+        (payload / 'package.json').write_bytes(b'{"name":"envswitch"}')
+        binary = payload / 'envswitch'
+        binary.write_bytes(b'fixture binary')
+        artifacts = fixture / 'artifacts'
         common = artifacts / 'release-common'
         common.mkdir(parents=True)
         for name in ['install.sh', 'install.ps1']:
-            (common / name).write_bytes(b'installer')
-        for name in NATIVE[:5]:
-            target = name.removeprefix('envswitch_0.0.42_').removesuffix('.tar.gz').removesuffix('.zip')
-            container = artifacts / ('release-native-' + target)
-            container.mkdir()
-            (container / name).write_bytes(b'archive')
-        r.collect(artifacts, self.root / 'release', 'native', '0.0.42')
-        r.verify_checksums(self.root / 'release')
-        (container / name).rename(container / 'wrong.zip')
-        with self.assertRaises(ValueError):
-            r.collect(artifacts, self.root / 'wrong', 'native', '0.0.42')
-        shutil.rmtree(container)
-        with self.assertRaises(ValueError):
-            r.collect(artifacts, self.root / 'missing', 'native', '0.0.42')
+            shutil.copyfile(payload / 'scripts' / name, common / name)
+        if kind == 'source':
+            r.package_source(payload, common, '0.0.42')
+        else:
+            for target in r.TARGETS:
+                container = artifacts / ('release-native-' + target)
+                container.mkdir()
+                r.package_native(payload, container, '0.0.42', target, binary)
+        return artifacts, common
+
+    def test_artifact_collection_requires_exact_container_names_and_payloads(self):
+        for kind in ['source', 'native']:
+            artifacts, common = self.artifacts(kind)
+            out = artifacts.parent / 'release'
+            r.collect(artifacts, out, kind, '0.0.42')
+            r.verify_assets(kind, '0.0.42', [p.name for p in out.iterdir()])
+            r.verify_checksums(out)
+            (artifacts / 'release-unexpected').mkdir()
+            with self.assertRaises(ValueError):
+                r.collect(artifacts, artifacts.parent / 'other', kind, '0.0.42')
+
+    def rewrite_tar(self, path, mutation):
+        with tarfile.open(path) as archive:
+            entries = [(m, archive.extractfile(m).read() if m.isfile() else b'') for m in archive]
+        mutation(entries)
+        with tarfile.open(path, 'w:gz') as archive:
+            for info, data in entries:
+                info.size = len(data)
+                archive.addfile(info, io.BytesIO(data) if info.isfile() else None)
+
+    def test_collect_rejects_bad_native_tar_contents_types_modes_and_script_bytes(self):
+        for mutation in ['extra', 'missing', 'link', 'mode', 'script', 'duplicate', 'path']:
+            with self.subTest(mutation=mutation):
+                artifacts, common = self.artifacts('native')
+                path = next((artifacts / 'release-native-aarch64-apple-darwin').iterdir())
+                def change(entries):
+                    if mutation == 'extra':
+                        entries.append((tarfile.TarInfo('extra.txt'), b''))
+                    elif mutation == 'missing':
+                        entries.pop()
+                    elif mutation == 'link':
+                        entries[0][0].type = tarfile.SYMTYPE
+                        entries[0][0].linkname = '/etc/passwd'
+                    elif mutation == 'mode':
+                        entries[0][0].mode = 0o644
+                    elif mutation == 'script':
+                        entries[1] = (entries[1][0], b'wrong script')
+                    elif mutation == 'duplicate':
+                        entries.append(entries[0])
+                    else:
+                        entries[0][0].name = '../envswitch'
+                self.rewrite_tar(path, change)
+                with self.assertRaises(ValueError):
+                    r.collect(artifacts, artifacts.parent / 'release', 'native', '0.0.42')
+
+    def test_collect_rejects_bad_native_zip_modes_types_layout_and_script_bytes(self):
+        for mutation in ['extra', 'link', 'reparse', 'mode', 'script']:
+            with self.subTest(mutation=mutation):
+                artifacts, common = self.artifacts('native')
+                path = next((artifacts / 'release-native-x86_64-pc-windows-msvc').iterdir())
+                with zipfile.ZipFile(path) as archive:
+                    entries = [(m, archive.read(m)) for m in archive.infolist()]
+                if mutation == 'extra':
+                    entries.append((zipfile.ZipInfo('extra'), b''))
+                elif mutation == 'link':
+                    entries[0][0].external_attr = 0o120755 << 16
+                elif mutation == 'reparse':
+                    entries[0][0].external_attr |= 0x400
+                elif mutation == 'mode':
+                    entries[0][0].external_attr = 0o100644 << 16
+                else:
+                    entries[1] = (entries[1][0], b'wrong script')
+                with zipfile.ZipFile(path, 'w') as archive:
+                    for info, data in entries:
+                        archive.writestr(info, data)
+                with self.assertRaises(ValueError):
+                    r.collect(artifacts, artifacts.parent / 'release', 'native', '0.0.42')
+
+    def test_collect_rejects_source_missing_required_files_wrong_root_package_and_scripts(self):
+        for mutation in ['missing', 'root', 'package', 'script', 'unsafe', 'link']:
+            with self.subTest(mutation=mutation):
+                artifacts, common = self.artifacts('source')
+                path = common / 'envswitch_0.0.42_source.tar.gz'
+                def change(entries):
+                    if mutation == 'missing':
+                        entries[:] = [(m, d) for m, d in entries if m.name != 'envswitch/src/cli.ts']
+                    elif mutation == 'root':
+                        entries[0][0].name = 'package.json'
+                    elif mutation == 'unsafe':
+                        entries.append((tarfile.TarInfo('envswitch/src/.env'), b''))
+                    elif mutation == 'link':
+                        entries[0][0].type = tarfile.LNKTYPE
+                        entries[0][0].linkname = 'elsewhere'
+                    else:
+                        name = 'envswitch/package.json' if mutation == 'package' else 'envswitch/scripts/install.sh'
+                        entries[:] = [(m, b'{"name":"wrong"}' if mutation == 'package' else b'wrong script')
+                                      if m.name == name else (m, d) for m, d in entries]
+                self.rewrite_tar(path, change)
+                with self.assertRaises(ValueError):
+                    r.collect(artifacts, artifacts.parent / 'release', 'source', '0.0.42')
+
+    def test_collect_accepts_protocol_directory_entries(self):
+        for kind in ['source', 'native']:
+            artifacts, common = self.artifacts(kind)
+            path = (common / 'envswitch_0.0.42_source.tar.gz' if kind == 'source' else
+                    next((artifacts / 'release-native-aarch64-apple-darwin').iterdir()))
+            def add_directory(entries):
+                info = tarfile.TarInfo('envswitch/' if kind == 'source' else 'scripts/')
+                info.type, info.mode = tarfile.DIRTYPE, 0o755
+                entries.append((info, b''))
+            self.rewrite_tar(path, add_directory)
+            r.collect(artifacts, artifacts.parent / 'release', kind, '0.0.42')
 
     def test_latest_guard_handles_pagination_numeric_order_drafts_and_equal_versions(self):
         pages = [[{'tag_name': 'v0.0.9', 'draft': False}],

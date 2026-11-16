@@ -1,17 +1,18 @@
 name: Release
 
-# Single publisher/version authority: keep this workflow's run-number sequence.
-# D5 transition: pushes build/verify only; publishing requires a main dispatch
-# with publish=true and an explicit kind. Native is the explicit push build kind.
-# M1a on main uses the source packaging/checksum path with installers unchanged.
+# Single publisher/version authority: keep this path and its run-number sequence.
+# Transition: pushes NEVER publish. Every M1a/M1b/native publication requires a
+# workflow_dispatch on main with publish=true and an explicit source/native kind.
+# Push verification selects native only when the crate manifest AND toolchain exist.
+# M1a copies both release.yml and build-native.yml verbatim, plus scripts/release/**
+# and test/release/**. With installers.yml absent, M1a must also copy
+# scripts/release/legacy-installers.yml to .github/workflows/installers.yml: that
+# reusable fallback runs the OLD Bash installer suite on Linux and macOS.
+# A referenced workflow must exist at load time, even when a job would be skipped.
+# M1b replaces that shim with D2b's real installers.yml (with workflow_call).
+# TODO F1: when parity.yml lands, replace the parity stub with its workflow_call.
 # After the first native release AND live migration checks, restore push publishing
-# by allowing event_name == 'push' in the plan's publish expression below; keep
-# the main-ref restriction, suite dependencies, concurrency, and latest guard.
-# TODO D2b: replace the installers stub job with:
-#   needs: plan
-#   uses: ./.github/workflows/installers.yml  # on: workflow_call (same SHA)
-# TODO F1: if parity.yml lands, replace the parity stub with its workflow_call.
-# Publication fails closed until these required suite seams are wired.
+# in release.py plan; keep main-only publication, required suites, and latest guard.
 
 on:
   push:
@@ -29,21 +30,11 @@ on:
         type: boolean
         required: true
         default: false
-      installer_workflow:
-        description: 'TODO D2b input stub: wire this reusable workflow before publication'
-        type: string
-        default: .github/workflows/installers.yml
 
 permissions:
   contents: read
 
-# Concurrency is not FIFO; publish.py also rejects a newer published version.
-concurrency:
-  group: envswitch-release
-  cancel-in-progress: false
-
 env:
-  PUSH_RELEASE_KIND: native
   PYTHONDONTWRITEBYTECODE: "1"
 
 jobs:
@@ -55,32 +46,17 @@ jobs:
       sha: ${{ steps.plan.outputs.sha }}
       kind: ${{ steps.plan.outputs.kind }}
       publish: ${{ steps.plan.outputs.publish }}
+      bun: ${{ steps.plan.outputs.bun }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Plan one release identity
         id: plan
         env:
           DISPATCH_KIND: ${{ inputs.kind }}
           PUBLISH_REQUESTED: ${{ inputs.publish }}
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import os, re
-          from pathlib import Path
-          version = '0.0.' + os.environ['GITHUB_RUN_NUMBER']
-          assert re.fullmatch(r'0\.0\.[1-9][0-9]*', version), version
-          sha = os.environ['GITHUB_SHA']
-          assert re.fullmatch(r'[0-9a-f]{40}', sha), sha
-          dispatch = os.environ['GITHUB_EVENT_NAME'] == 'workflow_dispatch'
-          kind = os.environ['DISPATCH_KIND'] if dispatch else os.environ['PUSH_RELEASE_KIND']
-          assert kind in ('source', 'native'), kind
-          publish = dispatch and os.environ['PUBLISH_REQUESTED'] == 'true'
-          if publish and os.environ['GITHUB_REF'] != 'refs/heads/main':
-              raise SystemExit('Publication is restricted to refs/heads/main')
-          values = dict(version=version, tag='v' + version, sha=sha, kind=kind, publish=str(publish).lower())
-          with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
-              output.writelines(f'{key}={value}\n' for key, value in values.items())
-          print(values)
-          PY
+        run: python3 scripts/release/release.py plan .
 
   verify:
     name: Verify helpers and source tests
@@ -93,13 +69,13 @@ jobs:
           persist-credentials: false
       - name: Release helper tests
         run: python3 -m unittest discover -s test/release -v
-      - name: Setup Bun for source kind
-        if: needs.plan.outputs.kind == 'source'
+      - name: Setup Bun whenever the TypeScript app exists
+        if: needs.plan.outputs.bun == 'true'
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.0
-      - name: Source tests and typecheck
-        if: needs.plan.outputs.kind == 'source'
+      - name: Bun tests and typecheck
+        if: needs.plan.outputs.bun == 'true'
         run: |
           set -euo pipefail
           bun install --frozen-lockfile
@@ -119,6 +95,7 @@ jobs:
       version: ${{ needs.plan.outputs.version }}
       tag: ${{ needs.plan.outputs.tag }}
       sha: ${{ needs.plan.outputs.sha }}
+      publish: ${{ needs.plan.outputs.publish == 'true' }}
 
   package:
     name: Package standalone installers and optional source
@@ -144,7 +121,7 @@ jobs:
         if: needs.plan.outputs.kind == 'source'
         run: python3 scripts/release/release.py package "$VERSION" source --output dist/common
       - name: Attest source in producing job
-        if: needs.plan.outputs.kind == 'source'
+        if: needs.plan.outputs.kind == 'source' && needs.plan.outputs.publish == 'true'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: dist/common/*_source.tar.gz
@@ -158,20 +135,9 @@ jobs:
           overwrite: true
 
   installers:
-    name: Required installer suites (D2b handoff stub)
+    name: Required installer suites (legacy shim on M1a, D2b on M1b)
     needs: plan
-    runs-on: ubuntu-24.04
-    steps:
-      - name: TODO wire installers.yml via workflow_call
-        env:
-          PUBLISH: ${{ needs.plan.outputs.publish }}
-          INSTALLER_WORKFLOW: ${{ inputs.installer_workflow || '.github/workflows/installers.yml' }}
-        run: |
-          echo "::notice::TODO D2b: replace this job with uses: ./$INSTALLER_WORKFLOW (workflow_call)."
-          if [[ "$PUBLISH" == true ]]; then
-            echo '::error::Publication blocked: required reusable installer suites are not wired.'
-            exit 1
-          fi
+    uses: ./.github/workflows/installers.yml
 
   parity:
     name: Required parity if present (F1 handoff stub)
@@ -224,6 +190,11 @@ jobs:
 
   publish:
     name: Draft, verify, then promote
+    # Pushes never enter this queue; builds cannot cancel a pending publication.
+    # Concurrency is not FIFO, so publish.py still checks numeric latest ordering.
+    concurrency:
+      group: envswitch-publish
+      cancel-in-progress: false
     needs: [plan, verify, native, package, installers, parity, assemble]
     if: >-
       always() && !cancelled() && needs.plan.outputs.publish == 'true' &&
