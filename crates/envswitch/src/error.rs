@@ -129,10 +129,11 @@ fn node_code(err: &io::Error) -> Option<(&'static str, &'static str)> {
         // Win32 error codes, translated the way libuv does.
         #[cfg(windows)]
         let mapped = match raw {
-            2 | 3 => Some(ENOENT),    // FILE_NOT_FOUND, PATH_NOT_FOUND
+            // FILE_NOT_FOUND, PATH_NOT_FOUND, INVALID_DRIVE, INVALID_NAME,
+            // BAD_PATHNAME, DIRECTORY (libuv maps ERROR_DIRECTORY to ENOENT)
+            2 | 3 | 15 | 123 | 161 | 267 => Some(ENOENT),
             5 => Some(EPERM),         // ACCESS_DENIED
             80 | 183 => Some(EEXIST), // FILE_EXISTS, ALREADY_EXISTS
-            267 => Some(ENOTDIR),     // DIRECTORY
             _ => None,
         };
         #[cfg(not(any(unix, windows)))]
