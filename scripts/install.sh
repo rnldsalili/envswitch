@@ -1,564 +1,659 @@
 #!/usr/bin/env bash
-set -euo pipefail
-if ! command -v python3 >/dev/null 2>&1; then
-  printf 'error: required installer tool not found: python3\n' >&2
-  exit 1
-fi
-# Python's standard library validates JSON and archive metadata before writing any members.
-exec python3 - "${BASH_SOURCE[0]}" "$@" <<'PY'
-import contextlib
-import hashlib
-import json
-import os
-from pathlib import Path
-import re
-import secrets
-import shutil
-import signal
-import stat
-import subprocess
-import sys
-import tarfile
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
+set -Eeuo pipefail
+umask 077
+export LC_ALL=C
+SELF=${BASH_SOURCE[0]:-}
+STAGE='' LOCK='' TOKEN='' LOCKED=0 COMMITTED=0 NEW_PAYLOAD='' ACTIVE_CHILD='' WATCHDOG=''
+PROFILE_BACKUP='' PROFILE_WRITTEN=0 PROFILE_EXISTED=0 PROFILE_PATH=''
+J_PATH=() J_BACKUP=() J_CHANGED=() CREATED=() TEMPS=()
+BEGIN='# >>> envswitch PATH >>>'; END='# <<< envswitch PATH <<<'
+VERSION_RE='^v?0\.0\.(0|[1-9][0-9]*)$'
+TARGETS=(aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-pc-windows-msvc)
+info() { printf 'info: %s\n' "$1"; }
+die() { local message; for message in "$@"; do printf 'error: %s\n' "$message" >&2; done; exit 1; }
+unexpected() { trap - ERR; die 'envswitch installation failed: a required operation failed'; }
+setting() { die "invalid installer setting: $1"; }
+need() { command -v "$1" >/dev/null 2>&1 || die "required installer tool not found: $1"; }
 
-E = os.environ
-ROLLBACK_MESSAGES=[]
-os.umask(0o077)
-BEGIN, END = '# >>> envswitch PATH >>>', '# <<< envswitch PATH <<<'
-TARGETS = ('aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-musl',
-           'aarch64-unknown-linux-musl', 'x86_64-pc-windows-msvc')
-VERSION = r'0\.0\.(?:0|[1-9][0-9]*)'
-
-class Failure(Exception): pass
-
-def fail(*lines):
-    raise Failure('\n'.join('error: ' + s for s in lines))
-
-def info(s): print('info: ' + s, flush=True)
-
-def setting(name): fail('invalid installer setting: ' + name)
-
-def tag(value, name):
-    if not value: return None
-    if not re.fullmatch('v?' + VERSION, value):
-        fail('invalid ' + name + ': ' + value + '; expected 0.0.N or v0.0.N')
-    return 'v' + value.lstrip('v')
-
-def repo_ok(s):
-    return bool(re.fullmatch(r'[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+', s)) and all(c not in ('.','..') for c in s.split('/'))
-
-def unsafe(p):
-    fail('unsafe installation path: ' + str(p), 'choose absolute, non-overlapping envswitch paths without symlinks or reparse points')
-
-def check_links(p):
-    for c in (p, *p.parents):
-        if c.is_symlink(): unsafe(c)
-
-def directory(value, name):
-    if not value.startswith('/') or '..' in value:
-        fail('invalid ' + name + ': ' + value, name + " must be an absolute path without '..'")
-    if ':' in value or any(ord(c) < 32 or 127 <= ord(c) <= 159 for c in value): unsafe(value)
-    p = Path(os.path.normpath(value)); check_links(p)
-    if p == Path('/') or (p.exists() and not p.is_dir()): unsafe(p)
-    return p
-
-def inside(p, root): return p == root or root in p.parents
-
-def quote(p): return "'" + str(p).replace("'", "'\\''") + "'"
-
-def escaped(p):
-    return re.sub(r'([\\"$`])', r'\\\1', str(p))
-
-def profile():
-    return Path(E['HOME']) / {'zsh':'.zshrc','bash':'.bashrc'}.get(Path(E.get('SHELL','')).name, '.profile')
-
-def profile_bytes(install, p):
-    check_links(p)
-    old = p.read_bytes() if p.exists() else b''
-    block = (BEGIN + '\nexport PATH="' + escaped(install) + ':$PATH"\n' + END + '\n').encode()
-    lines = old.splitlines(keepends=True)
-    starts = [i for i,s in enumerate(lines) if BEGIN.encode() in s]
-    ends = [i for i,s in enumerate(lines) if END.encode() in s]
-    if starts or ends:
-        if len(starts) != 1 or len(ends) != 1 or ends[0] != starts[0]+2 or lines[starts[0]].rstrip(b'\r\n') != BEGIN.encode() or lines[ends[0]].rstrip(b'\r\n') != END.encode() or not re.fullmatch(rb'export PATH=".*:\$PATH"\r?\n', lines[starts[0]+1]):
-            fail('invalid envswitch PATH block in ' + str(p) + '; repair the block and rerun the installer')
-        a,b = starts[0],ends[0]
-        if b''.join(lines[a:b+1]) == block: return old, 'PATH block already exists in ' + str(p)
-        return b''.join(lines[:a])+block+b''.join(lines[b+1:]), 'updated envswitch PATH block in ' + str(p)
-    return old + (b'\n' if not old or old.endswith(b'\n') else b'\n\n') + block, 'added ' + str(install) + ' to PATH in ' + str(p)
-
-def run(args, **kw):
-    return subprocess.run([str(a) for a in args], stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kw)
-
-def json_read(data):
-    def pairs(items):
-        d = {}
-        for k,v in items:
-            if k in d: raise ValueError('duplicate JSON key')
-            d[k]=v
-        return d
-    return json.loads(data.decode('utf-8'), object_pairs_hook=pairs)
-
-def launcher(kind, payload):
-    head = '#!/usr/bin/env bash\nset -euo pipefail\n'
-    if kind == 'source':
-        head += '''if command -v bun >/dev/null 2>&1; then
+# One portable JSON grammar: canonical UTF-8 hex strings keep NUL/control bytes out of shell values.
+need cat
+trap unexpected ERR
+JSON_AWK=$(cat <<'JSON_AWK_END'
+function bad() { failed=1; exit 1 }
+function hex(n) { return sprintf("%02x",n) }
+function utf(n) {
+ if(n<128)return hex(n)
+ if(n<2048)return hex(192+int(n/64)) hex(128+n%64)
+ if(n<65536)return hex(224+int(n/4096)) hex(128+int(n/64)%64) hex(128+n%64)
+ return hex(240+int(n/262144)) hex(128+int(n/4096)%64) hex(128+int(n/64)%64) hex(128+n%64)
+}
+function h4(  j,c,n) {
+ n=0; for(j=0;j<4;j++){c=tolower(substr(text,pos++,1)); if(c!~/^[0-9a-f]$/)bad(); n=n*16+index("0123456789abcdef",c)-1} return n
+}
+function string(  c,n,low,result,b,need,min,j,cp) {
+ if(substr(text,pos++,1)!="\"")bad(); result=""
+ while(pos<=length(text)) {
+  c=substr(text,pos++,1); n=ord[c]
+  if(c=="\""){ value=result; return }
+  if(c=="\\") {
+   c=substr(text,pos++,1)
+   if(c=="u") {
+    n=h4()
+    if(n>=55296 && n<=56319){if(substr(text,pos,2)!="\\u")bad();pos+=2;low=h4();if(low<56320||low>57343)bad();n=65536+(n-55296)*1024+low-56320}
+    else if(n>=56320 && n<=57343)bad()
+    result=result utf(n)
+   } else if(c=="\""||c=="\\"||c=="/")result=result hex(ord[c])
+   else if(c=="b")result=result "08"
+   else if(c=="f")result=result "0c"
+   else if(c=="n")result=result "0a"
+   else if(c=="r")result=result "0d"
+   else if(c=="t")result=result "09"
+   else bad()
+  } else {
+   if(n<32)bad()
+   if(n<128)result=result hex(n)
+   else {
+    if(n>=194&&n<=223){need=1;cp=n-192;min=128}
+    else if(n>=224&&n<=239){need=2;cp=n-224;min=2048}
+    else if(n>=240&&n<=244){need=3;cp=n-240;min=65536}
+    else bad()
+    result=result hex(n)
+    for(j=0;j<need;j++){b=ord[substr(text,pos++,1)];if(b<128||b>191)bad();cp=cp*64+b-128;result=result hex(b)}
+    if(cp<min||cp>1114111||(cp>=55296&&cp<=57343))bad()
+   }
+  }
+ }
+ bad()
+}
+function ws(){while(substr(text,pos,1)~/[ \t\r\n]/ && pos<=length(text))pos++}
+function node(path,depth,  c,key,id,count,start,num) {
+ if(depth>128)bad();ws();c=substr(text,pos,1)
+ if(c=="{") {
+  id=++objects;pos++;ws();count=0
+  if(substr(text,pos,1)!="}")while(1){string();key=value;if((id SUBSEP key) in keys)bad();keys[id SUBSEP key]=1;ws();if(substr(text,pos++,1)!=":")bad();node(path "/" key,depth+1);count++;ws();c=substr(text,pos++,1);if(c=="}")break;if(c!=",")bad();ws()}
+  else pos++
+  print path "\tobject\t" count
+ } else if(c=="[") {
+  pos++;ws();count=0
+  if(substr(text,pos,1)!="]")while(1){node(path "/" count,depth+1);count++;ws();c=substr(text,pos++,1);if(c=="]")break;if(c!=",")bad();ws()}
+  else pos++
+  print path "\tarray\t" count
+ } else if(c=="\""){string();print path "\tstring\t" value}
+ else if(substr(text,pos,4)=="true"){pos+=4;print path "\tboolean\ttrue"}
+ else if(substr(text,pos,5)=="false"){pos+=5;print path "\tboolean\tfalse"}
+ else if(substr(text,pos,4)=="null"){pos+=4;print path "\tnull\tnull"}
+ else {
+  start=pos
+  if(c=="-")pos++
+  c=substr(text,pos,1)
+  if(c=="0")pos++
+  else if(c~/^[1-9]$/){pos++;while(substr(text,pos,1)~/^[0-9]$/)pos++}
+  else bad()
+  if(substr(text,pos,1)=="."){pos++;if(substr(text,pos,1)!~/^[0-9]$/)bad();while(substr(text,pos,1)~/^[0-9]$/)pos++}
+  c=substr(text,pos,1)
+  if(c=="e"||c=="E"){pos++;c=substr(text,pos,1);if(c=="+"||c=="-")pos++;if(substr(text,pos,1)!~/^[0-9]$/)bad();while(substr(text,pos,1)~/^[0-9]$/)pos++}
+  print path "\tnumber\t" substr(text,start,pos-start)
+ }
+}
+BEGIN { for(i=0;i<256;i++)ord[sprintf("%c",i)]=i; pos=1 }
+{if(NR>1)text=text "\n";text=text $0}
+END {
+ if(failed)exit 1
+ if(action=="quote") {
+  printf "\"";for(i=1;i<=length(text);i++){c=substr(text,i,1);n=ord[c];if(c=="\""||c=="\\")printf "\\%s",c;else if(n<32)printf "\\u%04x",n;else printf "%s",c}printf "\"";exit
+ }
+ node("$",0);ws();if(pos<=length(text))bad()
+}
+JSON_AWK_END
+)
+json_parse() { awk "$JSON_AWK"; }
+json_quote() { printf '%s' "$1" | awk -v action=quote "$JSON_AWK"; }
+hex_key() { printf '%s' "$1" | od -An -tx1 | tr -d ' \n'; }
+jget() { printf '%s\n' "$JSON_DATA" | awk -F '\t' -v key="$1" -v type="$2" '$1==key && $2==type{print $3;found=1;exit} END{if(!found)exit 1}'; }
+jstring() {
+  local encoded rest pair decoded=''
+  encoded=$(jget "$1" string) || return 1
+  rest=$encoded
+  while [[ -n $rest ]]; do
+    pair=${rest:0:2}; rest=${rest:2}
+    case "$pair" in 0[0-9a-f]|1[0-9a-f]|7f) return 1;; esac
+    printf -v decoded '%s\\x%s' "$decoded" "$pair"
+  done
+  printf '%b' "$decoded"
+}
+jfield() { jstring "\$/$(hex_key "$1")"; }
+repo_valid() { [[ $1 =~ ^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$ && ${1%/*} != . && ${1%/*} != .. && ${1#*/} != . && ${1#*/} != .. ]]; }
+normal_tag() {
+  [[ -n $1 ]] || { printf ''; return; }
+  [[ $1 =~ $VERSION_RE ]] || die "invalid $2: $1; expected 0.0.N or v0.0.N"
+  printf 'v%s' "${1#v}"
+}
+no_links() {
+  local path=$1
+  while [[ -n $path && $path != / ]]; do [[ ! -L $path ]] || return 1; path=${path%/*}; done
+}
+normalize() {
+  local part result='' old_ifs=$IFS parts
+  [[ $1 == /* && $1 != *..* && $1 != *:* && ! $1 =~ [[:cntrl:]] ]] || return 1
+  IFS=/ read -r -a parts <<< "$1"; IFS=$old_ifs
+  for part in "${parts[@]}"; do [[ -z $part || $part == . ]] || result="$result/$part"; done
+  [[ -n $result ]] || return 1
+  no_links "$result" || return 1
+  [[ ! -e $result || -d $result ]] || return 1
+  NORMAL=$result
+}
+unsafe() { die "unsafe installation path: $1" 'choose absolute, non-overlapping envswitch paths without symlinks or reparse points'; }
+unmanaged() { die "refusing to replace an unmanaged path: $1" 'preserve user files and reinstall using the README instructions with explicit install paths'; }
+path_ok() { no_links "$1" || unsafe "$1"; }
+quote() { local value=${1//\'/\'\\\'\'}; printf "'%s'" "$value"; }
+escaped() { local value=$1; value=${value//\\/\\\\}; value=${value//\"/\\\"}; value=${value//\$/\\\$}; value=${value//\`/\\\`}; printf '%s' "$value"; }
+launcher() {
+  printf '#!/usr/bin/env bash\nset -euo pipefail\n'
+  if [[ $1 == source ]]; then
+    cat <<'SOURCE'
+if command -v bun >/dev/null 2>&1; then
   BUN_BIN="$(command -v bun)"
 elif [[ -x "${HOME}/.bun/bin/bun" ]]; then
   BUN_BIN="${HOME}/.bun/bin/bun"
 else
-  printf 'envswitch: bun is not installed or not on PATH\\n' >&2
+  printf 'envswitch: bun is not installed or not on PATH\n' >&2
   exit 127
 fi
-exec "$BUN_BIN" '''
-    else: head += 'exec '
-    return (head + quote(payload) + ' "$@"\n').encode()
-
-def unmanaged(p):
-    fail('refusing to replace an unmanaged path: ' + str(p), 'preserve user files and reinstall using the README instructions with explicit install paths')
-
-def payload_for(root, kind, version, target):
-    return root / 'current' / ('src/cli.ts' if kind == 'source' else 'bin/envswitch_' + version[1:] + '_' + target)
-
-def receipt_read(p):
-    if not p.exists(): return None
-    try:
-        r = json_read(p.read_bytes())
-        assert isinstance(r,dict) and type(r['schemaVersion']) is int and r['schemaVersion'] == 1
-        assert r['kind'] in ('source','native') and repo_ok(r['repo'])
-        assert re.fullmatch('v'+VERSION,r['tag'])
-        root = directory(r['appRoot'], 'APP_ROOT'); dest = directory(r['installDir'], 'INSTALL_DIR')
-        assert str(root) == r['appRoot'] and str(dest) == r['installDir']
-        assert root != dest and not inside(dest,root/'current') and not any(c.startswith('.install-') for c in dest.parts)
-        assert root not in [Path(E[k]) for k in ('HOME','USERPROFILE') if E.get(k)] and root == p.parent.parent
-        assert r['launcherPath'] == str(dest/'envswitch')
-        assert r['target'] is None if r['kind'] == 'source' else r['target'] in TARGETS and not r['target'].endswith('msvc')
-        assert r['payloadPath'] == str(payload_for(root,r['kind'],r['tag'],r['target']))
-        for k in ('launcherPath','payloadPath'): check_links(Path(r[k]))
-        return r
-    except (ValueError,KeyError,TypeError,AssertionError,Failure):
-        fail('invalid envswitch install receipt: ' + str(p), 'reinstall envswitch with the install script from the README after checking the install paths')
-
-def source_tree(p, dependencies=False, required=True):
-    allowed = {'src','scripts','package.json','bun.lock','README.md','tsconfig.json'}
-    if dependencies: allowed.add('node_modules')
-    for f in p.rglob('*'):
-        rel = f.relative_to(p)
-        if rel.parts[0] not in allowed or f.is_symlink() or not (f.is_file() or f.is_dir()) or any(c in ('.git','.env') or c.startswith('.env.') for c in rel.parts): unmanaged(f)
-    try:
-        if required or (p/'package.json').exists(): assert json_read((p/'package.json').read_bytes())['name'] == 'envswitch'
-        if required: assert (p/'src/cli.ts').is_file() and (p/'bun.lock').is_file()
-    except (ValueError,KeyError,AssertionError,OSError): fail('archive did not contain an envswitch source package')
-
-class NoTokenRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        url = urllib.parse.urlsplit(newurl)
-        allowed = url.scheme=='https' and url.hostname in ('api.github.com','release-assets.githubusercontent.com','objects.githubusercontent.com','github-releases.githubusercontent.com') and url.port in (None,443)
-        allowed = allowed or (TEST and url.scheme=='http' and url.hostname in ('127.0.0.1','localhost','::1'))
-        if not allowed or url.username or url.password: raise ValueError('unsafe redirect')
-        redirected = super().redirect_request(req,fp,code,msg,headers,newurl)
-        if urllib.parse.urlsplit(req.full_url).netloc != url.netloc: redirected.remove_header('Authorization')
-        return redirected
-
-def request_timeout(signum, frame): raise TimeoutError()
-
-def http(url, accept):
-    previous=signal.signal(signal.SIGALRM,request_timeout)
-    signal.setitimer(signal.ITIMER_REAL,60)
-    try: return request_http(url,accept)
-    finally:
-        signal.setitimer(signal.ITIMER_REAL,0); signal.signal(signal.SIGALRM,previous)
-
-def request_http(url, accept):
-    headers = {'Accept':accept}
-    if E.get('GITHUB_TOKEN'): headers['Authorization']='Bearer '+E['GITHUB_TOKEN']
-    opener=urllib.request.build_opener(NoTokenRedirect())
-    deadline=time.monotonic()+60
-    for attempt in range(3):
-        try:
-            with opener.open(urllib.request.Request(url,headers=headers),timeout=max(0.1,deadline-time.monotonic())) as response:
-                return response.read()
-        except urllib.error.HTTPError as e:
-            if e.code not in (408,429) and e.code < 500: raise
-            if attempt == 2: raise
-        except (urllib.error.URLError,TimeoutError,OSError):
-            if attempt == 2: raise
-        if time.monotonic() >= deadline: raise TimeoutError()
-
-class Installer:
-    def __init__(self):
-        self.stage=None; self.token=secrets.token_hex(16); self.locked=False; self.journal=[]; self.created=[]; self.commit=False; self.new_payload=None
-    def mkdir(self,p):
-        if p.exists():
-            check_links(p)
-            if not p.is_dir(): unsafe(p)
-            return
-        self.mkdir(p.parent); p.mkdir(mode=0o700); self.created.append(p)
-    def replace(self,p,data=None,source=None,mode=0o600):
-        check_links(p); self.mkdir(p.parent)
-        backup=self.stage/('backup-'+str(len(self.journal)))
-        existed=p.exists()
-        if existed:
-            if p.is_dir(): shutil.copytree(p,backup,symlinks=True)
-            else: shutil.copy2(p,backup)
-        self.journal.append((p,backup if existed else None))
-        tmp=p.parent/('.install-'+self.token+'-'+str(len(self.journal)))
-        moved=False
-        try:
-            if source:
-                if source.is_dir(): shutil.copytree(source,tmp)
-                else:
-                    with tmp.open('xb') as f: f.write(source.read_bytes())
-                    tmp.chmod(mode)
-            else:
-                with tmp.open('xb') as f: f.write(data)
-                tmp.chmod(mode)
-            if p.is_dir():
-                os.replace(p,self.stage/('moved-'+str(len(self.journal)))); moved=True
-            check_links(p)
-            try: os.replace(tmp,p)
-            except OSError:
-                if not moved: self.journal.pop()
-                raise
-        finally:
-            if tmp.exists():
-                if tmp.is_dir(): shutil.rmtree(tmp)
-                else: tmp.unlink()
-    def boundary(self,s):
-        if TEST and E.get('ENVSWITCH_INSTALL_TEST_FAIL_AT') == s: fail('injected installer test failure: '+s)
-    def cleanup(self):
-        rollback_failed=False
-        if not self.commit:
-            try:
-                for p,b in reversed(self.journal):
-                    if b:
-                        if p.is_dir(): shutil.rmtree(p)
-                        os.replace(b,p)
-                    elif p.exists():
-                        if p.is_dir(): shutil.rmtree(p)
-                        else: p.unlink()
-            except OSError:
-                ROLLBACK_MESSAGES.append('error: rollback incomplete; preserve '+str(self.stage)+' and reinstall using the README instructions')
-                rollback_failed=True
-        if not self.commit and not rollback_failed and self.new_payload:
-            try:
-                check_links(self.new_payload); self.new_payload.unlink()
-            except FileNotFoundError: pass
-            except OSError: info('deferred cleanup: '+str(self.new_payload))
-        if self.locked:
-            try:
-                if not LOCK.is_symlink() and LOCK.read_text() == self.token+' '+str(os.getpid())+'\n': LOCK.unlink()
-            except FileNotFoundError: pass
-        if not rollback_failed and self.stage and self.stage.exists():
-            try: shutil.rmtree(self.stage)
-            except OSError: info('deferred cleanup: '+str(self.stage))
-        for p in reversed(self.created):
-            with contextlib.suppress(OSError): p.rmdir()
-    def download(self,name):
-        dst=self.stage/name
-        if GH:
-            info('downloading '+name+' with GitHub CLI')
-            try: result=run([GH,'release','download',TAG,'--repo',REPO,'--pattern',name,'--dir',self.stage],timeout=60)
-            except subprocess.TimeoutExpired: result=None
-            if result is not None and result.returncode == 0 and dst.is_file(): return dst
-            if dst.exists(): dst.unlink()
-            info('GitHub CLI download did not find '+name+'; trying direct download')
-        else: info('downloading '+name)
-        try: dst.write_bytes(http(ASSETS[name],'application/octet-stream'))
-        except (OSError,ValueError,urllib.error.URLError): fail('release asset not found or unavailable: '+name)
-        return dst
-    def verify(self,p,name):
-        info('verifying SHA-256 for '+name)
-        args=([HASH] if Path(HASH).name == 'sha256sum' else [HASH,'-a','256'])+[str(p)]
-        r=run(args)
-        if r.returncode or r.stdout.decode().split()[0].lower() != SUMS[name]: fail('SHA-256 mismatch for '+name)
-    def check(self,p,kind,version,target,staged=False):
-        try:
-            if kind == 'native':
-                result=run([p,'--version'])
-                if result.returncode or result.stderr or result.stdout != ('envswitch '+version+' '+target+'\n').encode():
-                    if staged: fail('native payload verification failed; expected envswitch '+version+' '+target)
-                    return False
-            return run([p,'--help']).returncode == 0
-        except OSError:
-            if staged: fail('native payload verification failed; expected envswitch '+version+' '+target)
-            return False
-
-
-def extract(archive,out,kind):
-    try:
-        with tarfile.open(archive,'r:gz') as tar:
-            seen=set(); members=[]
-            for m in tar.getmembers():
-                name=m.name
-                if name.startswith('./'): name=name[2:]
-                if m.isdir(): name=name.rstrip('/')
-                parts=name.split('/')
-                if not name or '\\' in name or ':' in name or any(ord(c)<32 or 127<=ord(c)<=159 for c in name) or any(c in ('','.','..') for c in parts) or name in seen or not (m.isfile() or m.isdir()): raise ValueError()
-                seen.add(name)
-                if kind == 'native':
-                    if name not in ('envswitch','scripts','scripts/install.sh','scripts/install.ps1','README.md') or (m.isdir() != (name == 'scripts')): raise ValueError()
-                else:
-                    if parts[0] != 'envswitch' or (len(parts)>1 and parts[1] not in ('package.json','bun.lock','README.md','tsconfig.json','src','scripts')) or any(c in ('.git','node_modules','.env') or c.startswith('.env.') for c in parts): raise ValueError()
-                    if len(parts)>2 and parts[1] not in ('src','scripts'): raise ValueError()
-                    if m.isdir() and len(parts)>1 and parts[1] not in ('src','scripts'): raise ValueError()
-                members.append((m,name))
-            expected={'envswitch','scripts/install.sh','scripts/install.ps1','README.md'} if kind=='native' else {'envswitch/package.json','envswitch/bun.lock','envswitch/src/cli.ts','envswitch/scripts/install.sh','envswitch/scripts/install.ps1'}
-            if not expected.issubset({n for m,n in members if m.isfile()}): raise ValueError()
-            out.mkdir(mode=0o700)
-            for m,n in members:
-                p=out/n; check_links(p)
-                if m.isdir(): p.mkdir(mode=0o700,parents=True,exist_ok=True)
-                else:
-                    p.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
-                    with p.open('xb') as f: shutil.copyfileobj(tar.extractfile(m),f)
-                    p.chmod(0o600)
-            for p in out.rglob('*'):
-                if p.is_symlink() or not (p.is_file() or p.is_dir()): raise ValueError()
-    except (ValueError,OSError,tarfile.TarError): fail('unsafe or invalid archive: '+archive.name)
-
-
-def main():
-    global TEST, REPO, TAG, ASSETS, HASH, SUMS, GH, LOCK
-    old=E.get('ENVS_SWITCH_INSTALL_TEST_MODE',''); mode=E.get('ENVSWITCH_INSTALL_TEST_MODE','')
-    if old and mode: setting('ENVSWITCH_INSTALL_TEST_MODE')
-    if old and old not in ('ensure-profile-path','shell-profile-path'): setting('ENVS_SWITCH_INSTALL_TEST_MODE')
-    mode=mode or old
-    if mode not in ('','install','ensure-profile-path','shell-profile-path'): setting('ENVSWITCH_INSTALL_TEST_MODE')
-    if mode == 'shell-profile-path':
-        if len(sys.argv)!=2: fail('unexpected installer argument: '+sys.argv[2])
-        print(profile()); return
-    if mode == 'ensure-profile-path':
-        if len(sys.argv)!=4: setting('ENVSWITCH_INSTALL_TEST_MODE')
-        p=Path(sys.argv[3]); data,msg=profile_bytes(Path(sys.argv[2]),p)
-        if not p.exists() or p.read_bytes()!=data: p.parent.mkdir(parents=True,exist_ok=True); p.write_bytes(data)
-        info(msg); return
-    if len(sys.argv)>2: fail('unexpected installer argument: '+sys.argv[2])
-    TEST=mode=='install'
-    if TEST and E.get('ENVSWITCH_INSTALL_TEST_FAIL_AT','') not in ('','after-payload','after-launcher','after-metadata'): setting('ENVSWITCH_INSTALL_TEST_FAIL_AT')
-    base='https://api.github.com'
-    if TEST and E.get('ENVSWITCH_INSTALL_TEST_API_BASE_URL'):
-        base=E['ENVSWITCH_INSTALL_TEST_API_BASE_URL']
-        u=urllib.parse.urlsplit(base)
-        if u.scheme!='http' or u.hostname not in ('127.0.0.1','localhost','::1') or u.username or u.password or u.path or u.query or u.fragment: setting('ENVSWITCH_INSTALL_TEST_API_BASE_URL')
-    REPO=E.get('REPO') or 'rnldsalili/envswitch'
-    if not repo_ok(REPO): fail('invalid repository format: '+REPO,'expected owner/repo')
-    pin=tag(E.get('ENVSWITCH_VERSION'),'Version'); current=tag(E.get('ENVSWITCH_CURRENT_VERSION'),'CurrentVersion')
-    attest=E.get('ENVSWITCH_VERIFY_ATTESTATIONS','')
-    if attest not in ('','0','1'): setting('ENVSWITCH_VERIFY_ATTESTATIONS')
-    root=directory(E.get('APP_ROOT') or str(Path(E.get('XDG_DATA_HOME') or (E['HOME']+'/.local/share'))/'envswitch'),'APP_ROOT')
-    dest=directory(E.get('INSTALL_DIR') or E['HOME']+'/.local/bin','INSTALL_DIR')
-    app=root/'current'; launch=dest/'envswitch'; LOCK=root/'.install.lock'
-    if root in [Path(E[k]) for k in ('HOME','USERPROFILE') if E.get(k)] or dest==root or inside(dest,app) or inside(root,launch) or any(c.startswith('.install-') for c in (*root.parts,*dest.parts)): unsafe(root)
-    for p in (app, launch, app/'bin', app/'scripts', app/'scripts/install.sh', app/'scripts/install.ps1', app/'install.json', app/'.version'): check_links(p)
-    if app.exists() and not app.is_dir(): unsafe(app)
-    for p in (root/'.git',app/'.git'):
-        if p.exists(): unmanaged(p)
-    for tool in ('uname','bash'):
-        if not shutil.which(tool): fail('required installer tool not found: '+tool)
-    osname=run(['uname','-s']).stdout.decode().strip().lower(); arch=run(['uname','-m']).stdout.decode().strip()
-    if osname not in ('darwin','linux'): fail('unsupported OS for this installer: '+osname,'use scripts/install.ps1 on Windows')
-    if osname=='darwin' and shutil.which('sysctl') and run(['sysctl','-n','hw.optional.arm64']).stdout.strip()==b'1': arch='arm64'
-    cpu={'aarch64':'aarch64','arm64':'aarch64','x86_64':'x86_64','amd64':'x86_64'}.get(arch)
-    if not cpu: fail('unsupported architecture for this installer: '+arch)
-    target=cpu+('-apple-darwin' if osname=='darwin' else '-unknown-linux-musl')
-    info('detected macOS' if osname=='darwin' else 'detected WSL/Linux' if Path('/proc/version').exists() and 'microsoft' in Path('/proc/version').read_text().lower() else 'detected Linux')
-    previous=receipt_read(app/'install.json')
-    if launch.exists():
-        content=launch.read_bytes(); recognized=False
-        if previous: recognized=content==launcher(previous['kind'],Path(previous['payloadPath']))
-        if content==launcher('source',app/'src/cli.ts'): recognized=True
-        # Historical launcher differs only in blank lines and a double-quoted literal path.
-        historical=launcher('source',app/'src/cli.ts').replace(quote(app/'src/cli.ts').encode(), ('"'+str(app/'src/cli.ts')+'"').encode())
-        if content.replace(b'\n\n',b'\n')==historical: recognized=True
-        for p in (app/'bin').glob('envswitch_*') if (app/'bin').is_dir() else []:
-            if re.fullmatch('envswitch_'+VERSION+'_('+ '|'.join(TARGETS[:-1])+')',p.name) and content==launcher('native',p): recognized=True
-        # Missing immutable payload still has a recognizable exact launcher.
-        if not recognized:
-            for t in TARGETS[:-1]:
-                match=re.search(rb"envswitch_(0\.0\.(?:0|[1-9][0-9]*))_"+t.encode(),content)
-                if match and content==launcher('native',app/'bin'/('envswitch_'+match[1].decode()+'_'+t)): recognized=True
-        if not recognized: unmanaged(launch)
-    if app.exists() and any(app.iterdir()) and not previous and not launch.exists():
-        if not (app/'package.json').is_file(): unmanaged(app)
-        try:
-            if json_read((app/'package.json').read_bytes()).get('name')!='envswitch': unmanaged(app)
-        except ValueError: unmanaged(app)
-    GH=shutil.which('gh')
-    if GH and TEST and not inside(Path(GH),Path(E['HOME'])): GH=None
-    verifier=GH
-    if GH and run([GH,'auth','status'],timeout=60).returncode: GH=None
-    if attest=='1' and not verifier: fail('gh is required when attestation verification is requested')
-    HASH=shutil.which('sha256sum') or shutil.which('shasum')
-    if not HASH: fail('required installer tool not found: sha256sum or shasum')
-    tx=Installer()
-    try:
-        tx.mkdir(root)
-        try:
-            fd=os.open(LOCK,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
-        except FileExistsError: fail('another envswitch installer may be running: '+str(LOCK),'retry after it exits; remove the lock only after confirming no installer is running')
-        with os.fdopen(fd,'w') as f: f.write(tx.token+' '+str(os.getpid())+'\n')
-        tx.locked=True
-        previous=receipt_read(app/'install.json')
-        tx.stage=root/('.install-stage-'+tx.token); tx.stage.mkdir(mode=0o700)
-        if Path(sys.argv[1]).is_file(): shutil.copyfile(sys.argv[1],tx.stage/'executing-install.sh')
-        endpoint='repos/'+REPO+'/releases/'+('tags/'+pin if pin else 'latest')
-        data=None
-        if GH:
-            try: r=run([GH,'api',endpoint],timeout=60)
-            except subprocess.TimeoutExpired: r=None
-            if r is not None and not r.returncode: data=r.stdout
-        if data is None:
-            try: data=http(base+'/'+endpoint,'application/vnd.github+json')
-            except (OSError,ValueError,urllib.error.URLError):
-                fail('GitHub Release not found or unavailable: '+REPO+'@'+pin if pin else 'no GitHub Release found for '+REPO+', or access is denied')
-        bad='invalid envswitch release metadata for '+REPO
-        try:
-            release=json_read(data); TAG=release['tag_name']
-            assert re.fullmatch('v'+VERSION,TAG) and (not pin or TAG==pin)
-            assert type(release['id']) is int and release['id']>0 and release['draft'] is False and release['prerelease'] is False
-            ASSETS={}; duplicates=set()
-            for a in release['assets']:
-                n=a['name']; url=a['url']
-                assert isinstance(n,str) and isinstance(url,str)
-                assert re.fullmatch(re.escape(base+'/repos/'+REPO+'/releases/assets/')+r'[0-9]+',url)
-                if n in ASSETS: duplicates.add(n)
-                ASSETS[n]=url
-        except (KeyError,TypeError,ValueError,AssertionError): fail(bad)
-        ver=TAG[1:]; source='envswitch_'+ver+'_source.tar.gz'
-        natives=['envswitch_'+ver+'_'+t+('.zip' if t.endswith('msvc') else '.tar.gz') for t in TARGETS]
-        kind='native' if any(n in ASSETS for n in natives) else 'source'
-        required=natives if kind=='native' else [source]
-        if (kind=='native' and source in ASSETS) or any(n not in ASSETS for n in required) or duplicates.intersection(required+['SHA256SUMS','install.sh','install.ps1']): fail(bad)
-        if 'SHA256SUMS' not in ASSETS: fail('release '+TAG+' is missing SHA256SUMS; refusing unverified installation')
-        if any(n not in ASSETS for n in ('install.sh','install.ps1')): fail(bad)
-        name=natives[TARGETS.index(target)] if kind=='native' else source
-        info('resolved envswitch '+TAG+' ('+kind+')')
-        if kind=='native': info('selected target: '+target)
-        manifest=tx.download('SHA256SUMS'); archive=tx.download(name)
-        try:
-            raw=manifest.read_bytes(); assert raw.endswith(b'\n'); SUMS={}
-            for line in raw.split(b'\n')[:-1]:
-                m=re.fullmatch(rb'([0-9a-f]{64})  ([^/\\\x00-\x20\x7f]+)',line); assert m
-                n=m[2].decode('utf-8'); assert not any(127<=ord(c)<=159 for c in n); assert n not in SUMS and n not in ('SHA256SUMS','.','..'); SUMS[n]=m[1].decode()
-            assert all(n in SUMS for n in required+['install.sh','install.ps1'])
-        except (AssertionError,UnicodeError): fail('invalid SHA256SUMS for release '+TAG)
-        tx.verify(archive,name)
-        if attest=='1':
-            info('verifying GitHub attestation for '+name)
-            if run([verifier,'attestation','verify',archive,'--repo',REPO],timeout=60).returncode: fail('GitHub attestation verification failed for '+name)
-        info('extracting '+kind+' archive'); extract(archive,tx.stage/'extracted',kind)
-        tree=tx.stage/'extracted'/('envswitch' if kind=='source' else '')
-        for n in ('install.sh','install.ps1'): tx.verify(tree/'scripts'/n,n)
-        payload=payload_for(root,kind,TAG,target)
-        if kind=='native':
-            staged=tx.stage/payload.name; shutil.copyfile(tree/'envswitch',staged); staged.chmod(0o755)
-            if not tx.check(staged,kind,ver,target,True): fail('envswitch launcher verification failed: '+str(launch))
-        else:
-            source_tree(tree)
-            bun=shutil.which('bun') or (str(Path(E['HOME'])/'.bun/bin/bun') if os.access(Path(E['HOME'])/'.bun/bin/bun',os.X_OK) else None)
-            if not bun:
-                if not shutil.which('curl'): fail('curl is required to install Bun automatically','install Bun manually from https://bun.com/docs/installation, then rerun this installer')
-                info('Bun is not installed; installing Bun')
-                bootstrap=run(['curl','-fsSL','https://bun.com/install'])
-                if bootstrap.returncode or run(['bash'],input=bootstrap.stdout).returncode: fail('Bun installation finished, but bun was not found on PATH')
-                E['BUN_INSTALL']=E.get('BUN_INSTALL') or E['HOME']+'/.bun'; E['PATH']=E['BUN_INSTALL']+'/bin:'+E['PATH']
-                bun=shutil.which('bun')
-                if not bun: fail('Bun installation finished, but bun was not found on PATH')
-            info('using Bun at '+bun)
-            if run([bun,'--version']).returncode: fail('Bun verification failed')
-            info('installing production dependencies')
-            if run([bun,'install','--production','--frozen-lockfile'],cwd=tree).returncode: fail('bun install failed')
-            check=tx.stage/'source-check'; check.write_bytes(launcher('source',tree/'src/cli.ts')); check.chmod(0o755)
-            if not tx.check(check,kind,ver,target): fail('envswitch launcher verification failed: '+str(launch))
-        receipt={'schemaVersion':1,'kind':kind,'repo':REPO,'appRoot':str(root),'installDir':str(dest),'launcherPath':str(launch),'target':target if kind=='native' else None,'tag':TAG,'payloadPath':str(payload)}
-        healthy=previous==receipt and (app/'.version').is_file() and (app/'.version').read_bytes()==(TAG+'\n').encode() and launch.is_file() and launch.read_bytes()==launcher(kind,payload) and os.access(launch,os.X_OK)
-        healthy=healthy and all((app/'scripts'/n).is_file() and (app/'scripts'/n).read_bytes()==(tree/'scripts'/n).read_bytes() for n in ('install.sh','install.ps1'))
-        healthy=healthy and payload.is_file()
-        if kind=='native': healthy=healthy and payload.read_bytes()==staged.read_bytes()
-        else:
-            if healthy:
-                # Source shape was validated at staging; installed required files must survive.
-                healthy=healthy and all((app/n).is_file() for n in ('package.json','bun.lock','src/cli.ts'))
-                if healthy:
-                    try: healthy=json_read((app/'package.json').read_bytes()).get('name')=='envswitch'
-                    except (ValueError,UnicodeError): healthy=False
-        if healthy and tx.check(launch,kind,ver,target):
-            tx.commit=True; tx.cleanup(); tx.stage=None; tx.locked=False
-            print('success: envswitch is already up to date ('+TAG+')'); return
-        oldtag=previous['tag'] if previous else None
-        if not oldtag and (app/'.version').is_file():
-            with contextlib.suppress(ValueError,UnicodeError):
-                s=(app/'.version').read_text(encoding='utf-8-sig').strip('\r\n')
-                if re.fullmatch('v?'+VERSION,s): oldtag='v'+s.lstrip('v')
-        outcome='repaired' if (oldtag or current)==TAG and (not previous or (previous['kind']==kind and previous['target']==receipt['target'])) else 'installed'
-        tx.mkdir(app); tx.mkdir(dest)
-        if kind=='native':
-            tx.mkdir(app/'bin'); check_links(payload)
-            if payload.exists():
-                if not payload.is_file() or payload.read_bytes()!=staged.read_bytes(): fail('existing native payload differs from verified release: '+str(payload),'close envswitch processes and reinstall using the README instructions; preserve the existing file until recovery is complete')
-            else:
-                info('installing binary to '+str(payload)); os.link(staged,payload); tx.new_payload=payload
-        else:
-            for f in app.iterdir():
-                if f.name not in ('src','node_modules','package.json','bun.lock','README.md','tsconfig.json','scripts','bin','.version','install.json'): unmanaged(f)
-            # Refuse to replace any old source entry containing user-owned or linked files.
-            existing=tx.stage/'old-source'; existing.mkdir()
-            for n in ('src','node_modules','package.json','bun.lock','README.md','tsconfig.json'):
-                p=app/n
-                if p.is_symlink(): unmanaged(p)
-                if p.exists():
-                    if p.is_dir():
-                        for f in p.rglob('*'):
-                            if f.is_symlink() or not (f.is_file() or f.is_dir()) or f.name=='.env' or f.name.startswith('.env.') or f.name=='.git': unmanaged(f)
-                        shutil.copytree(p,existing/n)
-                    else: shutil.copy2(p,existing/n)
-            if any(existing.iterdir()): source_tree(existing,True,False)
-            for n in ('src','node_modules','package.json','bun.lock','README.md','tsconfig.json'):
-                if (tree/n).exists(): tx.replace(app/n,source=tree/n)
-                elif (app/n).exists():
-                    tx.journal.append((app/n,tx.stage/('removed-'+n))); os.replace(app/n,tx.journal[-1][1])
-        tx.boundary('after-payload')
-        info('installing launcher to '+str(launch)); tx.replace(launch,launcher(kind,payload),mode=0o755)
-        info('verifying envswitch launcher')
-        if not os.access(launch,os.X_OK): fail('launcher was not installed or is not executable: '+str(launch))
-        if not tx.check(launch,kind,ver,target): fail('envswitch launcher verification failed: '+str(launch))
-        tx.boundary('after-launcher')
-        for n in ('install.sh','install.ps1'): tx.replace(app/'scripts'/n,source=tree/'scripts'/n)
-        tx.replace(app/'install.json',(json.dumps(receipt,ensure_ascii=False,indent=2)+'\n').encode())
-        tx.replace(app/'.version',(TAG+'\n').encode())
-        if receipt_read(app/'install.json')!=receipt or (app/'.version').read_bytes()!=(TAG+'\n').encode(): fail('envswitch installation failed: metadata verification')
-        tx.boundary('after-metadata')
-        onpath=str(dest) in E.get('PATH','').split(':')
-        if not onpath:
-            p=profile(); data,msg=profile_bytes(dest,p)
-            if not p.exists() or p.read_bytes()!=data: tx.replace(p,data,mode=stat.S_IMODE(p.stat().st_mode) if p.exists() else 0o600)
-            info(msg)
-        tx.commit=True; tx.cleanup(); tx.stage=None; tx.locked=False
-        print('success: '+outcome+' envswitch '+TAG)
-        info(('binary: '+str(payload)) if kind=='native' else 'source: '+str(app)); info('launcher: '+str(launch))
-        if onpath: info("run 'envswitch --help' to verify the installation")
-        else:
-            info('restart your terminal, or run this command now:'); info('export PATH="'+escaped(dest)+':$PATH"'); info("then run 'envswitch --help' to verify the installation")
-    finally: tx.cleanup()
-
-
-def interrupted(signum, frame): raise KeyboardInterrupt(signum)
-signal.signal(signal.SIGTERM,interrupted); signal.signal(signal.SIGINT,interrupted)
-try: main()
-except Failure as e:
-    print(str(e),file=sys.stderr)
-    for message in ROLLBACK_MESSAGES: print(message,file=sys.stderr)
-    sys.exit(1)
-except KeyboardInterrupt as e:
-    for message in ROLLBACK_MESSAGES: print(message,file=sys.stderr)
-    sys.exit(128+(e.args[0] if e.args else 2))
-except (OSError,ValueError,TypeError,subprocess.SubprocessError) as e:
-    # Never print remote URLs, headers, or subprocess diagnostics containing credentials.
-    print('error: envswitch installation failed: '+type(e).__name__,file=sys.stderr)
-    for message in ROLLBACK_MESSAGES: print(message,file=sys.stderr)
-    sys.exit(1)
-PY
+SOURCE
+    # shellcheck disable=SC2016
+    printf 'exec "$BUN_BIN" '
+  else printf 'exec '; fi
+  if [[ ${3:-} == legacy ]]; then printf '"%s"' "$2"; else quote "$2"; fi; printf ' "$@"\n'
+}
+payload_for() {
+  if [[ $2 == source ]]; then printf '%s/current/src/cli.ts' "$1"; else printf '%s/current/bin/envswitch_%s_%s' "$1" "${3#v}" "$4"; fi
+}
+read_receipt() {
+  P_PRESENT=0; P_TAG='' P_KIND='' P_TARGET='' P_PAYLOAD='' P_ROOT='' P_DEST='' P_LAUNCH='' P_REPO=''
+  [[ -e $APP/install.json ]] || return 0
+  if ! valid_receipt; then die "invalid envswitch install receipt: $APP/install.json" 'reinstall envswitch with the install script from the README after checking the install paths'; fi
+  P_PRESENT=1
+}
+valid_receipt() {
+  JSON_DATA=$(json_parse < "$APP/install.json") || return 1
+  [[ $(jget '$' object) =~ ^[0-9]+$ && $(jget "\$/$(hex_key schemaVersion)" number) == 1 ]] || return 1
+  P_KIND=$(jfield kind) && P_TAG=$(jfield tag) && P_REPO=$(jfield repo) && P_ROOT=$(jfield appRoot) && P_DEST=$(jfield installDir) && P_LAUNCH=$(jfield launcherPath) && P_PAYLOAD=$(jfield payloadPath) || return 1
+  [[ $P_KIND == source || $P_KIND == native ]] && [[ $P_TAG =~ ^v0\.0\.(0|[1-9][0-9]*)$ ]] && repo_valid "$P_REPO" || return 1
+  normalize "$P_ROOT" && [[ $NORMAL == "$P_ROOT" && $P_ROOT == "$ROOT" && $P_ROOT != "$HOME" && $P_ROOT != "${USERPROFILE:-}" ]] || return 1
+  normalize "$P_DEST" && [[ $NORMAL == "$P_DEST" && $P_DEST != "$P_ROOT" && $P_DEST != "$P_ROOT/current" && $P_DEST != "$P_ROOT/current/"* && $P_DEST != */.install-* ]] || return 1
+  [[ $P_LAUNCH == "$P_DEST/envswitch" ]] || return 1
+  if [[ $P_KIND == source ]]; then [[ $(jget "\$/$(hex_key target)" null) == null ]] || return 1
+  else
+    P_TARGET=$(jfield target) || return 1
+    case "$P_TARGET" in aarch64-apple-darwin|x86_64-apple-darwin|x86_64-unknown-linux-musl|aarch64-unknown-linux-musl) ;; *) return 1;; esac
+  fi
+  [[ $P_PAYLOAD == "$(payload_for "$P_ROOT" "$P_KIND" "$P_TAG" "$P_TARGET")" ]] && no_links "$P_LAUNCH" && no_links "$P_PAYLOAD"
+}
+recognize_launcher() {
+  [[ ! -e $LAUNCH ]] && return 0
+  [[ -f $LAUNCH ]] || return 1
+  local content expected version target
+  content=$(cat "$LAUNCH")
+  if [[ $P_PRESENT == 1 ]]; then expected=$(launcher "$P_KIND" "$P_PAYLOAD"); [[ $content != "$expected" ]] || return 0; fi
+  expected=$(launcher source "$APP/src/cli.ts"); [[ $content != "$expected" ]] || return 0
+  expected=$(launcher source "$APP/src/cli.ts" legacy)
+  [[ $(printf '%s\n' "$content" | sed '/^$/d') != "$expected" ]] || return 0
+  if [[ $content =~ envswitch_(0\.0\.(0|[1-9][0-9]*))_ ]]; then
+    version="v${BASH_REMATCH[1]}"
+    for target in "${TARGETS[@]}"; do
+      expected=$(launcher native "$(payload_for "$ROOT" native "$version" "$target")")
+      [[ $content != "$expected" ]] || return 0
+    done
+  fi
+  return 1
+}
+ensure_dir() {
+  [[ -d $1 ]] && { path_ok "$1"; return; }
+  [[ ! -e $1 && ! -L $1 ]] || unsafe "$1"
+  local parent=${1%/*}
+  ensure_dir "${parent:-/}"
+  mkdir "$1"; CREATED[${#CREATED[@]}]=$1
+}
+# Capture bytes, bound verification/gh processes, and reap them before rollback.
+bounded() {
+  local limit=$1 out=$2 err=$3 status=0 child timer
+  shift 3
+  "$@" > "$out" 2> "$err" & child=$!; ACTIVE_CHILD=$child
+  (
+    sleeper=''
+    trap '[[ -z $sleeper ]] || { kill "$sleeper" 2>/dev/null || :; wait "$sleeper" 2>/dev/null || :; }; exit 0' TERM INT
+    sleep "$limit" & sleeper=$!; wait "$sleeper" || exit 0; sleeper=''
+    kill -TERM "$child" 2>/dev/null || exit 0; sleep 1; kill -KILL "$child" 2>/dev/null || :
+  ) >/dev/null 2>&1 & timer=$!; WATCHDOG=$timer
+  wait "$child" || status=$?
+  kill "$timer" 2>/dev/null || :; wait "$timer" 2>/dev/null || :
+  ACTIVE_CHILD='' WATCHDOG=''
+  return "$status"
+}
+cleanup() {
+  local status=$? i path backup failed=0
+  trap - ERR
+  if [[ -n $ACTIVE_CHILD ]]; then kill -TERM "$ACTIVE_CHILD" 2>/dev/null || :; wait "$ACTIVE_CHILD" 2>/dev/null || :; fi
+  [[ -z $WATCHDOG ]] || { kill "$WATCHDOG" 2>/dev/null || :; wait "$WATCHDOG" 2>/dev/null || :; }
+  if [[ $COMMITTED == 0 ]]; then
+    if [[ $PROFILE_WRITTEN == 1 ]]; then
+      if [[ $PROFILE_EXISTED == 1 ]]; then cat "$PROFILE_BACKUP" > "$PROFILE_PATH" || failed=1
+      else rm -f "$PROFILE_PATH" || failed=1; fi
+    fi
+    i=${#J_PATH[@]}
+    while [[ $i -gt 0 ]]; do
+      i=$((i-1)); [[ ${J_CHANGED[i]} == 1 ]] || continue
+      path=${J_PATH[i]}; backup=${J_BACKUP[i]}
+      if [[ -d $path ]]; then rm -rf "$path" || failed=1; fi
+      if [[ -n $backup ]]; then mv -f "$backup" "$path" || failed=1
+      else rm -f "$path" || failed=1; fi
+    done
+    if [[ $failed == 0 && -n $NEW_PAYLOAD ]]; then rm -f "$NEW_PAYLOAD" || info "deferred cleanup: $NEW_PAYLOAD"; fi
+  fi
+  if [[ $LOCKED == 1 && ! -L $LOCK && -f $LOCK && $(cat "$LOCK") == "$TOKEN $$" ]]; then rm -f "$LOCK" || failed=1; fi
+  LOCKED=0
+  for path in "${TEMPS[@]:-}"; do [[ -z $path ]] || rm -rf "$path" || failed=1; done
+  if [[ $failed == 1 ]]; then printf 'error: rollback incomplete; preserve %s and reinstall using the README instructions\n' "$STAGE" >&2
+  elif [[ -n $STAGE && -d $STAGE ]]; then rm -rf "$STAGE" || info "deferred cleanup: $STAGE"; fi
+  STAGE=''
+  i=${#CREATED[@]}; while [[ $i -gt 0 ]]; do i=$((i-1)); rmdir "${CREATED[i]}" 2>/dev/null || :; done
+  return "$status"
+}
+replace_managed() {
+  local path=$1 source=$2 mode=${3:-600} i backup='' tmp moved=0
+  path_ok "$path"; ensure_dir "${path%/*}"
+  i=${#J_PATH[@]}
+  if [[ -e $path ]]; then backup="$STAGE/backup-$i"; cp -pR "$path" "$backup"; fi
+  if [[ -d $source ]]; then
+    tmp=$(mktemp -d "${path%/*}/.install-XXXXXXXX"); rmdir "$tmp"; cp -pR "$source" "$tmp"
+  else tmp=$(mktemp "${path%/*}/.install-XXXXXXXX"); cat "$source" > "$tmp"; chmod "$mode" "$tmp"; fi
+  TEMPS[${#TEMPS[@]}]=$tmp
+  J_PATH[i]=$path; J_BACKUP[i]=$backup; J_CHANGED[i]=0
+  if [[ -d $path ]]; then mv "$path" "$STAGE/moved-$i"; J_CHANGED[i]=1; moved=1; fi
+  path_ok "$path"
+  if mv -f "$tmp" "$path"; then J_CHANGED[i]=1
+  else [[ $moved == 0 ]] || J_CHANGED[i]=1; die 'envswitch installation failed: could not replace a managed path'; fi
+}
+boundary() { if [[ $TEST == 1 && ${ENVSWITCH_INSTALL_TEST_FAIL_AT:-} == "$1" ]]; then die "injected installer test failure: $1"; fi; }
+shell_profile_path() {
+  case "${SHELL##*/}" in zsh) printf '%s/.zshrc\n' "$HOME";; bash) printf '%s/.bashrc\n' "$HOME";; *) printf '%s/.profile\n' "$HOME";; esac
+}
+ensure_profile_path() {
+  local install=$1 profile=$2 work old last block msg
+  work=$(mktemp -d "${TMPDIR:-/tmp}/envswitch-profile-XXXXXXXX"); TEMPS[${#TEMPS[@]}]=$work
+  old="$work/old"; block="$work/block"
+  [[ ! -e $profile || -f $profile ]] || unmanaged "$profile"
+  if [[ -f $profile ]]; then cat "$profile" > "$old"; else : > "$old"; fi
+  # shellcheck disable=SC2016
+  printf '%s\nexport PATH="%s:$PATH"\n%s\n' "$BEGIN" "$(escaped "$install")" "$END" > "$block"
+  last=$(tail -c 1 "$old" | od -An -tu1 | tr -d ' \n')
+  if ! awk -v begin="$BEGIN" -v end="$END" -v block="$block" -v finalnl="$last" '
+    {lines[NR]=$0;if(index($0,begin)){a=NR;as++}if(index($0,end)){b=NR;bs++}}
+    END{
+      if(as||bs){if(as!=1||bs!=1||b!=a+2||lines[a]!=begin||lines[b]!=end||lines[a+1]!~/^export PATH=".*:\$PATH"$/)exit 1}
+      for(i=1;i<=NR;i++){
+        if(i==a){while((getline line < block)>0)printf "%s\n",line;close(block);i=b}
+        else printf "%s%s",lines[i],(i<NR||finalnl=="10"?"\n":"")
+      }
+      if(!as){printf "%s",(NR&&finalnl!="10"?"\n\n":"\n");while((getline line < block)>0)printf "%s\n",line;close(block)}
+    }' "$old" > "$work/new"; then die "invalid envswitch PATH block in $profile; repair the block and rerun the installer"; fi
+  if cmp -s "$old" "$work/new"; then info "PATH block already exists in $profile"; return; fi
+  if grep -Fq "$BEGIN" "$old"; then msg="updated envswitch PATH block in $profile"; else msg="added $install to PATH in $profile"; fi
+  # Follow a user-managed profile symlink deliberately, retaining the link and target inode.
+  if [[ -n $STAGE ]]; then
+    PROFILE_PATH=$profile; PROFILE_BACKUP="$STAGE/profile-backup"; cp -p "$old" "$PROFILE_BACKUP"
+    [[ ! -e $profile ]] || PROFILE_EXISTED=1
+    PROFILE_WRITTEN=1
+  fi
+  mkdir -p "${profile%/*}"
+  cat "$work/new" > "$profile"
+  info "$msg"
+}
+asset_url_valid() {
+  local url=$1 id=$2 rest repo lower wanted
+  [[ $id =~ ^[1-9][0-9]*$ && $url == "$API_BASE/repos/"*"/releases/assets/$id" ]] || return 1
+  rest=${url#"$API_BASE/repos/"}; repo=${rest%"/releases/assets/$id"}
+  lower=$(printf '%s' "$repo" | tr '[:upper:]' '[:lower:]'); wanted=$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]')
+  [[ $lower == "$wanted" ]]
+}
+redirect_valid() {
+  case "$1" in
+    https://api.github.com/*|https://release-assets.githubusercontent.com/*|https://objects.githubusercontent.com/*|https://github-releases.githubusercontent.com/*) return 0;;
+    http://127.0.0.1:*/*|http://localhost:*/*|http://\[::1\]:*/*) [[ $TEST == 1 ]];;
+    *) return 1;;
+  esac
+}
+http_get() {
+  local original=$1 out=$2 accept=$3 transfer=${4:-60} attempt=0 url code next auth token status delay retry_after until_epoch now redirect
+  local proto='=https'
+  [[ $TEST == 0 ]] || proto='=http,https'
+  need curl
+  while [[ $attempt -lt 3 ]]; do
+    attempt=$((attempt+1)); url=$original; redirect=0; status=0
+    while [[ $redirect -lt 10 ]]; do
+      auth=''
+      if [[ -n ${GITHUB_TOKEN:-} && $url == "$API_BASE/"* ]]; then
+        token=${GITHUB_TOKEN//\\/\\\\}; token=${token//\"/\\\"}
+        [[ ! $token =~ [[:cntrl:]] ]] || setting GITHUB_TOKEN
+        auth="header = \"Authorization: Bearer $token\""
+      fi
+      # No -L: authenticate only the API origin, then validate each redirect independently.
+      if printf '%s\n' "$auth" | curl --config - --proto "$proto" --proto-redir '=https' --connect-timeout 15 --max-time "$transfer" --speed-limit 1 --speed-time 60 -sS -H "Accept: $accept" -D "$STAGE/headers" -o "$out" -w '%{http_code}\n%{redirect_url}\n' "$url" > "$STAGE/http-status" 2> "$STAGE/http-error"; then status=0; else status=$?; fi
+      code=$(sed -n '1p' "$STAGE/http-status"); next=$(sed -n '2p' "$STAGE/http-status")
+      [[ $status == 0 ]] || break
+      case "$code" in
+        200) return 0;;
+        301|302|303|307|308) redirect_valid "$next" || return 1; url=$next; redirect=$((redirect+1)); continue;;
+        408|429|5[0-9][0-9]) break;;
+        *) return 1;;
+      esac
+    done
+    [[ $redirect -lt 10 && $attempt -lt 3 ]] || return 1
+    delay=$((1 << (attempt-1)))
+    retry_after=$(awk 'tolower($1)=="retry-after:"{$1="";sub(/^ /,"");sub(/\r$/,"");print;exit}' "$STAGE/headers")
+    if [[ $retry_after =~ ^[0-9]+$ ]]; then [[ $retry_after -le $delay ]] || delay=$retry_after
+    elif [[ -n $retry_after ]]; then
+      until_epoch=$(date -d "$retry_after" +%s 2>/dev/null || date -j -f '%a, %d %b %Y %H:%M:%S %Z' "$retry_after" +%s 2>/dev/null || printf 0)
+      now=$(date +%s); [[ $until_epoch -le $((now+delay)) ]] || delay=$((until_epoch-now))
+    fi
+    sleep "$delay"
+  done
+  return 1
+}
+select_release() {
+  local endpoint data_ok=0 id count index path name url assetid natives=0 native
+  endpoint="repos/$REPO/releases/latest"; [[ -z $PIN ]] || endpoint="repos/$REPO/releases/tags/$PIN"
+  if [[ -n $GH ]]; then bounded 60 "$STAGE/release.json" "$STAGE/gh-error" "$GH" api "$endpoint" && data_ok=1 || :; fi
+  if [[ $data_ok == 0 ]]; then
+    if ! http_get "$API_BASE/$endpoint" "$STAGE/release.json" application/vnd.github+json; then
+      [[ -z $PIN ]] || die "GitHub Release not found or unavailable: $REPO@$PIN"
+      die "no GitHub Release found for $REPO, or access is denied"
+    fi
+  fi
+  JSON_DATA=$(json_parse < "$STAGE/release.json") || die "$BAD_RELEASE"
+  TAG=$(jfield tag_name) || die "$BAD_RELEASE"; id=$(jget "\$/$(hex_key id)" number) || die "$BAD_RELEASE"
+  [[ $(jget '$' object) =~ ^[0-9]+$ && $TAG =~ ^v0\.0\.(0|[1-9][0-9]*)$ && $id =~ ^[1-9][0-9]*$ && ( -z $PIN || $PIN == "$TAG" ) && $(jget "\$/$(hex_key draft)" boolean) == false && $(jget "\$/$(hex_key prerelease)" boolean) == false ]] || die "$BAD_RELEASE"
+  count=$(jget "\$/$(hex_key assets)" array) || die "$BAD_RELEASE"
+  ASSET_NAMES=(); ASSET_URLS=(); index=0
+  while [[ $index -lt $count ]]; do
+    path="\$/$(hex_key assets)/$index"
+    [[ $(jget "$path" object) =~ ^[0-9]+$ ]] || die "$BAD_RELEASE"
+    if ! { name=$(jstring "$path/$(hex_key name)") && url=$(jstring "$path/$(hex_key url)") && assetid=$(jget "$path/$(hex_key id)" number); }; then die "$BAD_RELEASE"; fi
+    asset_url_valid "$url" "$assetid" || die "$BAD_RELEASE"
+    ASSET_NAMES[index]=$name; ASSET_URLS[index]=$url; index=$((index+1))
+  done
+  VER=${TAG#v}; SOURCE="envswitch_${VER}_source.tar.gz"; NATIVE_NAMES=()
+  for native in "${TARGETS[@]}"; do
+    name="envswitch_${VER}_${native}.tar.gz"; [[ $native != *-msvc ]] || name="envswitch_${VER}_${native}.zip"
+    NATIVE_NAMES[${#NATIVE_NAMES[@]}]=$name
+    asset_count "$name"; [[ $COUNT == 0 ]] || natives=$((natives+1))
+    if [[ $native == "$TARGET" ]]; then ARCHIVE=$name; fi
+  done
+  KIND=source; [[ $natives == 0 ]] || KIND=native
+  if [[ $KIND == source ]]; then ARCHIVE=$SOURCE; REQUIRED=("$SOURCE"); else REQUIRED=("${NATIVE_NAMES[@]}"); asset_count "$SOURCE"; [[ $COUNT == 0 ]] || die "$BAD_RELEASE"; fi
+  for name in "${REQUIRED[@]}"; do asset_count "$name"; [[ $COUNT == 1 ]] || die "$BAD_RELEASE"; done
+  asset_count SHA256SUMS; [[ $COUNT != 0 ]] || die "release $TAG is missing SHA256SUMS; refusing unverified installation"
+  for name in SHA256SUMS install.sh install.ps1; do asset_count "$name"; [[ $COUNT == 1 ]] || die "$BAD_RELEASE"; done
+  info "resolved envswitch $TAG ($KIND)"; [[ $KIND != native ]] || info "selected target: $TARGET"
+}
+asset_count() {
+  local i=0; COUNT=0; ASSET_URL=''
+  while [[ $i -lt ${#ASSET_NAMES[@]} ]]; do
+    if [[ ${ASSET_NAMES[i]} == "$1" ]]; then COUNT=$((COUNT+1)); ASSET_URL=${ASSET_URLS[i]}; fi
+    i=$((i+1))
+  done
+}
+download() {
+  local name=$1 good=0
+  if [[ -n $GH ]]; then
+    info "downloading $name with GitHub CLI"
+    bounded 900 "$STAGE/gh-out" "$STAGE/gh-error" "$GH" release download "$TAG" --repo "$REPO" --pattern "$name" --dir "$STAGE" && good=1 || :
+    [[ $good == 0 || ! -f $STAGE/$name ]] || return 0
+    rm -f "$STAGE/$name"; info "GitHub CLI download did not find $name; trying direct download"
+  else info "downloading $name"; fi
+  asset_count "$name"
+  http_get "$ASSET_URL" "$STAGE/$name" application/octet-stream 900 || die "release asset not found or unavailable: $name"
+}
+manifest() {
+  [[ $(tail -c 1 "$STAGE/SHA256SUMS" | od -An -tu1 | tr -d ' \n') == 10 ]] || die "invalid SHA256SUMS for release $TAG"
+  awk '
+    {if(length($0)<67||substr($0,65,2)!="  ")exit 1;h=substr($0,1,64);n=substr($0,67);if(h~/[^0-9a-f]/||length(h)!=64||n~/[\/\\[:cntrl:] ]/||n==""||n=="."||n==".."||n=="SHA256SUMS"||seen[n]++)exit 1}
+  ' "$STAGE/SHA256SUMS" || die "invalid SHA256SUMS for release $TAG"
+  local name
+  for name in "${REQUIRED[@]}" install.sh install.ps1; do
+    awk -v name="$name" 'substr($0,67)==name{found=1}END{exit !found}' "$STAGE/SHA256SUMS" || die "invalid SHA256SUMS for release $TAG"
+  done
+}
+verify_hash() {
+  local expected actual
+  info "verifying SHA-256 for $2"
+  expected=$(awk -v name="$2" 'substr($0,67)==name{print substr($0,1,64)}' "$STAGE/SHA256SUMS")
+  if [[ $HASH == sha256sum ]]; then actual=$(sha256sum "$1"); else actual=$(shasum -a 256 "$1"); fi
+  actual=${actual%% *}; actual=$(printf '%s' "$actual" | tr '[:upper:]' '[:lower:]')
+  [[ $actual == "$expected" ]] || die "SHA-256 mismatch for $2"
+}
+archive_valid() {
+  local name type normalized top rest entry count=0
+  tar -tzf "$STAGE/$ARCHIVE" > "$STAGE/names" 2> "$STAGE/tar-error" || return 1
+  tar -tvzf "$STAGE/$ARCHIVE" > "$STAGE/verbose" 2> "$STAGE/tar-error" || return 1
+  cut -c1 "$STAGE/verbose" > "$STAGE/types"
+  [[ $(wc -l < "$STAGE/types") == "$(wc -l < "$STAGE/names")" ]] || return 1
+  : > "$STAGE/normalized"; : > "$STAGE/expected-files"
+  exec 3< "$STAGE/types"
+  while IFS='' read -r name; do
+    IFS='' read -r type <&3 || return 1
+    [[ $type == - || $type == d ]] || return 1
+    normalized=${name#./}
+    if [[ $type == d ]]; then normalized=${normalized%/}; fi
+    [[ -n $normalized && $normalized != /* && $normalized != *\\* && $normalized != *:* && ! $normalized =~ [[:cntrl:]] && $normalized != */ && $normalized != *//* ]] || return 1
+    case "/$normalized/" in */./*|*/../*) return 1;; esac
+    if grep -Fxq "$normalized" "$STAGE/normalized"; then return 1; fi
+    printf '%s\n' "$normalized" >> "$STAGE/normalized"
+    if [[ $KIND == native ]]; then
+      if [[ $type == d ]]; then [[ $normalized == scripts ]] || return 1
+      else case "$normalized" in envswitch|README.md|scripts/install.sh|scripts/install.ps1) ;; *) return 1;; esac; fi
+    else
+      [[ $normalized == envswitch || $normalized == envswitch/* ]] || return 1
+      rest=${normalized#envswitch/}; top=${rest%%/*}
+      if [[ $normalized != envswitch ]]; then
+        case "$top" in src|scripts) ;; package.json|bun.lock|README.md|tsconfig.json) [[ $rest == "$top" && $type == - ]] || return 1;; *) return 1;; esac
+      else [[ $type == d ]] || return 1; fi
+      case "/$normalized/" in */.git/*|*/node_modules/*|*/.env/*|*/.env.*/*) return 1;; esac
+    fi
+    [[ $type != - ]] || printf '%s\n' "$normalized" >> "$STAGE/expected-files"
+    count=$((count+1))
+  done < "$STAGE/names"
+  exec 3<&-
+  [[ $count -gt 0 ]] || return 1
+  if [[ $KIND == native ]]; then
+    for entry in envswitch README.md scripts/install.sh scripts/install.ps1; do grep -Fxq "$entry" "$STAGE/expected-files" || return 1; done
+  else
+    for entry in package.json bun.lock src/cli.ts scripts/install.sh scripts/install.ps1; do grep -Fxq "envswitch/$entry" "$STAGE/expected-files" || return 1; done
+  fi
+}
+extract_archive() {
+  archive_valid || die "unsafe or invalid archive: $ARCHIVE"
+  TREE=$(mktemp -d "$STAGE/extracted-XXXXXXXX")
+  tar --no-same-owner --no-same-permissions -xzf "$STAGE/$ARCHIVE" -C "$TREE" 2> "$STAGE/tar-error" || die "unsafe or invalid archive: $ARCHIVE"
+  [[ -z $(find "$TREE" ! -type f ! -type d -print) ]] || die "unsafe or invalid archive: $ARCHIVE"
+  : > "$STAGE/actual-files"
+  while IFS='' read -r entry; do printf '%s\n' "${entry#"$TREE/"}" >> "$STAGE/actual-files"; chmod 600 "$entry"; done < <(find "$TREE" -type f -print)
+  sort "$STAGE/actual-files" > "$STAGE/actual-sorted"; sort "$STAGE/expected-files" > "$STAGE/expected-sorted"
+  cmp -s "$STAGE/actual-sorted" "$STAGE/expected-sorted" || die "unsafe or invalid archive: $ARCHIVE"
+  [[ $KIND != source ]] || TREE="$TREE/envswitch"
+}
+check_payload() {
+  local file=$1 kind=$2 staged=${3:-0}
+  if [[ $kind == native ]]; then
+    printf 'envswitch %s %s\n' "$VER" "$TARGET" > "$STAGE/expected-version"
+    if ! bounded 15 "$STAGE/version-out" "$STAGE/version-err" "$file" --version || [[ -s $STAGE/version-err ]] || ! cmp -s "$STAGE/expected-version" "$STAGE/version-out"; then
+      [[ $staged == 0 ]] || die "native payload verification failed; expected envswitch $VER $TARGET"
+      return 1
+    fi
+  fi
+  bounded 15 "$STAGE/help-out" "$STAGE/help-err" "$file" --help
+}
+source_shape() {
+  local dir=$1 required=${2:-1} entry rel first
+  if [[ -e $dir/package.json ]]; then
+    JSON_DATA=$(json_parse < "$dir/package.json") || return 1
+    [[ $(jfield name) == envswitch ]] || return 1
+  elif [[ $required == 1 ]]; then return 1; fi
+  if [[ $required == 1 ]]; then [[ -f $dir/src/cli.ts && -f $dir/bun.lock ]] || return 1; fi
+  while IFS='' read -r entry; do
+    rel=${entry#"$dir/"}; first=${rel%%/*}
+    [[ ! -L $entry && ( -f $entry || -d $entry ) && ! $rel =~ [[:cntrl:]] ]] || return 1
+    case "$first" in src|scripts|node_modules|package.json|bun.lock|README.md|tsconfig.json) ;; *) return 1;; esac
+    case "/$rel/" in */.git/*|*/.env/*|*/.env.*/*) return 1;; esac
+  done < <(find "$dir" -mindepth 1 -print)
+}
+ensure_bun() {
+  BUN_BIN=$(command -v bun || :)
+  [[ -n $BUN_BIN || ! -x $HOME/.bun/bin/bun ]] || BUN_BIN="$HOME/.bun/bin/bun"
+  if [[ -z $BUN_BIN ]]; then
+    command -v curl >/dev/null 2>&1 || die 'curl is required to install Bun automatically' 'install Bun manually from https://bun.com/docs/installation, then rerun this installer'
+    info 'Bun is not installed; installing Bun'
+    if ! curl --proto '=https' --proto-redir '=https' -fsSL https://bun.com/install -o "$STAGE/bun-bootstrap"; then die 'Bun installation finished, but bun was not found on PATH'; fi
+    if ! bash "$STAGE/bun-bootstrap" > "$STAGE/bun-out" 2> "$STAGE/bun-err"; then cat "$STAGE/bun-out"; cat "$STAGE/bun-err" >&2; die 'Bun installation finished, but bun was not found on PATH'; fi
+    export BUN_INSTALL="${BUN_INSTALL:-$HOME/.bun}"; export PATH="$BUN_INSTALL/bin:$PATH"; BUN_BIN=$(command -v bun || :)
+    [[ -n $BUN_BIN ]] || die 'Bun installation finished, but bun was not found on PATH'
+  fi
+  info "using Bun at $BUN_BIN"
+  bounded 15 "$STAGE/bun-out" "$STAGE/bun-err" "$BUN_BIN" --version || { cat "$STAGE/bun-out"; cat "$STAGE/bun-err" >&2; die 'Bun verification failed'; }
+  info 'installing production dependencies'
+  if ! (cd "$TREE" && "$BUN_BIN" install --production --frozen-lockfile) > "$STAGE/bun-out" 2> "$STAGE/bun-err"; then cat "$STAGE/bun-out"; cat "$STAGE/bun-err" >&2; die 'bun install failed'; fi
+}
+write_receipt() {
+  printf '{"schemaVersion":1,"kind":%s,"repo":%s,"appRoot":%s,"installDir":%s,"launcherPath":%s,"target":%s,"tag":%s,"payloadPath":%s}\n' \
+    "$(json_quote "$KIND")" "$(json_quote "$REPO")" "$(json_quote "$ROOT")" "$(json_quote "$DEST")" "$(json_quote "$LAUNCH")" \
+    "$([[ $KIND == native ]] && json_quote "$TARGET" || printf null)" "$(json_quote "$TAG")" "$(json_quote "$PAYLOAD")" > "$STAGE/receipt"
+  printf '%s\n' "$TAG" > "$STAGE/marker"
+}
+main() {
+  local mode=${ENVSWITCH_INSTALL_TEST_MODE:-} old=${ENVS_SWITCH_INSTALL_TEST_MODE:-} os arch tool name entry existing healthy=0 oldtag='' outcome profile
+  [[ -n ${HOME:-} ]] || die 'HOME is not set; set HOME before running the installer'
+  SHELL=${SHELL:-}
+  [[ -z $old || -z $mode ]] || setting ENVSWITCH_INSTALL_TEST_MODE
+  case "$old" in ''|ensure-profile-path|shell-profile-path) ;; *) setting ENVS_SWITCH_INSTALL_TEST_MODE;; esac
+  mode=${mode:-$old}
+  case "$mode" in ''|install|ensure-profile-path|shell-profile-path) ;; *) setting ENVSWITCH_INSTALL_TEST_MODE;; esac
+  for tool in bash awk cat od tr sed mktemp find tar uname cp mv rm rmdir mkdir chmod cmp sort grep cut tail date sleep wc; do need "$tool"; done
+  if [[ $mode == shell-profile-path ]]; then [[ $# == 0 ]] || die "unexpected installer argument: $1"; shell_profile_path; return; fi
+  if [[ $mode == ensure-profile-path ]]; then [[ $# == 2 ]] || setting ENVSWITCH_INSTALL_TEST_MODE; ensure_profile_path "$1" "$2"; return; fi
+  [[ $# == 0 ]] || die "unexpected installer argument: $1"
+  TEST=0; API_BASE=https://api.github.com
+  if [[ $mode == install ]]; then
+    TEST=1; API_BASE=${ENVSWITCH_INSTALL_TEST_API_BASE_URL:-}
+    [[ $API_BASE =~ ^http://(127\.0\.0\.1|localhost|\[::1\])(:[0-9]+)?$ ]] || setting ENVSWITCH_INSTALL_TEST_API_BASE_URL
+    case "${ENVSWITCH_INSTALL_TEST_FAIL_AT:-}" in ''|after-payload|after-launcher|after-metadata) ;; *) setting ENVSWITCH_INSTALL_TEST_FAIL_AT;; esac
+  fi
+  REPO=${REPO:-rnldsalili/envswitch}; BAD_RELEASE="invalid envswitch release metadata for $REPO"
+  repo_valid "$REPO" || die "invalid repository format: $REPO" 'expected owner/repo'
+  PIN=$(normal_tag "${ENVSWITCH_VERSION:-}" Version); CURRENT=$(normal_tag "${ENVSWITCH_CURRENT_VERSION:-}" CurrentVersion)
+  ATTEST=${ENVSWITCH_VERIFY_ATTESTATIONS:-0}; case "$ATTEST" in ''|0|1) ;; *) setting ENVSWITCH_VERIFY_ATTESTATIONS;; esac
+  ROOT=${APP_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/envswitch}; DEST=${INSTALL_DIR:-$HOME/.local/bin}
+  for name in APP_ROOT INSTALL_DIR; do
+    entry=$ROOT; [[ $name != INSTALL_DIR ]] || entry=$DEST
+    [[ $entry == /* && $entry != *..* ]] || die "invalid $name: $entry" "$name must be an absolute path without '..'"
+    normalize "$entry" || unsafe "$entry"
+    if [[ $name == APP_ROOT ]]; then ROOT=$NORMAL; else DEST=$NORMAL; fi
+  done
+  APP="$ROOT/current"; LAUNCH="$DEST/envswitch"; LOCK="$ROOT/.install.lock"
+  [[ $ROOT != "$HOME" && $ROOT != "${USERPROFILE:-}" && $DEST != "$ROOT" && $DEST != "$APP" && $DEST != "$APP/"* && $ROOT != "$LAUNCH" && $ROOT != "$LAUNCH/"* && $ROOT != */.install-* && $DEST != */.install-* ]] || unsafe "$ROOT"
+  for entry in "$APP" "$LAUNCH" "$APP/bin" "$APP/scripts" "$APP/scripts/install.sh" "$APP/scripts/install.ps1" "$APP/install.json" "$APP/.version"; do path_ok "$entry"; done
+  [[ ! -e $APP || -d $APP ]] || unsafe "$APP"
+  for entry in "$ROOT/.git" "$APP/.git"; do [[ ! -e $entry && ! -L $entry ]] || unmanaged "$entry"; done
+  read_receipt; recognize_launcher || unmanaged "$LAUNCH"
+  if [[ -d $APP && -n $(find "$APP" -mindepth 1 -maxdepth 1 -print) && $P_PRESENT == 0 && ! -f $LAUNCH ]]; then
+    [[ -f $APP/package.json ]] || unmanaged "$APP"
+    JSON_DATA=$(json_parse < "$APP/package.json") && [[ $(jfield name) == envswitch ]] || unmanaged "$APP"
+  fi
+  os=$(uname -s | tr '[:upper:]' '[:lower:]'); arch=$(uname -m)
+  case "$os" in darwin) info 'detected macOS'; if command -v sysctl >/dev/null 2>&1 && [[ $(sysctl -n hw.optional.arm64 2>/dev/null || :) == 1 ]]; then arch=arm64; fi;; linux) if [[ -r /proc/version ]] && grep -qi microsoft /proc/version; then info 'detected WSL/Linux'; else info 'detected Linux'; fi;; *) die "unsupported OS for this installer: $os" 'use scripts/install.ps1 on Windows';; esac
+  case "$arch" in aarch64|arm64) TARGET=aarch64;; x86_64|amd64) TARGET=x86_64;; *) die "unsupported architecture for this installer: $arch";; esac
+  if [[ $os == darwin ]]; then TARGET="$TARGET-apple-darwin"; else TARGET="$TARGET-unknown-linux-musl"; fi
+  if command -v sha256sum >/dev/null 2>&1; then HASH=sha256sum; elif command -v shasum >/dev/null 2>&1; then HASH=shasum; else die 'required installer tool not found: sha256sum or shasum'; fi
+  TOKEN=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
+  ensure_dir "$ROOT"
+  if ! (set -o noclobber; printf '%s %s\n' "$TOKEN" "$$" > "$LOCK") 2>/dev/null; then
+    if [[ -e $LOCK || -L $LOCK ]]; then die "another envswitch installer may be running: $LOCK" 'retry after it exits; remove the lock only after confirming no installer is running'; fi
+    die "envswitch installation failed: cannot create installer lock: $LOCK"
+  fi
+  LOCKED=1; STAGE=$(mktemp -d "$ROOT/.install-stage-XXXXXXXX"); read_receipt
+  [[ -z $SELF || ! -f $SELF ]] || cp "$SELF" "$STAGE/executing-install.sh"
+  GH=$(command -v gh || :)
+  if [[ $TEST == 1 && $GH != "$HOME/"* && $GH != "${USERPROFILE:-$HOME}/"* ]]; then GH=; fi
+  VERIFIER=$GH
+  if [[ -n $GH ]] && ! bounded 60 "$STAGE/gh-out" "$STAGE/gh-error" "$GH" auth status; then GH=; fi
+  [[ $ATTEST != 1 || -n $VERIFIER ]] || die 'gh is required when attestation verification is requested'
+  select_release; download SHA256SUMS; download "$ARCHIVE"; manifest; verify_hash "$STAGE/$ARCHIVE" "$ARCHIVE"
+  if [[ $ATTEST == 1 ]]; then info "verifying GitHub attestation for $ARCHIVE"; bounded 60 "$STAGE/gh-out" "$STAGE/gh-error" "$VERIFIER" attestation verify "$STAGE/$ARCHIVE" --repo "$REPO" || die "GitHub attestation verification failed for $ARCHIVE"; fi
+  info "extracting $KIND archive"; extract_archive
+  for name in install.sh install.ps1; do verify_hash "$TREE/scripts/$name" "$name"; done
+  PAYLOAD=$(payload_for "$ROOT" "$KIND" "$TAG" "$TARGET")
+  if [[ $KIND == native ]]; then
+    STAGED="$STAGE/${PAYLOAD##*/}"; cp "$TREE/envswitch" "$STAGED"; chmod 755 "$STAGED"
+    check_payload "$STAGED" native 1 || die "envswitch launcher verification failed: $LAUNCH"
+  else
+    source_shape "$TREE" || die 'archive did not contain an envswitch source package'
+    ensure_bun; launcher source "$TREE/src/cli.ts" > "$STAGE/source-check"; chmod 755 "$STAGE/source-check"
+    check_payload "$STAGE/source-check" source || die "envswitch launcher verification failed: $LAUNCH"
+  fi
+  launcher "$KIND" "$PAYLOAD" > "$STAGE/launcher"; write_receipt
+  if [[ $P_PRESENT == 1 && $P_KIND == "$KIND" && $P_TAG == "$TAG" && $P_REPO == "$REPO" && $P_DEST == "$DEST" && $P_PAYLOAD == "$PAYLOAD" && -x $LAUNCH && -f $PAYLOAD ]] && cmp -s "$STAGE/marker" "$APP/.version" && cmp -s "$STAGE/launcher" "$LAUNCH" && cmp -s "$TREE/scripts/install.sh" "$APP/scripts/install.sh" && cmp -s "$TREE/scripts/install.ps1" "$APP/scripts/install.ps1"; then
+    if [[ $KIND == native ]]; then cmp -s "$STAGED" "$PAYLOAD" && healthy=1 || :; else [[ -f $APP/package.json && -f $APP/bun.lock && -f $APP/src/cli.ts ]] && healthy=1 || :; fi
+    if [[ $healthy == 1 ]] && check_payload "$LAUNCH" "$KIND"; then COMMITTED=1; cleanup; printf 'success: envswitch is already up to date (%s)\n' "$TAG"; return; fi
+  fi
+  oldtag=$P_TAG
+  if [[ -z $oldtag && -f $APP/.version ]]; then entry=$(tr -d '\r\n' < "$APP/.version"); if [[ $entry =~ $VERSION_RE ]]; then oldtag="v${entry#v}"; fi; fi
+  outcome=installed
+  if [[ ${oldtag:-$CURRENT} == "$TAG" && ( $P_PRESENT == 0 || ( $P_KIND == "$KIND" && ${P_TARGET:-$TARGET} == "$TARGET" ) ) ]]; then outcome=repaired; fi
+  ensure_dir "$APP"; ensure_dir "$DEST"
+  if [[ $KIND == native ]]; then
+    ensure_dir "$APP/bin"; path_ok "$PAYLOAD"
+    if [[ -e $PAYLOAD ]]; then cmp -s "$PAYLOAD" "$STAGED" || die "existing native payload differs from verified release: $PAYLOAD" 'close envswitch processes and reinstall using the README instructions; preserve the existing file until recovery is complete'
+    else info "installing binary to $PAYLOAD"; mv "$STAGED" "$PAYLOAD"; NEW_PAYLOAD=$PAYLOAD; fi
+  else
+    existing="$STAGE/old-source"; mkdir "$existing"
+    for entry in "$APP"/* "$APP"/.[!.]* "$APP"/..?*; do
+      [[ -e $entry || -L $entry ]] || continue
+      case "${entry##*/}" in src|node_modules|package.json|bun.lock|README.md|tsconfig.json|scripts|bin|.version|install.json) ;; *) unmanaged "$entry";; esac
+    done
+    for name in src node_modules package.json bun.lock README.md tsconfig.json; do
+      entry="$APP/$name"; [[ -e $entry || -L $entry ]] || continue; path_ok "$entry"
+      [[ -z $(find "$entry" ! -type d ! -type f -print) ]] || unmanaged "$entry"
+      cp -pR "$entry" "$existing/$name"
+    done
+    source_shape "$existing" 0 || unmanaged "$APP"
+    for name in src node_modules package.json bun.lock README.md tsconfig.json; do
+      if [[ -e $TREE/$name ]]; then replace_managed "$APP/$name" "$TREE/$name"
+      elif [[ -e $APP/$name ]]; then
+        entry=${#J_PATH[@]}; J_PATH[entry]="$APP/$name"; J_BACKUP[entry]="$STAGE/removed-$name"; J_CHANGED[entry]=0
+        mv "$APP/$name" "$STAGE/removed-$name"; J_CHANGED[entry]=1
+      fi
+    done
+  fi
+  boundary after-payload
+  info "installing launcher to $LAUNCH"; replace_managed "$LAUNCH" "$STAGE/launcher" 755
+  info 'verifying envswitch launcher'
+  [[ -x $LAUNCH ]] || die "launcher was not installed or is not executable: $LAUNCH"
+  check_payload "$LAUNCH" "$KIND" || die "envswitch launcher verification failed: $LAUNCH"
+  boundary after-launcher
+  for name in install.sh install.ps1; do replace_managed "$APP/scripts/$name" "$TREE/scripts/$name"; done
+  replace_managed "$APP/install.json" "$STAGE/receipt"; replace_managed "$APP/.version" "$STAGE/marker"
+  read_receipt
+  if [[ $P_TAG != "$TAG" || $P_PAYLOAD != "$PAYLOAD" ]] || ! cmp -s "$STAGE/marker" "$APP/.version"; then die 'envswitch installation failed: metadata verification'; fi
+  boundary after-metadata
+  case ":$PATH:" in *":$DEST:"*) profile=;; *) profile=$(shell_profile_path); ensure_profile_path "$DEST" "$profile";; esac
+  COMMITTED=1; cleanup
+  printf 'success: %s envswitch %s\n' "$outcome" "$TAG"
+  if [[ $KIND == native ]]; then info "binary: $PAYLOAD"; else info "source: $APP"; fi
+  info "launcher: $LAUNCH"
+  if [[ -z $profile ]]; then info "run 'envswitch --help' to verify the installation"
+  else info 'restart your terminal, or run this command now:'; info "export PATH=\"$(escaped "$DEST"):\$PATH\""; info "then run 'envswitch --help' to verify the installation"; fi
+}
+trap unexpected ERR
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+main "$@"

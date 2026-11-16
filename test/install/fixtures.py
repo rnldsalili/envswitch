@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import tarfile
 import threading
+import time
 import zipfile
 
 TARGETS = ['aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-musl',
@@ -90,19 +91,22 @@ def release(kind='native', ver='0.0.42', fault=None, windows_binary=None):
 class Server:
     def __init__(self, files, tag='v0.0.42', fault=None):
         self.files, self.tag, self.fault, self.requests = files, tag, fault, []
-        self.statuses=[]; self.redirect=None; self.change_latest=False
+        self.repo='demo/suite'; self.statuses=[]; self.retry_after=None; self.request_times=[]; self.redirect=None; self.change_latest=False
         owner = self
         class Handler(http.server.BaseHTTPRequestHandler):
             def log_message(self, *_): pass
             def do_GET(self):
+                owner.request_times.append(time.monotonic())
                 owner.requests.append((self.path, self.headers.get('Authorization')))
                 base = f'http://127.0.0.1:{self.server.server_port}'
                 if owner.statuses:
-                    self.send_error(owner.statuses.pop(0)); return
+                    self.send_response(owner.statuses.pop(0))
+                    if owner.retry_after is not None: self.send_header('Retry-After',str(owner.retry_after))
+                    self.end_headers(); return
                 if owner.redirect and '/assets/' in self.path:
                     self.send_response(302); self.send_header('Location',owner.redirect+self.path); self.end_headers(); return
                 if self.path.endswith('/latest') or '/tags/' in self.path:
-                    assets = [{'name': n, 'url': base + '/repos/demo/suite/releases/assets/' + str(i)} for i, n in enumerate(owner.files, 1)]
+                    assets = [{'id': i, 'name': n, 'url': base + '/repos/'+owner.repo+'/releases/assets/' + str(i)} for i, n in enumerate(owner.files, 1)]
                     if owner.fault == 'duplicate': assets.append(assets[0])
                     data = json.dumps({'assets': assets, 'id': 42, 'draft': False, 'prerelease': False, 'tag_name': owner.tag}).encode()
                     if owner.fault == 'bad-json': data = b'{"tag_name":"v0.0.42",'

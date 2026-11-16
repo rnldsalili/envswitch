@@ -13,6 +13,9 @@ $script:Targets = @('aarch64-apple-darwin','x86_64-apple-darwin','x86_64-unknown
 $script:Journal = New-Object Collections.ArrayList
 $script:Created = New-Object Collections.ArrayList
 $script:Stage = $null; $script:Locked = $false; $script:Committed = $false
+$script:NewPayload=$null; $script:PathChanged=$false; $script:OldProcessPath=$null
+$script:OldUserPath=$null; $script:UserPathKind=$null; $script:ExitCode=0
+$script:OriginalConfirm=$ConfirmPreference
 
 function Fail([string]$Message, [string]$Second) {
     $text = "error: $Message"
@@ -53,8 +56,19 @@ function Normalize-Directory([string]$Path) {
 function Test-Inside([string]$Path,[string]$Parent) {
     return $Path.Equals($Parent,[StringComparison]::OrdinalIgnoreCase) -or $Path.StartsWith($Parent.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)
 }
-function Get-Target([string]$Architecture = ([Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString())) {
-    if ($Architecture -cne 'X64') { Fail "unsupported architecture for this installer: $Architecture" }
+function Test-Windows {
+    if ('System.Runtime.InteropServices.RuntimeInformation' -as [type]) {
+        return [Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([Runtime.InteropServices.OSPlatform]::Windows)
+    }
+    return $env:OS -eq 'Windows_NT'
+}
+function Get-Target([string]$Architecture) {
+    if (-not $Architecture) {
+        if ('System.Runtime.InteropServices.RuntimeInformation' -as [type]) { $Architecture=[Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString() }
+        elseif ($env:PROCESSOR_ARCHITEW6432) { $Architecture=$env:PROCESSOR_ARCHITEW6432 }
+        else { $Architecture=$env:PROCESSOR_ARCHITECTURE }
+    }
+    if ($Architecture -notin @('X64','AMD64')) { Fail "unsupported architecture for this installer: $Architecture" }
     return 'x86_64-pc-windows-msvc'
 }
 function Read-Json([string]$Text) {
@@ -93,14 +107,19 @@ function Read-Sums([byte[]]$Bytes,[string]$Tag,[string[]]$Required) {
 }
 function New-Launcher([string]$Kind,[string]$Payload) {
     $path=$Payload.Replace('%','%%')
-    $lines=@('@echo off','setlocal DisableDelayedExpansion','for /f "tokens=2 delims=:" %%C in (''chcp'') do set "_ENVSWITCH_CP=%%C"','chcp 65001 >nul')
+    $lines=@('@echo off','setlocal DisableDelayedExpansion','for /f "tokens=2 delims=:." %%C in (''chcp'') do set "_ENVSWITCH_CP=%%C"','chcp 65001 >nul')
     if ($Kind -eq 'native') {
         $lines += @(('"'+$path+'" %*'),'set "_ENVSWITCH_EXIT=%ERRORLEVEL%"')
     } else {
         $lines += @('where bun >NUL 2>NUL','if %ERRORLEVEL% EQU 0 goto envswitch_bun_path','if exist "%USERPROFILE%\.bun\bin\bun.exe" goto envswitch_bun_home','echo envswitch: bun is not installed or not on PATH 1>&2','set "_ENVSWITCH_EXIT=127"','goto envswitch_finish',':envswitch_bun_path',('bun "'+$path+'" %*'),'set "_ENVSWITCH_EXIT=%ERRORLEVEL%"','goto envswitch_finish',':envswitch_bun_home',('"%USERPROFILE%\.bun\bin\bun.exe" "'+$path+'" %*'),'set "_ENVSWITCH_EXIT=%ERRORLEVEL%"',':envswitch_finish')
     }
-    $lines += @('chcp %_ENVSWITCH_CP% >nul','exit /b %_ENVSWITCH_EXIT%')
+    $lines += @('chcp %_ENVSWITCH_CP% >nul 2>&1','exit /b %_ENVSWITCH_EXIT%')
     return ($lines -join "`r`n")+"`r`n"
+}
+function Test-ManagedLauncher([string]$Content,[string]$Kind,[string]$Payload) {
+    $expected=New-Launcher $Kind $Payload
+    $previous=$expected.Replace('tokens=2 delims=:.','tokens=2 delims=:').Replace('chcp %_ENVSWITCH_CP% >nul 2>&1','chcp %_ENVSWITCH_CP% >nul')
+    return $Content -ceq $expected -or $Content -ceq $previous
 }
 function Get-Payload([string]$Root,[string]$Kind,[string]$Tag,[AllowNull()][string]$Target) {
     if ($Kind -eq 'source') { return Join-Path $Root 'current\src\cli.ts' }
@@ -250,17 +269,27 @@ function Replace-Managed([string]$Path,[byte[]]$Bytes,[string]$Source) {
         } else { [IO.File]::Move($temp,$Path) }
     } finally { if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Recurse -Force } }
 }
-function Invoke-Captured([string]$File,[string]$Argument,[int]$Timeout = 0) {
+function Invoke-Captured([string]$File,[string]$Argument,[int]$Timeout = 15000) {
     $psi=New-Object Diagnostics.ProcessStartInfo
     if ($File.EndsWith('.cmd',[StringComparison]::OrdinalIgnoreCase)) {
         $psi.FileName=$env:ComSpec; $psi.EnvironmentVariables['_ENVSWITCH_LAUNCHER']=$File; $psi.Arguments='/d /v:off /s /c ""%_ENVSWITCH_LAUNCHER%" '+$Argument+'"'
     } else { $psi.FileName=$File; $psi.Arguments=$Argument }
+    $location=Get-Location
+    if ($location.Provider.Name -eq 'FileSystem') { $psi.WorkingDirectory=$location.ProviderPath }
     $psi.UseShellExecute=$false; $psi.RedirectStandardOutput=$true; $psi.RedirectStandardError=$true
     $process=New-Object Diagnostics.Process; $process.StartInfo=$psi; $null=$process.Start()
     $out=New-Object IO.MemoryStream; $err=New-Object IO.MemoryStream
     $a=$process.StandardOutput.BaseStream.CopyToAsync($out); $b=$process.StandardError.BaseStream.CopyToAsync($err)
-    if ($Timeout -gt 0 -and -not $process.WaitForExit($Timeout)) { $process.Kill(); $process.WaitForExit() } else { $process.WaitForExit() }; $a.GetAwaiter().GetResult(); $b.GetAwaiter().GetResult()
+    if ($Timeout -gt 0 -and -not $process.WaitForExit($Timeout)) {
+        if (Test-Windows) { & (Join-Path $env:SystemRoot 'System32/taskkill.exe') /PID $process.Id /T /F *> $null }
+        else { $process.Kill() }
+        $process.WaitForExit()
+    } else { $process.WaitForExit() }; $null=$a.GetAwaiter().GetResult(); $null=$b.GetAwaiter().GetResult()
     $result=@{Code=$process.ExitCode; Out=$out.ToArray(); Err=$err.ToArray()}; $process.Dispose(); $out.Dispose(); $err.Dispose(); return $result
+}
+function Write-ToolOutput($Result) {
+    [Console]::Out.Write([Text.Encoding]::UTF8.GetString($Result.Out))
+    [Console]::Error.Write([Text.Encoding]::UTF8.GetString($Result.Err))
 }
 function Test-Payload([string]$File,[string]$Kind,[string]$Ver,[string]$Target,[switch]$Staged) {
     try {
@@ -273,45 +302,62 @@ function Test-Payload([string]$File,[string]$Kind,[string]$Ver,[string]$Target,[
         return (Invoke-Captured $File '--help').Code -eq 0
     } catch { if ($Staged) { Fail "native payload verification failed; expected envswitch $Ver $Target" }; return $false }
 }
-function Invoke-GhCommand([string]$File,[string[]]$Arguments) {
+function Invoke-GhCommand([string]$File,[string[]]$Arguments,[int]$Timeout=60000) {
     $quoted=($Arguments | ForEach-Object { '"'+$_.Replace('"','\"')+'"' }) -join ' '
-    return Invoke-Captured $File $quoted 60000
+    return Invoke-Captured $File $quoted $Timeout
 }
 function Get-Gh([switch]$Verifier) {
     $command=Get-Command gh -CommandType Application -ErrorAction SilentlyContinue
     if (-not $command) { return $null }
-    if ($script:TestMode -and -not (Test-Inside $command.Source $env:USERPROFILE)) { return $null }
+    if ($script:TestMode) {
+        if (-not (Test-Inside $command.Source $env:USERPROFILE)) { return $null }
+        try { Assert-NoLinks $command.Source } catch { return $null }
+    }
     if ($Verifier) { return $command.Source }
     $probe=Invoke-GhCommand $command.Source @('auth','status')
     if ($probe.Code -ne 0) { return $null }; return $command.Source
 }
-function Get-Http([string]$Url,[string]$Accept) {
-    # Manual redirects prevent forwarding bearer headers across origins (including on PS 5.1).
-    $deadline=[DateTime]::UtcNow.AddSeconds(60)
+function Get-Http([string]$Url,[string]$Accept,[int]$TransferSeconds=60) {
+    # Header/connect deadlines are separate from the bounded, longer asset transfer.
     for ($attempt=0; $attempt -lt 3; $attempt++) {
-        $next=$Url
+        $next=$Url; $retryAfter=$null
         try {
             for ($redirect=0; $redirect -lt 10; $redirect++) {
                 $request=[Net.HttpWebRequest]::Create($next); $request.AllowAutoRedirect=$false
-                $request.Timeout=[Math]::Max(1,[int]($deadline-[DateTime]::UtcNow).TotalMilliseconds); $request.ReadWriteTimeout=$request.Timeout
+                $request.Timeout=60000; $request.ReadWriteTimeout=60000
                 $request.Accept=$Accept; $request.UserAgent='envswitch-installer'
                 if ($env:GITHUB_TOKEN -and ([uri]$next).GetLeftPart([UriPartial]::Authority) -ceq $script:ApiBase) { $request.Headers['Authorization']='Bearer '+$env:GITHUB_TOKEN }
                 $response=$request.GetResponse()
                 try {
                     if ([int]$response.StatusCode -in @(301,302,303,307,308)) {
                         $next=([uri]::new([uri]$next,$response.Headers['Location'])).AbsoluteUri
-                        if (-not ((([uri]$next).Scheme -eq 'https' -and ([uri]$next).Host -in @('api.github.com','release-assets.githubusercontent.com','objects.githubusercontent.com','github-releases.githubusercontent.com') -and ([uri]$next).Port -eq 443) -or ($script:TestMode -and ([uri]$next).IsLoopback -and ([uri]$next).Scheme -eq 'http')) -or ([uri]$next).UserInfo) { throw 'unsafe redirect' }
+                        if (-not ((([uri]$next).Scheme -eq 'https' -and ([uri]$next).Host -in @('api.github.com','release-assets.githubusercontent.com','objects.githubusercontent.com','github-releases.githubusercontent.com') -and ([uri]$next).Port -eq 443) -or ($script:TestMode -and ([uri]$next).IsLoopback -and ([uri]$next).Scheme -eq 'http')) -or ([uri]$next).UserInfo) { throw [IO.InvalidDataException]::new('unsafe redirect') }
                         continue
                     }
                     $memory=New-Object IO.MemoryStream; $stream=$response.GetResponseStream()
-                    try { $copy=$stream.CopyToAsync($memory); if (-not $copy.Wait([Math]::Max(1,[int]($deadline-[DateTime]::UtcNow).TotalMilliseconds))) { throw [TimeoutException]::new() }; $copy.GetAwaiter().GetResult(); return ,$memory.ToArray() } finally { $memory.Dispose(); $stream.Dispose() }
+                    try {
+                        $copy=$stream.CopyToAsync($memory)
+                        if (-not $copy.Wait($TransferSeconds*1000)) { throw [TimeoutException]::new() }
+                        $null=$copy.GetAwaiter().GetResult(); return ,$memory.ToArray()
+                    } finally { $stream.Dispose(); $memory.Dispose() }
                 } finally { $response.Dispose() }
             }
-            throw 'redirect limit'
+            throw [IO.InvalidDataException]::new('redirect limit')
         } catch {
-            $resp=$_.Exception.Response
+            $exception=$_.Exception; $resp=$null; $invalid=$false
+            while ($exception) {
+                if ($exception -is [Net.WebException] -and $exception.Response) { $resp=$exception.Response }
+                if ($exception -is [IO.InvalidDataException]) { $invalid=$true }
+                $exception=$exception.InnerException
+            }
             $code=if ($resp) { [int]$resp.StatusCode } else { 0 }
-            if ($attempt -eq 2 -or ([DateTime]::UtcNow -ge $deadline) -or ($code -ne 0 -and $code -notin @(408,429) -and $code -lt 500)) { throw }
+            if ($resp) { $retryAfter=$resp.Headers['Retry-After']; $resp.Dispose() }
+            if ($attempt -eq 2 -or $invalid -or ($code -ne 0 -and $code -notin @(408,429) -and $code -lt 500)) { throw }
+            $delay=[Math]::Pow(2,$attempt)
+            $seconds=0; $when=[DateTimeOffset]::MinValue
+            if ([int]::TryParse($retryAfter,[ref]$seconds)) { $delay=[Math]::Max($delay,$seconds) }
+            elseif ([DateTimeOffset]::TryParse($retryAfter,[ref]$when)) { $delay=[Math]::Max($delay,($when-[DateTimeOffset]::UtcNow).TotalSeconds) }
+            Start-Sleep -Milliseconds ([int][Math]::Ceiling($delay*1000))
         }
     }
 }
@@ -319,12 +365,12 @@ function Save-Asset([string]$Name) {
     $path=Join-Path $script:Stage $Name
     if ($script:Gh) {
         Info "downloading $Name with GitHub CLI"
-        $download=Invoke-GhCommand $script:Gh @('release','download',$script:Tag,'--repo',$Repo,'--pattern',$Name,'--dir',$script:Stage)
+        $download=Invoke-GhCommand $script:Gh @('release','download',$script:Tag,'--repo',$Repo,'--pattern',$Name,'--dir',$script:Stage) 900000
         if ($download.Code -eq 0 -and [IO.File]::Exists($path)) { return $path }
         if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
         Info "GitHub CLI download did not find $Name; trying direct download"
     } else { Info "downloading $Name" }
-    try { Write-Utf8Bytes $path (Get-Http $script:Assets[$Name] 'application/octet-stream') }
+    try { Write-Utf8Bytes $path (Get-Http $script:Assets[$Name] 'application/octet-stream' 900) }
     catch { Fail "release asset not found or unavailable: $Name" }
     return $path
 }
@@ -344,15 +390,42 @@ function Assert-Source([string]$Path,[switch]$Existing) {
         if (((-not $Existing -or [IO.File]::Exists((Join-Path $Path package.json))) -and (Read-Json ([IO.File]::ReadAllText((Join-Path $Path package.json)))).name -cne 'envswitch') -or (-not $Existing -and (-not [IO.File]::Exists((Join-Path $Path 'src\cli.ts')) -or -not [IO.File]::Exists((Join-Path $Path bun.lock))))) { throw 'source' }
     } catch { Fail 'archive did not contain an envswitch source package' }
 }
+function Open-UserEnvironment([switch]$Writable) {
+    if ($Writable) { return [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment') }
+    return [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment')
+}
 function Get-UserPath {
     if ($script:TestMode) {
         if ([IO.File]::Exists($script:UserPathFile)) { return [IO.File]::ReadAllText($script:UserPathFile,$script:Utf8) }; return ''
     }
-    return [Environment]::GetEnvironmentVariable('Path','User')
+    $key=Open-UserEnvironment
+    try {
+        if ($key -and $key.GetValueNames() -contains 'Path') {
+            $script:UserPathKind=$key.GetValueKind('Path')
+            return [string]$key.GetValue('Path','',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+        }
+        $script:UserPathKind=[Microsoft.Win32.RegistryValueKind]::String; return ''
+    } finally { if ($key) { $key.Dispose() } }
 }
 function Set-UserPath([string]$Value) {
     if ($script:TestMode) { Replace-Managed $script:UserPathFile $script:Utf8.GetBytes($Value); return }
-    [Environment]::SetEnvironmentVariable('Path',$Value,'User')
+    $key=Open-UserEnvironment -Writable
+    try { $key.SetValue('Path',$Value,$script:UserPathKind) } finally { $key.Dispose() }
+    Send-EnvironmentChange
+}
+function Send-EnvironmentChange {
+    if (-not ('Envswitch.EnvironmentNotification' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+namespace Envswitch { public static class EnvironmentNotification {
+ [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+ public static extern IntPtr SendMessageTimeout(IntPtr window, uint message, UIntPtr wparam, string lparam, uint flags, uint timeout, out UIntPtr result);
+} }
+'@
+    }
+    $result=[UIntPtr]::Zero
+    $null=[Envswitch.EnvironmentNotification]::SendMessageTimeout([IntPtr]0xffff,0x1a,[UIntPtr]::Zero,'Environment',2,5000,[ref]$result)
 }
 function Test-PathEntry([string]$Value,[string]$Directory) {
     foreach ($entry in $Value.Split(';')) { if ($entry.TrimEnd('\').Equals($Directory.TrimEnd('\'),[StringComparison]::OrdinalIgnoreCase)) { return $true } }; return $false
@@ -370,7 +443,7 @@ function Cleanup {
                     else { [IO.File]::Move($backup,$p) }
                 } elseif (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Recurse -Force }
             }
-            if ($script:PathChanged -and -not $script:TestMode) { [Environment]::SetEnvironmentVariable('Path',$script:OldUserPath,'User') }
+            if ($script:PathChanged -and -not $script:TestMode) { Set-UserPath $script:OldUserPath }
             if ($script:OldProcessPath) { $env:Path=$script:OldProcessPath }
         } catch { $rollbackFailed=$true; [Console]::Error.WriteLine("error: rollback incomplete; preserve $script:Stage and reinstall using the README instructions") }
     }
@@ -393,8 +466,9 @@ function Cleanup {
 try {
     $script:TestMode=$env:ENVSWITCH_INSTALL_TEST_MODE -ceq 'install'
     if ($env:ENVSWITCH_INSTALL_TEST_MODE -and -not $script:TestMode) { Fail 'invalid installer setting: ENVSWITCH_INSTALL_TEST_MODE' }
+    if ($script:TestMode -and -not $env:ENVSWITCH_INSTALL_TEST_API_BASE_URL) { Fail 'invalid installer setting: ENVSWITCH_INSTALL_TEST_API_BASE_URL' }
     if ($script:TestMode -and $env:ENVSWITCH_INSTALL_TEST_FAIL_AT -and $env:ENVSWITCH_INSTALL_TEST_FAIL_AT -cnotin @('after-payload','after-launcher','after-metadata')) { Fail 'invalid installer setting: ENVSWITCH_INSTALL_TEST_FAIL_AT' }
-    if (-not [Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([Runtime.InteropServices.OSPlatform]::Windows)) { Fail 'unsupported OS for this installer. Use scripts/install.sh on macOS, Linux, or WSL.' }
+    if (-not (Test-Windows)) { Fail 'unsupported OS for this installer. Use scripts/install.sh on macOS, Linux, or WSL.' }
     $target=Get-Target
     if (-not (Test-Repo $Repo)) { Fail "invalid repository format: $Repo. Expected owner/repo." }
     $pin=Convert-Tag $Version Version; $current=Convert-Tag $CurrentVersion CurrentVersion
@@ -419,6 +493,7 @@ try {
         }
         if (-not $script:UserPathFile -or -not [IO.Path]::IsPathRooted($script:UserPathFile) -or -not (Test-Inside $script:UserPathFile $env:USERPROFILE) -or $script:UserPathFile -eq $env:USERPROFILE) { Fail 'invalid installer setting: ENVSWITCH_INSTALL_TEST_USER_PATH_FILE' }
         Assert-NoLinks $script:UserPathFile
+        if (-not $env:ENVSWITCH_INSTALL_TEST_API_BASE_URL) { Fail 'invalid installer setting: ENVSWITCH_INSTALL_TEST_API_BASE_URL' }
         if ($env:ENVSWITCH_INSTALL_TEST_API_BASE_URL) {
             $u=$null
             if (-not [uri]::TryCreate($env:ENVSWITCH_INSTALL_TEST_API_BASE_URL,[UriKind]::Absolute,[ref]$u) -or $u.Scheme -ne 'http' -or $u.Host -notin @('127.0.0.1','localhost','[::1]') -or $u.UserInfo -or $u.AbsolutePath -ne '/' -or $u.Query -or $u.Fragment) { Fail 'invalid installer setting: ENVSWITCH_INSTALL_TEST_API_BASE_URL' }
@@ -428,12 +503,12 @@ try {
     $previous=Read-Receipt (Join-Path $app install.json)
     if ([IO.File]::Exists($script:Launcher)) {
         $content=[IO.File]::ReadAllText($script:Launcher,$script:Utf8); $recognized=$false
-        if ($previous -and $content -ceq (New-Launcher $previous.kind $previous.payloadPath)) { $recognized=$true }
-        if ($content -ceq (New-Launcher source (Join-Path $app 'src\cli.ts'))) { $recognized=$true }
+        if ($previous -and (Test-ManagedLauncher $content $previous.kind $previous.payloadPath)) { $recognized=$true }
+        if ((Test-ManagedLauncher $content source (Join-Path $app 'src\cli.ts'))) { $recognized=$true }
         $legacy=@('@echo off','setlocal','where bun >NUL 2>NUL','if %ERRORLEVEL% EQU 0 (',('  bun "'+(Join-Path $app 'src\cli.ts')+'" %*'),'  exit /b %ERRORLEVEL%',')','if exist "%USERPROFILE%\.bun\bin\bun.exe" (',('  "%USERPROFILE%\.bun\bin\bun.exe" "'+(Join-Path $app 'src\cli.ts')+'" %*'),'  exit /b %ERRORLEVEL%',')','echo envswitch: bun is not installed or not on PATH 1>&2','exit /b 127') -join "`n"
         if ($content.Replace("`r`n","`n").TrimEnd("`n") -ceq $legacy) { $recognized=$true }
         if ($content -match 'envswitch_(0\.0\.(?:0|[1-9][0-9]*))_x86_64-pc-windows-msvc\.exe') {
-            if ($content -ceq (New-Launcher native (Get-Payload $AppRoot native ('v'+$Matches[1]) $target))) { $recognized=$true }
+            if ((Test-ManagedLauncher $content native (Get-Payload $AppRoot native ('v'+$Matches[1]) $target))) { $recognized=$true }
         }
         if (-not $recognized) { Unmanaged $script:Launcher }
     } elseif (Test-Path -LiteralPath $script:Launcher) { Unmanaged $script:Launcher }
@@ -443,15 +518,22 @@ try {
     if ($WhatIfPreference) {
         $selection=if ($pin) { $pin } else { 'latest' }
         foreach ($line in @("What if: Resolve envswitch release $selection from $Repo","What if: Verify SHA-256 and install the release's source or native payload to $app","What if: Install envswitch launcher to $script:Launcher",'What if: Write envswitch install receipt and version marker',"What if: Add $InstallDir to the user PATH if missing")) { [Console]::Out.WriteLine($line) }
-        if ($VerifyAttestations) { [Console]::Out.WriteLine('What if: Verify GitHub artifact attestation with gh') }; exit 0
+        if ($VerifyAttestations) { [Console]::Out.WriteLine('What if: Verify GitHub artifact attestation with gh') }; if (-not $PSCommandPath) { $global:LASTEXITCODE=0; return }; exit 0
     }
-    if (-not $PSCmdlet.ShouldProcess($AppRoot,'Install envswitch')) { exit 0 }
+    if ($PSCmdlet -and -not $PSCmdlet.ShouldProcess($AppRoot,'Install envswitch')) {
+        if (-not $PSCommandPath) { $global:LASTEXITCODE=0; return }; exit 0
+    }
+    $ConfirmPreference='None'
+    if ($PSVersionTable.PSVersion.Major -lt 6) { [Net.ServicePointManager]::SecurityProtocol=[Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 }
     $script:Gh=Get-Gh; $verifier=Get-Gh -Verifier
     if ($VerifyAttestations -and -not $verifier) { Fail 'gh is required when attestation verification is requested' }
     Ensure-Directory $AppRoot
     $script:Token=[guid]::NewGuid().ToString('N')
     try { Write-Utf8Bytes $script:Lock $script:Utf8.GetBytes("$script:Token $PID`n") }
-    catch { Fail "another envswitch installer may be running: $script:Lock" 'retry after it exits; remove the lock only after confirming no installer is running' }
+    catch {
+        if (Test-Path -LiteralPath $script:Lock) { Fail "another envswitch installer may be running: $script:Lock" 'retry after it exits; remove the lock only after confirming no installer is running' }
+        Fail "envswitch installation failed: cannot create installer lock: $script:Lock"
+    }
     $script:Locked=$true
     $lockAcl=New-Object Security.AccessControl.FileSecurity; $lockAcl.SetAccessRuleProtection($true,$false)
     foreach ($sid in @([Security.Principal.WindowsIdentity]::GetCurrent().User.Value,'S-1-5-18','S-1-5-32-544')) {
@@ -463,19 +545,20 @@ try {
     $script:Stage=Join-Path $AppRoot ('.install-stage-'+$script:Token); New-PrivateDirectory $script:Stage
     if ($PSCommandPath) { Copy-Item -LiteralPath $PSCommandPath -Destination (Join-Path $script:Stage executing-install.ps1) }
     else { Write-Utf8Bytes (Join-Path $script:Stage executing-install.ps1) $script:Utf8.GetBytes([string]$MyInvocation.MyCommand.Definition) }
-    $endpoint='repos/'+$Repo+'/releases/'+$(if ($pin) { 'tags/'+$pin } else { 'latest' }); $raw=$null
-    if ($script:Gh) { $response=Invoke-GhCommand $script:Gh @('api',$endpoint); if ($response.Code -eq 0) { $raw=$script:Utf8.GetString($response.Out) } }
-    if ($null -eq $raw) {
-        try { $raw=$script:Utf8.GetString((Get-Http ($script:ApiBase+'/'+$endpoint) 'application/vnd.github+json')) }
+    $endpoint='repos/'+$Repo+'/releases/'+$(if ($pin) { 'tags/'+$pin } else { 'latest' }); $releaseBytes=$null
+    if ($script:Gh) { $response=Invoke-GhCommand $script:Gh @('api',$endpoint); if ($response.Code -eq 0) { $releaseBytes=$response.Out } }
+    if ($null -eq $releaseBytes) {
+        try { $releaseBytes=Get-Http ($script:ApiBase+'/'+$endpoint) 'application/vnd.github+json' }
         catch { if ($pin) { Fail "GitHub Release not found or unavailable: $Repo@$pin" } else { Fail "no GitHub Release found for $Repo, or access is denied" } }
     }
     try {
+        $raw=$script:Utf8.GetString($releaseBytes)
         $release=Read-Json $raw; $script:Tag=$release.tag_name
         if ($script:Tag -cnotmatch '\Av0\.0\.(0|[1-9][0-9]*)\z' -or ($pin -and $pin -cne $script:Tag) -or ($release.id -isnot [int] -and $release.id -isnot [long]) -or $release.id -le 0 -or $release.draft -isnot [bool] -or $release.draft -or $release.prerelease -isnot [bool] -or $release.prerelease -or $release.assets -isnot [array]) { throw 'shape' }
         $script:Assets=New-Object 'Collections.Generic.Dictionary[string,string]' ([StringComparer]::Ordinal)
         $duplicates=New-Object 'Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
         foreach ($asset in $release.assets) {
-            if ($asset.name -isnot [string] -or $asset.url -isnot [string] -or $asset.url -cnotmatch ('\A'+[regex]::Escape($script:ApiBase+'/repos/'+$Repo+'/releases/assets/')+'[0-9]+\z')) { throw 'asset' }; if ($script:Assets.ContainsKey($asset.name)) { $null=$duplicates.Add($asset.name) }; $script:Assets[$asset.name]=$asset.url
+            if ($asset.name -isnot [string] -or $asset.url -isnot [string] -or $asset.url -cnotmatch ('\A'+[regex]::Escape($script:ApiBase+'/repos/')+'(?i:'+ [regex]::Escape($Repo)+')/releases/assets/[0-9]+\z')) { throw 'asset' }; if ($script:Assets.ContainsKey($asset.name)) { $null=$duplicates.Add($asset.name) }; $script:Assets[$asset.name]=$asset.url
         }
         $ver=$script:Tag.Substring(1); $source='envswitch_'+$ver+'_source.tar.gz'
         $natives=@($script:Targets | ForEach-Object { 'envswitch_'+$ver+'_'+$_+$(if ($_.EndsWith('msvc')) { '.zip' } else { '.tar.gz' }) })
@@ -504,15 +587,17 @@ try {
         $bun=if ($bunCommand) { $bunCommand.Source } else { Join-Path $env:USERPROFILE '.bun\bin\bun.exe' }
         if (-not [IO.File]::Exists($bun)) {
             Info 'Bun is not installed; installing Bun'
-            & powershell -NoProfile -Command 'irm bun.sh/install.ps1 | iex' *> $null
+            $bootstrap=Invoke-Captured (Get-Command powershell -CommandType Application).Source '-NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; irm https://bun.sh/install.ps1 | iex"' 0
+            if ($bootstrap.Code -ne 0) { Write-ToolOutput $bootstrap; Fail 'Bun installation finished, but bun was not found on PATH' }
             $env:Path=(Join-Path $env:USERPROFILE '.bun\bin')+';'+$env:Path
             $bunCommand=Get-Command bun -CommandType Application -ErrorAction SilentlyContinue
             if ($bunCommand) { $bun=$bunCommand.Source }
             if (-not [IO.File]::Exists($bun)) { Fail 'Bun installation finished, but bun was not found on PATH' }
         }
-        Info "using Bun at $bun"; if ((Invoke-Captured $bun '--version').Code -ne 0) { Fail 'Bun verification failed' }
+        Info "using Bun at $bun"; $bunVersion=Invoke-Captured $bun '--version'
+        if ($bunVersion.Code -ne 0) { Write-ToolOutput $bunVersion; Fail 'Bun verification failed' }
         Info 'installing production dependencies'; Push-Location -LiteralPath $tree
-        try { & $bun install --production --frozen-lockfile *> $null; if ($LASTEXITCODE -ne 0) { Fail 'bun install failed' } } finally { Pop-Location }
+        try { $dependencies=Invoke-Captured $bun 'install --production --frozen-lockfile' 0; if ($dependencies.Code -ne 0) { Write-ToolOutput $dependencies; Fail 'bun install failed' } } finally { Pop-Location }
         $check=Join-Path $script:Stage source-check.cmd; Write-Utf8Bytes $check $script:Utf8.GetBytes((New-Launcher source (Join-Path $tree 'src\cli.ts')))
         if (-not (Test-Payload $check $kind $ver $target)) { Fail "envswitch launcher verification failed: $script:Launcher" }
     }
@@ -527,7 +612,7 @@ try {
     if ($kind -eq 'native' -and $healthy -and (Get-FileHash -LiteralPath $payload -Algorithm SHA256).Hash -cne (Get-FileHash -LiteralPath $staged -Algorithm SHA256).Hash) { $healthy=$false }
     if ($healthy -and (Test-Payload $script:Launcher $kind $ver $target)) {
         $script:Committed=$true; Cleanup; $script:Stage=$null; $script:Locked=$false
-        [Console]::Out.WriteLine("success: envswitch is already up to date ($script:Tag)"); exit 0
+        [Console]::Out.WriteLine("success: envswitch is already up to date ($script:Tag)"); if (-not $PSCommandPath) { $global:LASTEXITCODE=0; return }; exit 0
     }
     $oldTag=if ($previous) { $previous.tag } else { $null }
     if (-not $oldTag -and [IO.File]::Exists((Join-Path $app '.version'))) { try { $oldTag=Convert-Tag ([IO.File]::ReadAllText((Join-Path $app '.version')).Trim([char]0xfeff,"`r","`n")) CurrentVersion } catch {} }
@@ -574,11 +659,15 @@ try {
     $escaped=$InstallDir.Replace('`','``').Replace('"','`"').Replace('$','`$')
     Info 'restart your terminal, or run this command now:'; Info ('$env:Path = "'+$escaped+';$env:Path"'); Info "then run 'envswitch --help' to verify the installation"
 } catch [Management.Automation.PipelineStoppedException] {
-    exit 130
+    $script:ExitCode=130
+    if (-not $PSCommandPath) { $global:LASTEXITCODE=130; return }; exit 130
 } catch {
     if ($_.Exception.Message.StartsWith('error: ')) { [Console]::Error.WriteLine($_.Exception.Message) }
     else { [Console]::Error.WriteLine('error: envswitch installation failed: '+$_.Exception.GetType().Name) }
-    exit 1
+    $script:ExitCode=1
+    if (-not $PSCommandPath) { $global:LASTEXITCODE=1; return }; exit 1
 } finally {
     try { Cleanup } catch { [Console]::Error.WriteLine('error: rollback incomplete; preserve '+$script:Stage+' and reinstall using the README instructions') }
+    $ConfirmPreference=$script:OriginalConfirm
 }
+if (-not $PSCommandPath) { $global:LASTEXITCODE=$script:ExitCode }

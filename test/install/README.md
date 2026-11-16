@@ -1,40 +1,52 @@
 # Installer protocol tests
 
-Run `bash test/install-sh.test.sh` on macOS/Linux (existing Python 3 required),
-and `pwsh -NoProfile -File test/install-ps.Tests.ps1` on Windows/Linux.
+Run `bash test/install-sh.test.sh` on macOS/Linux and
+`pwsh -NoProfile -File test/install-ps.Tests.ps1` on Windows/Linux.
+Python 3 is a test-harness dependency only: the Bash installer uses Bash,
+POSIX awk, curl/authenticated gh, tar, a SHA-256 tool, and standard Unix tools.
+Set `INSTALL_TEST_PYTHON` to an existing test interpreter when necessary.
 No test installs a runtime or contacts GitHub, Bun, or 1Password.
 
-`fixtures.py` creates complete synthetic releases and a loopback HTTP server.
-`fake-gh.py` reads only suite-owned JSON/assets. Native Unix payloads are tiny
-Bash programs. Windows tests compile tiny real .NET Framework executables with
-the installed Windows PowerShell compiler. Bun and op are stubs. Every test has
-isolated homes, tool configuration, temporary files, and PATH. Windows persistent
-User PATH reads and writes are redirected to a file under isolated USERPROFILE;
-the real registry-backed User PATH is never read or written by the suite.
+All suite roots are private directories beneath `test/install`. `harness.py`
+checks resolved destinations before every Python fixture write and rejects
+symlink escapes. Fake tools replace only suite-owned paths. The no-Python case
+creates a fresh bin directory containing links to an explicit allowlist of tools;
+it never writes through a PATH entry. Homes, XDG directories, profiles, tool
+configuration, temporary files, and PATH are isolated. The suites set a dead
+HTTPS proxy and loopback-only NO_PROXY; full install test mode requires an
+explicit loopback API origin. Linux CI runs suites with `--network none`.
 
-`archive-fixtures.json` contains base64-encoded minimal tar/zip files for the
-PowerShell archive-reader assertions, including links, FIFOs, traversal, case
-collisions, and Unicode PAX metadata. Linux PowerShell loads function declarations
-through the AST; only the directory ACL helper is replaced for archive tests.
-The production Windows OS/CPU gate is never bypassed. Windows integration tests
-run separately in CI under pwsh, 64-bit Windows PowerShell 5.1, and 32-bit Windows
-PowerShell 5.1 on x64 Windows.
+`fixtures.py` serves complete synthetic releases over loopback, including asset
+IDs and redirect/retry cases. `fake-gh.py` reads only suite-owned JSON/assets.
+Native Unix payloads are tiny shell scripts. Windows fixtures compile tiny real
+.NET Framework executables using the installed Windows PowerShell compiler.
+Bun and op are stubs. Persistent User PATH uses the required mock file under
+USERPROFILE; registry type preservation is also checked with a memory-only key.
+No suite reads or writes the real persistent User PATH.
 
-For Docker on Apple Silicon, the tested command is:
+`json-cases.tsv` exercises the single bundled awk grammar, including UTF-8,
+escapes, surrogate pairs, duplicate decoded keys, numbers, and invalid syntax.
+Run `sh test/install/test-json-awk.sh "$PWD" /usr/bin/awk` for BWK awk, or substitute
+`gawk` / `busybox awk`. CI covers macOS BWK awk, gawk, and Alpine BusyBox awk.
+Bash pipe/helper/full-install cases run on macOS Bash 3.2 and Linux Bash 5.
+
+`archive-fixtures.json` contains minimal tar/zip fixtures for PowerShell archive
+readers. Linux pwsh loads function declarations through the AST; the production
+Windows OS gate is never bypassed. Windows integration tests run under pwsh 7,
+Windows PowerShell 5.1 x64, and 5.1 x86, including `iex`, localized `chcp`, and
+302 redirects, and one transaction-level confirmation. Those Windows process semantics cannot run on Linux pwsh.
+
+For Docker on Apple Silicon, using an already available image:
 
 ```sh
-docker run --rm --platform linux/amd64 \
+docker run --rm --network none --platform linux/amd64 \
   -e DOTNET_EnableWriteXorExecute=0 -e COMPlus_EnableWriteXorExecute=0 \
   -e DOTNET_TieredCompilation=0 -e POWERSHELL_TELEMETRY_OPTOUT=1 \
-  -v "$PWD:/work:ro" mcr.microsoft.com/powershell:7.4-ubuntu-22.04 \
+  -v "$PWD:/work" mcr.microsoft.com/powershell:7.4-ubuntu-22.04 \
   pwsh -NoProfile -File /work/test/install-ps.Tests.ps1
 ```
 
-The .NET settings work around QEMU crashes on this host; they are not installer
-inputs. No network is used by the tests inside the container. The image must
-already be available when running without network access.
-
-D2b covers installers. The untouched-old-installer migration/CLI transcript
-assertions belong to M1b; Rust receipt lookup, copied-binary guidance and child
-result validation belong to D3; real packaged target smoke tests belong to D1.
-These suites use synthetic payloads and do not replace those separate gates.
+The .NET settings work around QEMU crashes; they are not installer inputs.
+D2b covers installers. M1b owns old-installer migration/CLI transcript assertions;
+D3 owns native updater invocation/result validation; D1 owns real target smoke
+tests. Synthetic installer fixtures do not replace those publication gates.

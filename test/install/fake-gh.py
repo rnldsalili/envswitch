@@ -7,6 +7,11 @@ import shutil
 import sys
 
 root=Path(os.environ['HOME'])
+suite=root.parent.resolve()
+def owned(path):
+    resolved=Path(path).resolve()
+    if resolved!=suite and suite not in resolved.parents: raise AssertionError('fake gh write escapes suite')
+owned(root/'gh.log')
 args=sys.argv[1:]
 with (root/'gh.log').open('a') as f: f.write(json.dumps(args)+'\n')
 mode=os.environ.get('FAKE_GH_MODE','ok')
@@ -17,6 +22,7 @@ if args[0]=='api':
 if args[:2]==['release','download']:
     if mode=='download-fails': sys.exit(1)
     name=args[args.index('--pattern')+1]; dest=Path(args[args.index('--dir')+1])
+    owned(dest/name)
     shutil.copyfile(root/'gh-assets'/name,dest/name); sys.exit(0)
 if args[:2]==['attestation','verify']: sys.exit(1 if mode=='attestation-fails' else 0)
 sys.exit(1)

@@ -3,41 +3,48 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from fixtures import REPO, Server, release
+from harness import set_root, assert_owned
 
 
 class InstallTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(prefix='envswitch-suite-')
+        self.tmp = tempfile.TemporaryDirectory(prefix='.suite-', dir=REPO/'test/install')
         self.home = Path(self.tmp.name).resolve()
+        set_root(self.home)
         self.env = {k: v for k, v in os.environ.items() if k not in ('GITHUB_TOKEN','GH_TOKEN','REPO','APP_ROOT','INSTALL_DIR','ENVS_SWITCH_INSTALL_TEST_MODE') and not k.startswith('ENVSWITCH_')}
         for name in ('HOME','USERPROFILE','LOCALAPPDATA','APPDATA','XDG_DATA_HOME','XDG_CONFIG_HOME','XDG_CACHE_HOME','XDG_STATE_HOME','TMPDIR','TEMP','TMP','BUN_INSTALL','GH_CONFIG_DIR'):
             p = self.home / name; p.mkdir(); self.env[name] = str(p)
         self.bin = Path(self.env['HOME']) / 'tools'; self.bin.mkdir()
         # Never put the user's PATH or Bun/gh on the test PATH.
-        self.env.update(PATH=str(self.bin) + ':/usr/bin:/bin:/usr/sbin:/sbin', SHELL='/bin/zsh', REPO='demo/suite',
+        self.env.update(PYTHONDONTWRITEBYTECODE='1', HTTPS_PROXY='http://127.0.0.1:9', NO_PROXY='127.0.0.1,localhost,::1', PATH=str(self.bin) + ':/usr/bin:/bin:/usr/sbin:/sbin', SHELL='/bin/zsh', REPO='demo/suite',
                         APP_ROOT=str(self.home / 'app'), INSTALL_DIR=str(self.home / 'launchers'), ENVSWITCH_INSTALL_TEST_MODE='install')
         for tool in ('python3',):
-            (self.bin / tool).symlink_to(shutil.which(tool))
+            (self.bin / tool).symlink_to(sys.executable)
         self.fake('bun', 'echo "$*" >> "$HOME/bun.log"\ncase "$1" in --version) echo 1.4.0;; install) :;; *) exit 0;; esac')
         self.fake('op', 'echo forbidden >> "$HOME/op.log"; exit 99')
         self.fake('gh', 'exit 1')
-        self.fake('curl', 'exit 98')
+        (self.bin/'curl').symlink_to('/usr/bin/curl')
         self.server = None
     def tearDown(self):
         if self.server: self.server.close()
         self.tmp.cleanup()
+        set_root(None)
     def fake(self, name, code):
-        p = self.bin / name; p.write_text('#!/bin/bash\n' + code + '\n'); p.chmod(0o755)
+        p = self.bin / name
+        assert_owned(p.parent)
+        if p.is_symlink(): p.unlink()
+        p.write_text('#!/bin/bash\n' + code + '\n'); p.chmod(0o755)
     def serve(self, **kw):
         if self.server: self.server.close()
         fault = kw.get('fault')
         self.server = Server(release(**kw), fault=fault)
         self.env['ENVSWITCH_INSTALL_TEST_API_BASE_URL'] = self.server.base
     def run_install(self, ok=True, **env):
-        result = subprocess.run(['/bin/bash', str(REPO / 'scripts/install.sh')], env=dict(self.env, **env), capture_output=True, text=True)
+        result = subprocess.run([os.environ.get('INSTALL_TEST_BASH','/bin/bash'), str(REPO / 'scripts/install.sh')], env=dict(self.env, **env), capture_output=True, text=True)
         self.assertEqual(result.returncode, 0 if ok else 1, result.stdout + result.stderr)
         self.assertFalse((Path(self.env['HOME']) / 'op.log').exists())
         return result
@@ -174,14 +181,10 @@ class InstallTests(unittest.TestCase):
 
     def test_launcher_replace_failure_preserves_old(self):
         self.serve(); self.run_install(); p=Path(self.env['INSTALL_DIR'])/'envswitch'; before=p.read_bytes()
-        # Inject an actual atomic-rename failure through the filesystem, using an owned Python shim.
-        python=self.bin/'python3'; python.unlink()
-        real=shutil.which('python3')
-        shim=self.home/'rename-fails.py'
-        shim.write_text('import os,sys\nsys.argv=sys.argv[1:]\nreal=os.replace\ndef replace(a,b):\n if str(b)==os.environ["INSTALL_DIR"]+"/envswitch": raise OSError("injected sharing failure")\n return real(a,b)\nos.replace=replace\nexec(compile(sys.stdin.read(),"installer","exec"))\n')
-        self.fake('python3','exec '+real+' "'+str(shim)+'" "$@"')
+        real_mv=shutil.which('mv')
+        self.fake('mv','for last; do :; done\nif [[ "$last" == "$INSTALL_DIR/envswitch" ]]; then exit 9; fi\nexec "'+real_mv+'" "$@"')
         self.serve(ver='0.0.43'); self.server.tag='v0.0.43'
-        self.assertIn('installation failed: OSError', self.run_install(ok=False).stderr)
+        self.assertIn('installation failed: could not replace a managed path', self.run_install(ok=False).stderr)
         self.assertEqual(p.read_bytes(),before)
 
     def test_source_adoption_and_missing_file_repair(self):
@@ -249,7 +252,7 @@ class InstallTests(unittest.TestCase):
     def test_authenticated_gh_success(self):
         self.serve(); home=Path(self.env['HOME']); assets=home/'gh-assets'; assets.mkdir()
         for name,data in self.server.files.items(): (assets/name).write_bytes(data)
-        (home/'gh-release.json').write_text(json.dumps({'tag_name':'v0.0.42','id':42,'draft':False,'prerelease':False,'assets':[{'name':name,'url':self.server.base+'/repos/demo/suite/releases/assets/'+str(i)} for i,name in enumerate(self.server.files,1)]}))
+        (home/'gh-release.json').write_text(json.dumps({'tag_name':'v0.0.42','id':42,'draft':False,'prerelease':False,'assets':[{'id':i,'name':name,'url':self.server.base+'/repos/demo/suite/releases/assets/'+str(i)} for i,name in enumerate(self.server.files,1)]}))
         self.fake('gh','exec python3 "'+str(REPO/'test/install/fake-gh.py')+'" "$@"')
         self.run_install(ENVSWITCH_VERIFY_ATTESTATIONS='1')
         log=[json.loads(line) for line in (home/'gh.log').read_text().splitlines()]
@@ -275,5 +278,60 @@ class InstallTests(unittest.TestCase):
             r=subprocess.run(['/bin/bash',str(REPO/'scripts/install.sh')],env=env,capture_output=True,text=True)
             self.assertEqual(r.returncode,0,r.stderr); self.assertEqual(r.stdout,str(Path(self.env['HOME'])/profile)+'\n')
         self.assertIn('invalid installer setting',self.run_install(ok=False,ENVS_SWITCH_INSTALL_TEST_MODE='shell-profile-path').stderr)
+
+    def test_piped_helper_and_full_install_without_python(self):
+        self.serve()
+        tools=self.home/'no-python-tools'; tools.mkdir()
+        for name in ('bash','curl','tar','awk','sed','mktemp','find','uname','sysctl','shasum','sha256sum','od','tr','cat','cp','mv','rm','rmdir','mkdir','chmod','cmp','sort','grep','cut','tail','date','sleep','readlink','wc','head','gzip','kill','basename','dirname'):
+            tool=shutil.which(name)
+            if tool: (tools/name).symlink_to(tool)
+        self.env['PATH']=str(tools)
+        code=(REPO/'scripts/install.sh').read_bytes()
+        helper=dict(self.env,ENVSWITCH_INSTALL_TEST_MODE='shell-profile-path')
+        shell=os.environ.get('INSTALL_TEST_BASH','/bin/bash')
+        result=subprocess.run([shell],input=code,env=helper,capture_output=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(result.stdout,(str(Path(self.env['HOME'])/'.zshrc')+'\n').encode())
+        result=subprocess.run([shell],input=code,env=self.env,capture_output=True)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertIn(b'success: installed envswitch v0.0.42',result.stdout)
+
+    def test_install_hook_requires_loopback_url(self):
+        self.env.pop('ENVSWITCH_INSTALL_TEST_API_BASE_URL',None)
+        self.assertIn('invalid installer setting: ENVSWITCH_INSTALL_TEST_API_BASE_URL',self.run_install(ok=False).stderr)
+        self.assertFalse(Path(self.env['APP_ROOT']).exists())
+
+    def test_unset_home_is_clear_error(self):
+        self.serve(); env=dict(self.env); env.pop('HOME')
+        r=subprocess.run(['/bin/bash',str(REPO/'scripts/install.sh')],env=env,capture_output=True,text=True)
+        self.assertEqual(r.returncode,1); self.assertIn('error:',r.stderr); self.assertNotIn('Traceback',r.stderr)
+
+    def test_symlinked_profile_preserves_link_and_target(self):
+        self.serve(); target=self.home/'dotfiles'/'zshrc'; target.parent.mkdir(); target.write_bytes(b'# stowed\n')
+        profile=Path(self.env['HOME'])/'.zshrc'; profile.symlink_to(target)
+        self.run_install(); self.assertTrue(profile.is_symlink())
+        self.assertTrue(target.read_bytes().startswith(b'# stowed\n'))
+        self.assertIn(b'# >>> envswitch PATH >>>',target.read_bytes())
+
+    def test_harness_rejects_writes_through_tool_symlinks(self):
+        link=self.bin/'awk'; link.symlink_to('/usr/bin/awk')
+        with self.assertRaisesRegex(AssertionError,'escapes isolated test root'): link.write_text('forbidden')
+
+    def test_token_never_appears_in_curl_arguments(self):
+        self.serve(); self.fake('curl','printf "%s\\n" "$@" >> "$HOME/curl-args.log"\nexec /usr/bin/curl "$@"')
+        self.run_install(GITHUB_TOKEN='synthetic-test-token')
+        log=(Path(self.env['HOME'])/'curl-args.log').read_text()
+        self.assertNotIn('synthetic-test-token',log); self.assertIn('--config',log)
+
+    def test_asset_repo_case_is_insensitive(self):
+        self.serve(); self.server.repo='DeMo/SuItE'; self.run_install()
+
+    def test_retry_after_is_respected(self):
+        self.serve(); self.server.statuses=[429]; self.server.retry_after=2
+        self.run_install(); self.assertGreaterEqual(self.server.request_times[1]-self.server.request_times[0],1.9)
+
+    def test_bun_failure_preserves_diagnostic_output(self):
+        self.serve(kind='source'); self.fake('bun','[[ "$1" == --version ]] && exit 0\necho dependency-diagnostic; echo dependency-error >&2; exit 9')
+        r=self.run_install(ok=False); self.assertIn('dependency-diagnostic',r.stdout); self.assertIn('dependency-error',r.stderr)
 
 if __name__ == '__main__': unittest.main(verbosity=2)
