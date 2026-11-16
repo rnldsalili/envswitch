@@ -10,7 +10,7 @@ name: Release
 # reusable fallback runs the OLD Bash installer suite on Linux and macOS.
 # A referenced workflow must exist at load time, even when a job would be skipped.
 # M1b replaces that shim with D2b's real installers.yml (with workflow_call).
-# TODO F1: when parity.yml lands, replace the parity stub with its workflow_call.
+# Parity: native releases require the oracle parity workflow (parity.yml).
 # After the first native release AND live migration checks, restore push publishing
 # in release.py plan; keep main-only publication, required suites, and latest guard.
 
@@ -140,21 +140,10 @@ jobs:
     uses: ./.github/workflows/installers.yml
 
   parity:
-    name: Required parity if present (F1 handoff stub)
+    name: Required oracle parity (native)
     needs: plan
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ needs.plan.outputs.sha }}
-          persist-credentials: false
-      - name: Check parity integration
-        run: |
-          if [[ -f .github/workflows/parity.yml ]]; then
-            echo '::error::TODO F1: parity.yml exists; replace this job with its workflow_call before releasing.'
-            exit 1
-          fi
-          echo '::notice::Parity workflow is not present in this base.'
+    if: needs.plan.outputs.kind == 'native'
+    uses: ./.github/workflows/parity.yml
 
   assemble:
     name: Assemble and verify complete asset set (also on pushes)
@@ -200,7 +189,8 @@ jobs:
       always() && !cancelled() && needs.plan.outputs.publish == 'true' &&
       github.ref == 'refs/heads/main' && needs.verify.result == 'success' &&
       needs.package.result == 'success' && needs.installers.result == 'success' &&
-      needs.parity.result == 'success' && needs.assemble.result == 'success' &&
+      (needs.parity.result == 'success' || (needs.plan.outputs.kind == 'source' && needs.parity.result == 'skipped')) &&
+      needs.assemble.result == 'success' &&
       (needs.native.result == 'success' || needs.native.result == 'skipped')
     runs-on: ubuntu-24.04
     permissions:

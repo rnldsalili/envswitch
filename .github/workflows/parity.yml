@@ -79,5 +79,6 @@ jobs:
         run: |
           echo "::error::Windows baseline missing: download windows-parity-goldens and commit these goldens under parity/goldens/windows/."
           exit 1
-      # Integration gate: enable explicitly once C1–C4/D3 are merged.
-      # ENVSWITCH_PARITY_FILTER=<kind-or-id-prefix> cargo test --locked --test parity -- --ignored --nocapture
+      - name: Rust parity against the oracle goldens
+        if: steps.goldens.outputs.windows_missing != 'true'
+        run: cargo test --locked --test parity -- --ignored --nocapture
