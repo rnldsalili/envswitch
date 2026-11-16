@@ -1,13 +1,14 @@
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
-from fixtures import REPO, Server, release
-from harness import set_root, assert_owned
+from fixtures import REPO, Server, release, archive
+from harness import set_root, assert_owned, UNIX_TOOLS
 
 
 class InstallTests(unittest.TestCase):
@@ -20,14 +21,15 @@ class InstallTests(unittest.TestCase):
             p = self.home / name; p.mkdir(); self.env[name] = str(p)
         self.bin = Path(self.env['HOME']) / 'tools'; self.bin.mkdir()
         # Never put the user's PATH or Bun/gh on the test PATH.
-        self.env.update(PYTHONDONTWRITEBYTECODE='1', HTTPS_PROXY='http://127.0.0.1:9', NO_PROXY='127.0.0.1,localhost,::1', PATH=str(self.bin) + ':/usr/bin:/bin:/usr/sbin:/sbin', SHELL='/bin/zsh', REPO='demo/suite',
+        self.env.update(PYTHONDONTWRITEBYTECODE='1', HTTPS_PROXY='http://127.0.0.1:9', NO_PROXY='127.0.0.1,localhost,::1', PATH=str(self.bin), SHELL='/bin/zsh', REPO='demo/suite',
                         APP_ROOT=str(self.home / 'app'), INSTALL_DIR=str(self.home / 'launchers'), ENVSWITCH_INSTALL_TEST_MODE='install')
-        for tool in ('python3',):
-            (self.bin / tool).symlink_to(sys.executable)
+        for name in UNIX_TOOLS:
+            tool=shutil.which(name)
+            if tool: (self.bin/name).symlink_to(tool)
+        (self.bin/'python3').symlink_to(sys.executable)
         self.fake('bun', 'echo "$*" >> "$HOME/bun.log"\ncase "$1" in --version) echo 1.4.0;; install) :;; *) exit 0;; esac')
         self.fake('op', 'echo forbidden >> "$HOME/op.log"; exit 99')
         self.fake('gh', 'exit 1')
-        (self.bin/'curl').symlink_to('/usr/bin/curl')
         self.server = None
     def tearDown(self):
         if self.server: self.server.close()
@@ -70,7 +72,17 @@ class InstallTests(unittest.TestCase):
         for fault in ('missing-sums','malformed','no-final-lf','self-entry','missing-archive-entry','duplicate-sum','missing-entry','mismatch','script-hash','partial','mixed','duplicate','bad-json','wrong-version','wrong-target','newline','crlf','version-fails','stderr','help-fails','traversal','link','duplicate-path','extra'):
             with self.subTest(fault=fault):
                 self.serve(fault=fault); r = self.run_install(ok=False)
-                self.assertIn('error:', r.stderr)
+                target=next((line.split(': ',2)[2] for line in r.stdout.splitlines() if line.startswith('info: selected target: ')), '')
+                asset='envswitch_0.0.42_'+target+'.tar.gz'
+                if fault=='missing-sums': expected='release v0.0.42 is missing SHA256SUMS; refusing unverified installation'
+                elif fault in ('partial','mixed','duplicate','bad-json'): expected='invalid envswitch release metadata for demo/suite'
+                elif fault in ('malformed','no-final-lf','self-entry','missing-archive-entry','duplicate-sum','missing-entry'): expected='invalid SHA256SUMS for release v0.0.42'
+                elif fault=='mismatch': expected='SHA-256 mismatch for '+asset
+                elif fault=='script-hash': expected='SHA-256 mismatch for install.sh'
+                elif fault in ('wrong-version','wrong-target','newline','crlf','version-fails','stderr'): expected='native payload verification failed; expected envswitch 0.0.42 '+target
+                elif fault=='help-fails': expected='envswitch launcher verification failed: '+str(Path(self.env['INSTALL_DIR'])/'envswitch')
+                else: expected='unsafe or invalid archive: '+asset
+                self.assertEqual(r.stderr,'error: '+expected+'\n')
                 self.assertFalse((Path(self.env['INSTALL_DIR']) / 'envswitch').exists())
     def test_pin(self):
         self.serve(); self.run_install(ENVSWITCH_VERSION='0.0.42')
@@ -89,7 +101,8 @@ class InstallTests(unittest.TestCase):
         self.serve(ver='0.0.43'); self.server.tag = 'v0.0.43'
         for boundary in ('after-payload','after-launcher','after-metadata'):
             with self.subTest(boundary=boundary):
-                self.run_install(ok=False, ENVSWITCH_INSTALL_TEST_FAIL_AT=boundary)
+                r=self.run_install(ok=False, ENVSWITCH_INSTALL_TEST_FAIL_AT=boundary)
+                self.assertEqual(r.stderr,'error: injected installer test failure: '+boundary+'\n')
                 self.assertEqual([p.read_bytes() for p in paths], before)
     def test_lock_nonowner(self):
         self.serve(); root = Path(self.env['APP_ROOT']); root.mkdir()
@@ -282,7 +295,7 @@ class InstallTests(unittest.TestCase):
     def test_piped_helper_and_full_install_without_python(self):
         self.serve()
         tools=self.home/'no-python-tools'; tools.mkdir()
-        for name in ('bash','curl','tar','awk','sed','mktemp','find','uname','sysctl','shasum','sha256sum','od','tr','cat','cp','mv','rm','rmdir','mkdir','chmod','cmp','sort','grep','cut','tail','date','sleep','readlink','wc','head','gzip','kill','basename','dirname'):
+        for name in UNIX_TOOLS:
             tool=shutil.which(name)
             if tool: (tools/name).symlink_to(tool)
         self.env['PATH']=str(tools)
@@ -314,14 +327,14 @@ class InstallTests(unittest.TestCase):
         self.assertIn(b'# >>> envswitch PATH >>>',target.read_bytes())
 
     def test_harness_rejects_writes_through_tool_symlinks(self):
-        link=self.bin/'awk'; link.symlink_to('/usr/bin/awk')
+        link=self.bin/'awk'
         with self.assertRaisesRegex(AssertionError,'escapes isolated test root'): link.write_text('forbidden')
 
     def test_token_never_appears_in_curl_arguments(self):
         self.serve(); self.fake('curl','printf "%s\\n" "$@" >> "$HOME/curl-args.log"\nexec /usr/bin/curl "$@"')
         self.run_install(GITHUB_TOKEN='synthetic-test-token')
         log=(Path(self.env['HOME'])/'curl-args.log').read_text()
-        self.assertNotIn('synthetic-test-token',log); self.assertIn('--config',log)
+        self.assertNotIn('synthetic-test-token',log); self.assertIn('--config',log); self.assertEqual(log.splitlines()[0],'-q')
 
     def test_asset_repo_case_is_insensitive(self):
         self.serve(); self.server.repo='DeMo/SuItE'; self.run_install()
@@ -333,5 +346,79 @@ class InstallTests(unittest.TestCase):
     def test_bun_failure_preserves_diagnostic_output(self):
         self.serve(kind='source'); self.fake('bun','[[ "$1" == --version ]] && exit 0\necho dependency-diagnostic; echo dependency-error >&2; exit 9')
         r=self.run_install(ok=False); self.assertIn('dependency-diagnostic',r.stdout); self.assertIn('dependency-error',r.stderr)
+
+    def native_hardlink_release(self, target):
+        import hashlib
+        import io
+        import tarfile
+        self.serve()
+        for name, data in list(self.server.files.items()):
+            if not name.endswith('.tar.gz'): continue
+            with tarfile.open(fileobj=io.BytesIO(data),mode='r:gz') as tar:
+                entries={member.name:tar.extractfile(member).read() for member in tar.getmembers() if member.isfile()}
+            ordered={'envswitch':entries.pop('envswitch')}
+            ordered.update({n:d for n,d in entries.items() if n!='README.md'})
+            ordered['README.md']=(tarfile.LNKTYPE,target)
+            self.server.files[name]=archive(ordered)
+        self.server.files['SHA256SUMS']=''.join(hashlib.sha256(data).hexdigest()+'  '+name+'\n' for name,data in self.server.files.items() if name!='SHA256SUMS').encode()
+
+    def test_hardlink_outside_preserves_secret_mode(self):
+        secret=self.home/'secret'; secret.write_text('suite-secret'); secret.chmod(0o640)
+        for target in ('../../../secret',str(secret)):
+            with self.subTest(target=target):
+                self.native_hardlink_release(target)
+                r=self.run_install(ok=False)
+                self.assertEqual(r.stderr,'error: unsafe or invalid archive: envswitch_0.0.42_'+next(line.split(': ',2)[2] for line in r.stdout.splitlines() if line.startswith('info: selected target: '))+'.tar.gz\n')
+                self.assertEqual(secret.stat().st_mode & 0o777,0o640)
+                self.assertEqual(secret.read_text(),'suite-secret'); self.assertEqual(secret.stat().st_nlink,1)
+
+    def test_post_extraction_rejects_hidden_hardlink(self):
+        # A lying listing exercises the independent inode-count check before chmod.
+        real_tar=shutil.which('tar')
+        self.fake('tar','if [[ "$1" == -tvzf ]]; then "'+real_tar+'" "$@" | sed -e "s/^h/-/" -e "s/ link to .*//" -e "s/ -> .*//"; else exec "'+real_tar+'" "$@"; fi')
+        self.native_hardlink_release('envswitch')
+        r=self.run_install(ok=False)
+        self.assertEqual(r.stderr,'error: unsafe or invalid archive: envswitch_0.0.42_'+next(line.split(': ',2)[2] for line in r.stdout.splitlines() if line.startswith('info: selected target: '))+'.tar.gz\n')
+
+    def test_curlrc_is_ignored(self):
+        self.serve(); (Path(self.env['HOME'])/'.curlrc').write_text('proxy = "http://127.0.0.1:9"\nnoproxy = ""\nlocation\ninsecure\n')
+        self.run_install()
+
+    def test_dangling_profile_link_is_not_created_or_removed(self):
+        self.serve(); target=self.home/'missing-profile'; profile=Path(self.env['HOME'])/'.zshrc'
+        profile.symlink_to(target); self.run_install()
+        self.assertTrue(profile.is_symlink()); self.assertFalse(target.exists())
+        self.assertFalse(profile.exists())
+        function=re.search(r'^cleanup\(\) \{.*?^}',(REPO/'scripts/install.sh').read_text(),re.M|re.S).group()
+        setup='STAGE= LOCK= TOKEN= LOCKED=0 COMMITTED=0 NEW_PAYLOAD= ACTIVE_CHILD= WATCHDOG=; PROFILE_BACKUP= PROFILE_WRITTEN=1 PROFILE_EXISTED=0 PROFILE_PATH="$1"; J_PATH=() J_BACKUP=() J_CHANGED=() CREATED=() TEMPS=(); '
+        r=subprocess.run([os.environ.get('INSTALL_TEST_BASH','/bin/bash'),'-c',setup+function+'\ncleanup','unit',str(profile)],env=self.env,capture_output=True,text=True)
+        self.assertEqual(r.returncode,0,r.stderr); self.assertTrue(profile.is_symlink()); self.assertFalse(target.exists())
+
+    def test_profile_crlf_is_preserved(self):
+        profile=Path(self.env['HOME'])/'.zshrc'
+        profile.write_bytes(b'# before\r\n# >>> envswitch PATH >>>\r\nexport PATH="/old:$PATH"\r\n# <<< envswitch PATH <<<\r\n# after\r\n')
+        self.serve(); self.run_install()
+        data=profile.read_bytes(); self.assertTrue(data.startswith(b'# before\r\n')); self.assertTrue(data.endswith(b'# after\r\n'))
+        self.assertNotIn(b'/old',data); self.assertEqual(data.count(b'\n'),data.count(b'\r\n'))
+
+    def test_profile_append_uses_append_only(self):
+        self.serve(); profile=Path(self.env['HOME'])/'.zshrc'; profile.write_bytes(b'# user bytes\n')
+        shim=self.home/'check-append.py'
+        shim.write_text('import fcntl,os,sys\nfrom pathlib import Path\np=Path(os.environ["HOME"])/".zshrc"\nf=os.fstat(1)\nif p.exists() and (f.st_dev,f.st_ino)==(p.stat().st_dev,p.stat().st_ino):\n assert fcntl.fcntl(1,fcntl.F_GETFL)&os.O_APPEND, "profile was opened without O_APPEND"\nos.execv(sys.argv[1],sys.argv[1:])\n')
+        for name in ('cat','tail'):
+            tool=shutil.which(name)
+            self.fake(name,'exec "'+sys.executable+'" "'+str(shim)+'" "'+tool+'" "$@"')
+        inode=profile.stat().st_ino
+        self.run_install(); self.assertEqual(profile.stat().st_ino,inode)
+        self.assertTrue(profile.read_bytes().startswith(b'# user bytes\n'))
+
+    def test_retry_after_is_capped(self):
+        import email.utils
+        import time
+        text=(REPO/'scripts/install.sh').read_text()
+        function=re.search(r'^retry_delay\(\) \{.*?^}',text,re.M|re.S).group()
+        for value,expected in (('999999999999999999999999999999','60'),('61','60'),('0','2'),(email.utils.formatdate(time.time()+3600,usegmt=True),'60')):
+            r=subprocess.run([os.environ.get('INSTALL_TEST_BASH','/bin/bash'),'-c',function+'\nretry_delay "$1" "$2"','unit','2',value],env=self.env,capture_output=True,text=True)
+            self.assertEqual(r.returncode,0,r.stderr); self.assertEqual(r.stdout,expected); self.assertEqual(r.stderr,'')
 
 if __name__ == '__main__': unittest.main(verbosity=2)

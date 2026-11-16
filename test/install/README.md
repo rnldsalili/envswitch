@@ -29,6 +29,10 @@ escapes, surrogate pairs, duplicate decoded keys, numbers, and invalid syntax.
 Run `sh test/install/test-json-awk.sh "$PWD" /usr/bin/awk` for BWK awk, or substitute
 `gawk` / `busybox awk`. CI covers macOS BWK awk, gawk, and Alpine BusyBox awk.
 Bash pipe/helper/full-install cases run on macOS Bash 3.2 and Linux Bash 5.
+The Alpine job builds `Dockerfile.alpine` with test dependencies before running
+the complete suite with networking disabled and BusyBox tar/awk. Hard-link
+fixtures target only suite-owned secret files; both listing and post-extraction
+inode checks are exercised before chmod. Controlled failures compare full stderr.
 
 `archive-fixtures.json` contains minimal tar/zip fixtures for PowerShell archive
 readers. Linux pwsh loads function declarations through the AST; the production
@@ -47,6 +51,8 @@ docker run --rm --network none --platform linux/amd64 \
 ```
 
 The .NET settings work around QEMU crashes; they are not installer inputs.
+PowerShell also checks child-scope `iex` hygiene and nonfatal notification failure.
+Profile cases cover append-only writes, CRLF blocks, and dangling symlinks.
 D2b covers installers. M1b owns old-installer migration/CLI transcript assertions;
 D3 owns native updater invocation/result validation; D1 owns real target smoke
 tests. Synthetic installer fixtures do not replace those publication gates.

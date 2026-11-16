@@ -11,7 +11,7 @@ VERSION_RE='^v?0\.0\.(0|[1-9][0-9]*)$'
 TARGETS=(aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-pc-windows-msvc)
 info() { printf 'info: %s\n' "$1"; }
 die() { local message; for message in "$@"; do printf 'error: %s\n' "$message" >&2; done; exit 1; }
-unexpected() { trap - ERR; die 'envswitch installation failed: a required operation failed'; }
+unexpected() { [[ ${BASH_SUBSHELL:-0} -eq 0 ]] || return; trap - ERR; die 'envswitch installation failed: a required operation failed'; }
 setting() { die "invalid installer setting: $1"; }
 need() { command -v "$1" >/dev/null 2>&1 || die "required installer tool not found: $1"; }
 
@@ -238,7 +238,7 @@ cleanup() {
   if [[ $COMMITTED == 0 ]]; then
     if [[ $PROFILE_WRITTEN == 1 ]]; then
       if [[ $PROFILE_EXISTED == 1 ]]; then cat "$PROFILE_BACKUP" > "$PROFILE_PATH" || failed=1
-      else rm -f "$PROFILE_PATH" || failed=1; fi
+      elif [[ ! -L $PROFILE_PATH ]]; then rm -f "$PROFILE_PATH" || failed=1; fi
     fi
     i=${#J_PATH[@]}
     while [[ $i -gt 0 ]]; do
@@ -279,7 +279,8 @@ shell_profile_path() {
   case "${SHELL##*/}" in zsh) printf '%s/.zshrc\n' "$HOME";; bash) printf '%s/.bashrc\n' "$HOME";; *) printf '%s/.profile\n' "$HOME";; esac
 }
 ensure_profile_path() {
-  local install=$1 profile=$2 work old last block msg
+  local install=$1 profile=$2 work old last block msg bytes
+  [[ ! -L $profile || -e $profile ]] || return 0
   work=$(mktemp -d "${TMPDIR:-/tmp}/envswitch-profile-XXXXXXXX"); TEMPS[${#TEMPS[@]}]=$work
   old="$work/old"; block="$work/block"
   [[ ! -e $profile || -f $profile ]] || unmanaged "$profile"
@@ -288,25 +289,27 @@ ensure_profile_path() {
   printf '%s\nexport PATH="%s:$PATH"\n%s\n' "$BEGIN" "$(escaped "$install")" "$END" > "$block"
   last=$(tail -c 1 "$old" | od -An -tu1 | tr -d ' \n')
   if ! awk -v begin="$BEGIN" -v end="$END" -v block="$block" -v finalnl="$last" '
-    {lines[NR]=$0;if(index($0,begin)){a=NR;as++}if(index($0,end)){b=NR;bs++}}
+    {lines[NR]=$0;clean[NR]=$0;crlf[NR]=sub(/\r$/,"",clean[NR]);if(index(clean[NR],begin)){a=NR;as++}if(index(clean[NR],end)){b=NR;bs++}}
     END{
-      if(as||bs){if(as!=1||bs!=1||b!=a+2||lines[a]!=begin||lines[b]!=end||lines[a+1]!~/^export PATH=".*:\$PATH"$/)exit 1}
+      if(as||bs){if(as!=1||bs!=1||b!=a+2||clean[a]!=begin||clean[b]!=end||clean[a+1]!~/^export PATH=".*:\$PATH"$/)exit 1}
+      eol=(crlf[a?a:1]?"\r\n":"\n")
       for(i=1;i<=NR;i++){
-        if(i==a){while((getline line < block)>0)printf "%s\n",line;close(block);i=b}
+        if(i==a){while((getline line < block)>0)printf "%s%s",line,eol;close(block);i=b}
         else printf "%s%s",lines[i],(i<NR||finalnl=="10"?"\n":"")
       }
-      if(!as){printf "%s",(NR&&finalnl!="10"?"\n\n":"\n");while((getline line < block)>0)printf "%s\n",line;close(block)}
+      if(!as){printf "%s",(NR&&finalnl!="10"?eol eol:eol);while((getline line < block)>0)printf "%s%s",line,eol;close(block)}
     }' "$old" > "$work/new"; then die "invalid envswitch PATH block in $profile; repair the block and rerun the installer"; fi
   if cmp -s "$old" "$work/new"; then info "PATH block already exists in $profile"; return; fi
   if grep -Fq "$BEGIN" "$old"; then msg="updated envswitch PATH block in $profile"; else msg="added $install to PATH in $profile"; fi
   # Follow a user-managed profile symlink deliberately, retaining the link and target inode.
   if [[ -n $STAGE ]]; then
     PROFILE_PATH=$profile; PROFILE_BACKUP="$STAGE/profile-backup"; cp -p "$old" "$PROFILE_BACKUP"
-    [[ ! -e $profile ]] || PROFILE_EXISTED=1
+    [[ ! -e $profile && ! -L $profile ]] || PROFILE_EXISTED=1
     PROFILE_WRITTEN=1
   fi
   mkdir -p "${profile%/*}"
-  cat "$work/new" > "$profile"
+  if grep -Fq "$BEGIN" "$old"; then cat "$work/new" > "$profile"
+  else bytes=$(wc -c < "$old"); tail -c +$((bytes+1)) "$work/new" >> "$profile"; fi
   info "$msg"
 }
 asset_url_valid() {
@@ -323,8 +326,19 @@ redirect_valid() {
     *) return 1;;
   esac
 }
+retry_delay() {
+  local delay=$1 retry_after=$2 until_epoch now
+  if [[ $retry_after =~ ^[0-9]+$ ]]; then
+    delay=$(awk -v requested="$retry_after" -v minimum="$delay" 'BEGIN{n=requested+0;if(n>60)n=60;if(n<minimum)n=minimum;printf "%.0f",n}')
+  elif [[ -n $retry_after ]]; then
+    until_epoch=$(date -d "$retry_after" +%s 2>/dev/null || TZ=UTC0 date -D '%a, %d %b %Y %H:%M:%S GMT' -d "$retry_after" +%s 2>/dev/null || date -j -f '%a, %d %b %Y %H:%M:%S %Z' "$retry_after" +%s 2>/dev/null || printf 0)
+    now=$(date +%s); [[ $until_epoch -le $((now+delay)) ]] || delay=$((until_epoch-now))
+  fi
+  [[ $delay -le 60 ]] || delay=60
+  printf '%s' "$delay"
+}
 http_get() {
-  local original=$1 out=$2 accept=$3 transfer=${4:-60} attempt=0 url code next auth token status delay retry_after until_epoch now redirect
+  local original=$1 out=$2 accept=$3 transfer=${4:-60} attempt=0 url code next auth token status delay retry_after redirect
   local proto='=https'
   [[ $TEST == 0 ]] || proto='=http,https'
   need curl
@@ -338,7 +352,7 @@ http_get() {
         auth="header = \"Authorization: Bearer $token\""
       fi
       # No -L: authenticate only the API origin, then validate each redirect independently.
-      if printf '%s\n' "$auth" | curl --config - --proto "$proto" --proto-redir '=https' --connect-timeout 15 --max-time "$transfer" --speed-limit 1 --speed-time 60 -sS -H "Accept: $accept" -D "$STAGE/headers" -o "$out" -w '%{http_code}\n%{redirect_url}\n' "$url" > "$STAGE/http-status" 2> "$STAGE/http-error"; then status=0; else status=$?; fi
+      if printf '%s\n' "$auth" | curl -q --config - --proto "$proto" --proto-redir '=https' --connect-timeout 15 --max-time "$transfer" --speed-limit 1 --speed-time 60 -sS -H "Accept: $accept" -D "$STAGE/headers" -o "$out" -w '%{http_code}\n%{redirect_url}\n' "$url" > "$STAGE/http-status" 2> "$STAGE/http-error"; then status=0; else status=$?; fi
       code=$(sed -n '1p' "$STAGE/http-status"); next=$(sed -n '2p' "$STAGE/http-status")
       [[ $status == 0 ]] || break
       case "$code" in
@@ -349,13 +363,8 @@ http_get() {
       esac
     done
     [[ $redirect -lt 10 && $attempt -lt 3 ]] || return 1
-    delay=$((1 << (attempt-1)))
     retry_after=$(awk 'tolower($1)=="retry-after:"{$1="";sub(/^ /,"");sub(/\r$/,"");print;exit}' "$STAGE/headers")
-    if [[ $retry_after =~ ^[0-9]+$ ]]; then [[ $retry_after -le $delay ]] || delay=$retry_after
-    elif [[ -n $retry_after ]]; then
-      until_epoch=$(date -d "$retry_after" +%s 2>/dev/null || date -j -f '%a, %d %b %Y %H:%M:%S %Z' "$retry_after" +%s 2>/dev/null || printf 0)
-      now=$(date +%s); [[ $until_epoch -le $((now+delay)) ]] || delay=$((until_epoch-now))
-    fi
+    delay=$(retry_delay "$((1 << (attempt-1)))" "$retry_after")
     sleep "$delay"
   done
   return 1
@@ -433,16 +442,20 @@ verify_hash() {
   [[ $actual == "$expected" ]] || die "SHA-256 mismatch for $2"
 }
 archive_valid() {
-  local name type normalized top rest entry count=0
+  local name type listing normalized top rest entry count=0
   tar -tzf "$STAGE/$ARCHIVE" > "$STAGE/names" 2> "$STAGE/tar-error" || return 1
   tar -tvzf "$STAGE/$ARCHIVE" > "$STAGE/verbose" 2> "$STAGE/tar-error" || return 1
   cut -c1 "$STAGE/verbose" > "$STAGE/types"
   [[ $(wc -l < "$STAGE/types") == "$(wc -l < "$STAGE/names")" ]] || return 1
   : > "$STAGE/normalized"; : > "$STAGE/expected-files"
   exec 3< "$STAGE/types"
+  exec 4< "$STAGE/verbose"
   while IFS='' read -r name; do
     IFS='' read -r type <&3 || return 1
+    IFS= read -r listing <&4 || return 1
+    [[ $name =~ ^[A-Za-z0-9._/-]+$ ]] || return 1
     [[ $type == - || $type == d ]] || return 1
+    [[ $type != - || ( $listing != *" -> "* && $listing != *" link to "* ) ]] || return 1
     normalized=${name#./}
     if [[ $type == d ]]; then normalized=${normalized%/}; fi
     [[ -n $normalized && $normalized != /* && $normalized != *\\* && $normalized != *:* && ! $normalized =~ [[:cntrl:]] && $normalized != */ && $normalized != *//* ]] || return 1
@@ -464,6 +477,7 @@ archive_valid() {
     count=$((count+1))
   done < "$STAGE/names"
   exec 3<&-
+  exec 4<&-
   [[ $count -gt 0 ]] || return 1
   if [[ $KIND == native ]]; then
     for entry in envswitch README.md scripts/install.sh scripts/install.ps1; do grep -Fxq "$entry" "$STAGE/expected-files" || return 1; done
@@ -475,7 +489,9 @@ extract_archive() {
   archive_valid || die "unsafe or invalid archive: $ARCHIVE"
   TREE=$(mktemp -d "$STAGE/extracted-XXXXXXXX")
   tar --no-same-owner --no-same-permissions -xzf "$STAGE/$ARCHIVE" -C "$TREE" 2> "$STAGE/tar-error" || die "unsafe or invalid archive: $ARCHIVE"
-  [[ -z $(find "$TREE" ! -type f ! -type d -print) ]] || die "unsafe or invalid archive: $ARCHIVE"
+  find "$TREE" ! -type f ! -type d -print > "$STAGE/unsafe-entries" 2> "$STAGE/find-error" || die "unsafe or invalid archive: $ARCHIVE"
+  find "$TREE" -type f -links +1 -print > "$STAGE/linked-files" 2> "$STAGE/find-error" || die "unsafe or invalid archive: $ARCHIVE"
+  [[ ! -s $STAGE/unsafe-entries && ! -s $STAGE/linked-files ]] || die "unsafe or invalid archive: $ARCHIVE"
   : > "$STAGE/actual-files"
   while IFS='' read -r entry; do printf '%s\n' "${entry#"$TREE/"}" >> "$STAGE/actual-files"; chmod 600 "$entry"; done < <(find "$TREE" -type f -print)
   sort "$STAGE/actual-files" > "$STAGE/actual-sorted"; sort "$STAGE/expected-files" > "$STAGE/expected-sorted"
@@ -513,7 +529,7 @@ ensure_bun() {
   if [[ -z $BUN_BIN ]]; then
     command -v curl >/dev/null 2>&1 || die 'curl is required to install Bun automatically' 'install Bun manually from https://bun.com/docs/installation, then rerun this installer'
     info 'Bun is not installed; installing Bun'
-    if ! curl --proto '=https' --proto-redir '=https' -fsSL https://bun.com/install -o "$STAGE/bun-bootstrap"; then die 'Bun installation finished, but bun was not found on PATH'; fi
+    if ! curl -q --proto '=https' --proto-redir '=https' -fsSL https://bun.com/install -o "$STAGE/bun-bootstrap"; then die 'Bun installation finished, but bun was not found on PATH'; fi
     if ! bash "$STAGE/bun-bootstrap" > "$STAGE/bun-out" 2> "$STAGE/bun-err"; then cat "$STAGE/bun-out"; cat "$STAGE/bun-err" >&2; die 'Bun installation finished, but bun was not found on PATH'; fi
     export BUN_INSTALL="${BUN_INSTALL:-$HOME/.bun}"; export PATH="$BUN_INSTALL/bin:$PATH"; BUN_BIN=$(command -v bun || :)
     [[ -n $BUN_BIN ]] || die 'Bun installation finished, but bun was not found on PATH'

@@ -1,3 +1,4 @@
+$state=@{}
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $script = Join-Path $root 'scripts/install.ps1'
@@ -17,16 +18,21 @@ $tokens = $null; $errors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile($script, [ref]$tokens, [ref]$errors)
 if ($errors.Count) { throw ($errors | Out-String) }
 # Load declarations only: Linux must never bypass the Windows platform gate.
-$ast.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] }, $false) | ForEach-Object { . ([scriptblock]::Create($_.Extent.Text)) }
-$script:Utf8 = New-Object Text.UTF8Encoding($false, $true)
-$count = 0
+$ast.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] }, $true) | ForEach-Object { . ([scriptblock]::Create($_.Extent.Text)) }
+$state.Utf8 = New-Object Text.UTF8Encoding($false, $true)
+$state.count = 0
 function Assert-Equal($Actual, $Expected) {
     if ($Actual -cne $Expected) { throw "expected <$Expected>, got <$Actual>" }
-    $script:count++
+    $state.count++
 }
 function Assert-Fails([scriptblock]$Body, $Text) {
-    try { & $Body; throw 'expected failure' } catch { if (-not $_.Exception.Message.Contains($Text)) { throw }; $script:count++ }
+    try { & $Body; throw 'expected failure' } catch { if (-not $_.Exception.Message.Contains($Text)) { throw }; $state.count++ }
 }
+$marker=$ast.FindAll({ param($node) $node -is [Management.Automation.Language.ExpandableStringExpressionAst] -and $node.Extent.Text.Contains('$state.Tag') -and $node.Extent.Text.Contains('`n') },$true)[0]
+$state.Tag='v0.0.42'
+Assert-Equal (& ([scriptblock]::Create($marker.Extent.Text))) "v0.0.42`n"
+$unwrapped=$ast.FindAll({ param($node) $node -is [Management.Automation.Language.ExpandableStringExpressionAst] -and $node.Extent.Text.Contains('$state.') -and @($node.NestedExpressions | Where-Object { $_ -is [Management.Automation.Language.VariableExpressionAst] -and $_.VariablePath.UserPath -eq 'state' }).Count -gt 0 },$true)
+Assert-Equal $unwrapped.Count 0
 Assert-Equal (Convert-Tag '0.0.42' Version) 'v0.0.42'
 Assert-Equal (Convert-Tag 'v0.0.0' CurrentVersion) 'v0.0.0'
 foreach ($bad in @(' v0.0.1','0.0.01','v','1.0.0','0.0.1/evil',"0.0.1`n")) {
@@ -77,6 +83,16 @@ if (-not (Test-Windows)) {
     $result=Invoke-Captured $engine ('-NoProfile -Command "'+$command.Replace('"','\"')+'"') 60000
     Assert-Equal ([Text.Encoding]::UTF8.GetString($result.Out).Contains('session-alive:1')) $true
 }
+if (-not (Test-Windows)) {
+    $previousBase=$env:ENVSWITCH_INSTALL_TEST_API_BASE_URL
+    try {
+        $env:ENVSWITCH_INSTALL_TEST_API_BASE_URL='http://127.0.0.1:9'
+        $arguments='-NoProfile -File "'+$script+'" -Repo demo/suite -Version 0.0.42 -WhatIf'
+        $result=Invoke-Captured $engine $arguments 60000
+        Assert-Equal $result.Code 1
+        Assert-Equal ([Text.Encoding]::UTF8.GetString($result.Err)) "error: unsupported OS for this installer. Use scripts/install.sh on macOS, Linux, or WSL.`n"
+    } finally { $env:ENVSWITCH_INSTALL_TEST_API_BASE_URL=$previousBase }
+}
 $engine=(Get-Process -Id $PID).Path
 Push-Location -LiteralPath $suite
 try {
@@ -85,27 +101,41 @@ try {
 } finally { Pop-Location }
 # Mock the registry boundary itself to verify value type without opening real User PATH.
 $openEnvironment=${function:Open-UserEnvironment}; $notifyEnvironment=${function:Send-EnvironmentChange}
-$script:RegistryMock=[pscustomobject]@{Value='%USERPROFILE%\tools';Kind=[Microsoft.Win32.RegistryValueKind]::ExpandString;Options=$null;Writes=0}
-$script:RegistryMock | Add-Member ScriptMethod GetValueNames { return @('Path') }
-$script:RegistryMock | Add-Member ScriptMethod GetValueKind { param($name) return $this.Kind }
-$script:RegistryMock | Add-Member ScriptMethod GetValue { param($name,$fallback,$options) $this.Options=$options; return $this.Value }
-$script:RegistryMock | Add-Member ScriptMethod SetValue { param($name,$value,$kind) $this.Value=$value; $this.Kind=$kind; $this.Writes++ }
-$script:RegistryMock | Add-Member ScriptMethod Dispose { }
-function Open-UserEnvironment { param([switch]$Writable) return $script:RegistryMock }
+$state.RegistryMock=[pscustomobject]@{Value='%USERPROFILE%\tools';Kind=[Microsoft.Win32.RegistryValueKind]::ExpandString;Options=$null;Writes=0}
+$state.RegistryMock | Add-Member ScriptMethod GetValueNames { return @('Path') }
+$state.RegistryMock | Add-Member ScriptMethod GetValueKind { param($name) return $this.Kind }
+$state.RegistryMock | Add-Member ScriptMethod GetValue { param($name,$fallback,$options) $this.Options=$options; return $this.Value }
+$state.RegistryMock | Add-Member ScriptMethod SetValue { param($name,$value,$kind) $this.Value=$value; $this.Kind=$kind; $this.Writes++ }
+$state.RegistryMock | Add-Member ScriptMethod Dispose { }
+function Open-UserEnvironment { param([switch]$Writable) return $state.RegistryMock }
 function Send-EnvironmentChange { }
 try {
-    $script:TestMode=$false
+    $state.TestMode=$false
     Assert-Equal (Get-UserPath) '%USERPROFILE%\tools'
-    Assert-Equal $script:RegistryMock.Options ([Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+    Assert-Equal $state.RegistryMock.Options ([Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
     Set-UserPath '%USERPROFILE%\tools;C:\envswitch'
-    Assert-Equal $script:RegistryMock.Kind ([Microsoft.Win32.RegistryValueKind]::ExpandString)
-    Assert-Equal $script:RegistryMock.Writes 1
+    Assert-Equal $state.RegistryMock.Kind ([Microsoft.Win32.RegistryValueKind]::ExpandString)
+    Assert-Equal $state.RegistryMock.Writes 1
+    function Send-EnvironmentChange { throw 'notification unavailable' }
+    Set-UserPath '%USERPROFILE%\tools;C:\envswitch-again'
+    Assert-Equal $state.RegistryMock.Writes 2
+    Assert-Equal $state.RegistryMock.Value '%USERPROFILE%\tools;C:\envswitch-again'
+
 } finally {
     Set-Item Function:Open-UserEnvironment $openEnvironment
     Set-Item Function:Send-EnvironmentChange $notifyEnvironment
-    $script:TestMode=$true
+    $state.TestMode=$true
 }
-Write-Host "PowerShell helper assertions: $count passed"
+Assert-Equal (Get-RetryDelay 2 '999999999999999999999') 60
+Assert-Equal (Get-RetryDelay 2 '61') 60
+Assert-Equal (Get-RetryDelay 2 '0') 2
+Assert-Equal (Get-RetryDelay 1 ([DateTimeOffset]::UtcNow.AddHours(1).ToString('r'))) 60
+# Raw iex must neither overwrite caller variables/preferences nor publish installer helpers.
+$command="`$Repo='caller-repo'; `$Version='caller-version'; `$ErrorActionPreference='Continue'; Get-Content -LiteralPath '"+$script.Replace("'","''")+"' -Raw | iex; if (`$Repo -ne 'caller-repo' -or `$Version -ne 'caller-version' -or `$ErrorActionPreference -ne 'Continue' -or (Get-Command Fail -ErrorAction SilentlyContinue)) { throw 'session polluted' }; [Console]::Out.Write('session-clean')"
+$result=Invoke-Captured $engine ('-NoProfile -Command "'+$command.Replace('"','\"')+'"') 60000
+Assert-Equal $result.Code 0
+Assert-Equal ([Text.Encoding]::UTF8.GetString($result.Out)) 'session-clean'
+Write-Host "PowerShell helper assertions: $($state.count) passed"
 if ((Test-Windows)) {
     $env:ENVSWITCH_TEST_POWERSHELL = (Get-Process -Id $PID).Path
     & $python.Source (Join-Path $PSScriptRoot 'install/test_windows.py')

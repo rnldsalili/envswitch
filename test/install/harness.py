@@ -1,6 +1,11 @@
 """Guard every Path write in the fixture harness; never follow a tool link for writing."""
 from pathlib import Path
 
+UNIX_TOOLS = ('bash','curl','tar','awk','sed','mktemp','find','uname','sysctl',
+              'shasum','sha256sum','od','tr','cat','cp','mv','rm','rmdir','mkdir',
+              'chmod','cmp','sort','grep','cut','tail','date','sleep','readlink',
+              'wc','head','gzip','kill','basename','dirname')
+
 _active_root = None
 _original_text = Path.write_text
 _original_bytes = Path.write_bytes

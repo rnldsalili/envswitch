@@ -33,8 +33,17 @@ jobs:
       - if: runner.os == 'Linux'
         run: |
           sh test/install/test-json-awk.sh "$PWD" gawk
+          sh test/install/test-json-awk.sh "$PWD" mawk
           docker pull alpine:3.22
           docker run --rm --network none -v "$GITHUB_WORKSPACE:/work" alpine:3.22 sh /work/test/install/test-json-awk.sh /work busybox awk
+  alpine:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: docker build -f test/install/Dockerfile.alpine -t envswitch-installers-alpine test/install
+      - run: docker run --rm --network none -v "$GITHUB_WORKSPACE:/work" -w /work envswitch-installers-alpine bash test/install-sh.test.sh
   powershell:
     strategy:
       fail-fast: false

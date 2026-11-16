@@ -1,3 +1,5 @@
+& {
+    $installer = {
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [string]$Repo = 'rnldsalili/envswitch',
@@ -7,15 +9,16 @@ param(
     [string]$CurrentVersion,
     [switch]$VerifyAttestations
 )
+$state=@{}
 $ErrorActionPreference = 'Stop'
-$script:Utf8 = New-Object Text.UTF8Encoding($false, $true)
-$script:Targets = @('aarch64-apple-darwin','x86_64-apple-darwin','x86_64-unknown-linux-musl','aarch64-unknown-linux-musl','x86_64-pc-windows-msvc')
-$script:Journal = New-Object Collections.ArrayList
-$script:Created = New-Object Collections.ArrayList
-$script:Stage = $null; $script:Locked = $false; $script:Committed = $false
-$script:NewPayload=$null; $script:PathChanged=$false; $script:OldProcessPath=$null
-$script:OldUserPath=$null; $script:UserPathKind=$null; $script:ExitCode=0
-$script:OriginalConfirm=$ConfirmPreference
+$state.Utf8 = New-Object Text.UTF8Encoding($false, $true)
+$state.Targets = @('aarch64-apple-darwin','x86_64-apple-darwin','x86_64-unknown-linux-musl','aarch64-unknown-linux-musl','x86_64-pc-windows-msvc')
+$state.Journal = New-Object Collections.ArrayList
+$state.Created = New-Object Collections.ArrayList
+$state.Stage = $null; $state.Locked = $false; $state.Committed = $false
+$state.NewPayload=$null; $state.PathChanged=$false; $state.OldProcessPath=$null
+$state.OldUserPath=$null; $state.UserPathKind=$null; $state.ExitCode=0
+$state.OriginalConfirm=$ConfirmPreference
 
 function Fail([string]$Message, [string]$Second) {
     $text = "error: $Message"
@@ -93,7 +96,7 @@ function Read-Json([string]$Text) {
 }
 function Read-Sums([byte[]]$Bytes,[string]$Tag,[string[]]$Required) {
     try {
-        $text=$script:Utf8.GetString($Bytes)
+        $text=$state.Utf8.GetString($Bytes)
         if (-not $text.EndsWith("`n")) { throw 'format' }
         $sums=New-Object 'Collections.Generic.Dictionary[string,string]' ([StringComparer]::Ordinal)
         foreach ($line in $text.Substring(0,$text.Length-1).Split("`n")) {
@@ -128,7 +131,7 @@ function Get-Payload([string]$Root,[string]$Kind,[string]$Tag,[AllowNull()][stri
 function Read-Receipt([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path)) { return $null }
     try {
-        $r=Read-Json ([IO.File]::ReadAllText($Path,$script:Utf8))
+        $r=Read-Json ([IO.File]::ReadAllText($Path,$state.Utf8))
         foreach ($key in @('schemaVersion','kind','repo','appRoot','installDir','launcherPath','target','tag','payloadPath')) {
             if ($r.PSObject.Properties.Name -cnotcontains $key) { throw 'missing' }
         }
@@ -185,8 +188,8 @@ function Expand-Safe([string]$Archive,[string]$Out,[string]$Kind) {
             while ($offset+512 -le $bytes.Length) {
                 $h=New-Object byte[] 512; [Array]::Copy($bytes,$offset,$h,0,512); $offset+=512
                 if (@($h | Where-Object { $_ -ne 0 }).Count -eq 0) { break }
-                $name=$script:Utf8.GetString($h,0,100).Split([char]0)[0]
-                $prefix=$script:Utf8.GetString($h,345,155).Split([char]0)[0]
+                $name=$state.Utf8.GetString($h,0,100).Split([char]0)[0]
+                $prefix=$state.Utf8.GetString($h,345,155).Split([char]0)[0]
                 if ($prefix) { $name=$prefix+'/'+$name }
                 $sum=0; for ($j=0;$j -lt 512;$j++) { if ($j -ge 148 -and $j -lt 156) { $sum+=32 } else { $sum+=$h[$j] } }
                 if ($sum -ne [Convert]::ToInt64(([Text.Encoding]::ASCII.GetString($h,148,8)).Trim([char]0,' '),8)) { throw 'checksum' }
@@ -202,7 +205,7 @@ function Expand-Safe([string]$Archive,[string]$Out,[string]$Kind) {
                         if ($lengthText -cnotmatch '\A[1-9][0-9]*\z') { throw 'pax length' }
                         $length=[int]$lengthText
                         if ($length -le $space-$pos+2 -or $pos+$length -gt $body.Length -or $body[$pos+$length-1] -ne 10) { throw 'pax length' }
-                        $record=$script:Utf8.GetString($body,$space+1,$length-($space-$pos)-2); $equal=$record.IndexOf('=')
+                        $record=$state.Utf8.GetString($body,$space+1,$length-($space-$pos)-2); $equal=$record.IndexOf('=')
                         if ($equal -lt 1) { throw 'pax' }; $key=$record.Substring(0,$equal)
                         if ($key -eq 'linkpath' -or $key.StartsWith('GNU.sparse')) { throw 'pax link/sparse' }
                         if ($type -eq 'g') { $globalPax[$key]=$record.Substring($equal+1) } else { $pax[$key]=$record.Substring($equal+1) }
@@ -210,7 +213,7 @@ function Expand-Safe([string]$Archive,[string]$Out,[string]$Kind) {
                     }
                     continue
                 }
-                if ($type -eq 'L') { $pax.path=$script:Utf8.GetString($body).TrimEnd([char]0); continue }
+                if ($type -eq 'L') { $pax.path=$state.Utf8.GetString($body).TrimEnd([char]0); continue }
                 if ($type -notin @([char]0,'0','5')) { throw 'type' }
                 if ($pax.ContainsKey('path')) { $name=$pax.path } elseif ($globalPax.ContainsKey('path')) { $name=$globalPax.path }; $pax=@{}
                 $dir=$type -eq '5'; $name=Assert-Member $name $dir $Kind
@@ -249,23 +252,23 @@ function Ensure-Directory([string]$Path) {
     if ([IO.Directory]::Exists($Path)) { return }
     if (Test-Path -LiteralPath $Path) { Unsafe $Path }
     Ensure-Directory ([IO.Path]::GetDirectoryName($Path))
-    $null=[IO.Directory]::CreateDirectory($Path); $null=$script:Created.Add($Path)
+    $null=[IO.Directory]::CreateDirectory($Path); $null=$state.Created.Add($Path)
 }
 function Replace-Managed([string]$Path,[byte[]]$Bytes,[string]$Source) {
     Assert-NoLinks $Path; Ensure-Directory ([IO.Path]::GetDirectoryName($Path))
-    $backup=Join-Path $script:Stage ('backup-'+$script:Journal.Count)
+    $backup=Join-Path $state.Stage ('backup-'+$state.Journal.Count)
     $exists=Test-Path -LiteralPath $Path
     if ($exists) { Copy-Item -LiteralPath $Path -Destination $backup -Recurse -Force }
-    $null=$script:Journal.Add(@($Path,$(if ($exists) { $backup } else { $null })))
-    $temp=Join-Path ([IO.Path]::GetDirectoryName($Path)) ('.install-'+$script:Token+'-'+$script:Journal.Count)
+    $null=$state.Journal.Add(@($Path,$(if ($exists) { $backup } else { $null })))
+    $temp=Join-Path ([IO.Path]::GetDirectoryName($Path)) ('.install-'+$state.Token+'-'+$state.Journal.Count)
     try {
         if (Test-Path -LiteralPath $temp) { throw [IO.IOException]::new('temporary path already exists') }
         if ($Source) { Copy-Item -LiteralPath $Source -Destination $temp -Recurse } else { Write-Utf8Bytes $temp $Bytes }
         Assert-NoLinks $Path
-        if ([IO.Directory]::Exists($Path)) { [IO.Directory]::Move($Path,(Join-Path $script:Stage ('moved-'+$script:Journal.Count))); [IO.Directory]::Move($temp,$Path) }
+        if ([IO.Directory]::Exists($Path)) { [IO.Directory]::Move($Path,(Join-Path $state.Stage ('moved-'+$state.Journal.Count))); [IO.Directory]::Move($temp,$Path) }
         elseif ($exists) {
             try { [IO.File]::Replace($temp,$Path,$null) }
-            catch { $script:Journal.RemoveAt($script:Journal.Count-1); if ($Path -eq $script:Launcher) { Fail "could not replace envswitch launcher: $Path" 'close processes using the launcher and retry; the previous installation was preserved' }; throw }
+            catch { $state.Journal.RemoveAt($state.Journal.Count-1); if ($Path -eq $state.Launcher) { Fail "could not replace envswitch launcher: $Path" 'close processes using the launcher and retry; the previous installation was preserved' }; throw }
         } else { [IO.File]::Move($temp,$Path) }
     } finally { if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Recurse -Force } }
 }
@@ -295,7 +298,7 @@ function Test-Payload([string]$File,[string]$Kind,[string]$Ver,[string]$Target,[
     try {
         if ($Kind -eq 'native') {
             $r=Invoke-Captured $File '--version'
-            if ($r.Code -ne 0 -or $r.Err.Length -ne 0 -or [Convert]::ToBase64String($r.Out) -cne [Convert]::ToBase64String($script:Utf8.GetBytes("envswitch $Ver $Target`n"))) {
+            if ($r.Code -ne 0 -or $r.Err.Length -ne 0 -or [Convert]::ToBase64String($r.Out) -cne [Convert]::ToBase64String($state.Utf8.GetBytes("envswitch $Ver $Target`n"))) {
                 if ($Staged) { Fail "native payload verification failed; expected envswitch $Ver $Target" }; return $false
             }
         }
@@ -309,13 +312,19 @@ function Invoke-GhCommand([string]$File,[string[]]$Arguments,[int]$Timeout=60000
 function Get-Gh([switch]$Verifier) {
     $command=Get-Command gh -CommandType Application -ErrorAction SilentlyContinue
     if (-not $command) { return $null }
-    if ($script:TestMode) {
+    if ($state.TestMode) {
         if (-not (Test-Inside $command.Source $env:USERPROFILE)) { return $null }
         try { Assert-NoLinks $command.Source } catch { return $null }
     }
     if ($Verifier) { return $command.Source }
     $probe=Invoke-GhCommand $command.Source @('auth','status')
     if ($probe.Code -ne 0) { return $null }; return $command.Source
+}
+function Get-RetryDelay([double]$Minimum,[string]$RetryAfter) {
+    $delay=$Minimum; $seconds=[double]0; $when=[DateTimeOffset]::MinValue
+    if ($RetryAfter -match '^[0-9]+$' -and [double]::TryParse($RetryAfter,[ref]$seconds)) { $delay=[Math]::Max($delay,$seconds) }
+    elseif ([DateTimeOffset]::TryParse($RetryAfter,[ref]$when)) { $delay=[Math]::Max($delay,($when-[DateTimeOffset]::UtcNow).TotalSeconds) }
+    return [Math]::Min([double]60,[double]$delay)
 }
 function Get-Http([string]$Url,[string]$Accept,[int]$TransferSeconds=60) {
     # Header/connect deadlines are separate from the bounded, longer asset transfer.
@@ -326,12 +335,12 @@ function Get-Http([string]$Url,[string]$Accept,[int]$TransferSeconds=60) {
                 $request=[Net.HttpWebRequest]::Create($next); $request.AllowAutoRedirect=$false
                 $request.Timeout=60000; $request.ReadWriteTimeout=60000
                 $request.Accept=$Accept; $request.UserAgent='envswitch-installer'
-                if ($env:GITHUB_TOKEN -and ([uri]$next).GetLeftPart([UriPartial]::Authority) -ceq $script:ApiBase) { $request.Headers['Authorization']='Bearer '+$env:GITHUB_TOKEN }
+                if ($env:GITHUB_TOKEN -and ([uri]$next).GetLeftPart([UriPartial]::Authority) -ceq $state.ApiBase) { $request.Headers['Authorization']='Bearer '+$env:GITHUB_TOKEN }
                 $response=$request.GetResponse()
                 try {
                     if ([int]$response.StatusCode -in @(301,302,303,307,308)) {
                         $next=([uri]::new([uri]$next,$response.Headers['Location'])).AbsoluteUri
-                        if (-not ((([uri]$next).Scheme -eq 'https' -and ([uri]$next).Host -in @('api.github.com','release-assets.githubusercontent.com','objects.githubusercontent.com','github-releases.githubusercontent.com') -and ([uri]$next).Port -eq 443) -or ($script:TestMode -and ([uri]$next).IsLoopback -and ([uri]$next).Scheme -eq 'http')) -or ([uri]$next).UserInfo) { throw [IO.InvalidDataException]::new('unsafe redirect') }
+                        if (-not ((([uri]$next).Scheme -eq 'https' -and ([uri]$next).Host -in @('api.github.com','release-assets.githubusercontent.com','objects.githubusercontent.com','github-releases.githubusercontent.com') -and ([uri]$next).Port -eq 443) -or ($state.TestMode -and ([uri]$next).IsLoopback -and ([uri]$next).Scheme -eq 'http')) -or ([uri]$next).UserInfo) { throw [IO.InvalidDataException]::new('unsafe redirect') }
                         continue
                     }
                     $memory=New-Object IO.MemoryStream; $stream=$response.GetResponseStream()
@@ -353,32 +362,29 @@ function Get-Http([string]$Url,[string]$Accept,[int]$TransferSeconds=60) {
             $code=if ($resp) { [int]$resp.StatusCode } else { 0 }
             if ($resp) { $retryAfter=$resp.Headers['Retry-After']; $resp.Dispose() }
             if ($attempt -eq 2 -or $invalid -or ($code -ne 0 -and $code -notin @(408,429) -and $code -lt 500)) { throw }
-            $delay=[Math]::Pow(2,$attempt)
-            $seconds=0; $when=[DateTimeOffset]::MinValue
-            if ([int]::TryParse($retryAfter,[ref]$seconds)) { $delay=[Math]::Max($delay,$seconds) }
-            elseif ([DateTimeOffset]::TryParse($retryAfter,[ref]$when)) { $delay=[Math]::Max($delay,($when-[DateTimeOffset]::UtcNow).TotalSeconds) }
+            $delay=Get-RetryDelay ([Math]::Pow(2,$attempt)) $retryAfter
             Start-Sleep -Milliseconds ([int][Math]::Ceiling($delay*1000))
         }
     }
 }
 function Save-Asset([string]$Name) {
-    $path=Join-Path $script:Stage $Name
-    if ($script:Gh) {
+    $path=Join-Path $state.Stage $Name
+    if ($state.Gh) {
         Info "downloading $Name with GitHub CLI"
-        $download=Invoke-GhCommand $script:Gh @('release','download',$script:Tag,'--repo',$Repo,'--pattern',$Name,'--dir',$script:Stage) 900000
+        $download=Invoke-GhCommand $state.Gh @('release','download',$state.Tag,'--repo',$Repo,'--pattern',$Name,'--dir',$state.Stage) 900000
         if ($download.Code -eq 0 -and [IO.File]::Exists($path)) { return $path }
         if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
         Info "GitHub CLI download did not find $Name; trying direct download"
     } else { Info "downloading $Name" }
-    try { Write-Utf8Bytes $path (Get-Http $script:Assets[$Name] 'application/octet-stream' 900) }
+    try { Write-Utf8Bytes $path (Get-Http $state.Assets[$Name] 'application/octet-stream' 900) }
     catch { Fail "release asset not found or unavailable: $Name" }
     return $path
 }
 function Verify-Hash([string]$Path,[string]$Name) {
     Info "verifying SHA-256 for $Name"
-    if ((Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() -cne $script:Sums[$Name]) { Fail "SHA-256 mismatch for $Name" }
+    if ((Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() -cne $state.Sums[$Name]) { Fail "SHA-256 mismatch for $Name" }
 }
-function Boundary([string]$Name) { if ($script:TestMode -and $env:ENVSWITCH_INSTALL_TEST_FAIL_AT -ceq $Name) { Fail "injected installer test failure: $Name" } }
+function Boundary([string]$Name) { if ($state.TestMode -and $env:ENVSWITCH_INSTALL_TEST_FAIL_AT -ceq $Name) { Fail "injected installer test failure: $Name" } }
 function Assert-Source([string]$Path,[switch]$Existing) {
     foreach ($f in Get-ChildItem -LiteralPath $Path -Recurse -Force) {
         Assert-NoLinks $f.FullName
@@ -395,47 +401,38 @@ function Open-UserEnvironment([switch]$Writable) {
     return [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment')
 }
 function Get-UserPath {
-    if ($script:TestMode) {
-        if ([IO.File]::Exists($script:UserPathFile)) { return [IO.File]::ReadAllText($script:UserPathFile,$script:Utf8) }; return ''
+    if ($state.TestMode) {
+        if ([IO.File]::Exists($state.UserPathFile)) { return [IO.File]::ReadAllText($state.UserPathFile,$state.Utf8) }; return ''
     }
     $key=Open-UserEnvironment
     try {
         if ($key -and $key.GetValueNames() -contains 'Path') {
-            $script:UserPathKind=$key.GetValueKind('Path')
+            $state.UserPathKind=$key.GetValueKind('Path')
             return [string]$key.GetValue('Path','',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
         }
-        $script:UserPathKind=[Microsoft.Win32.RegistryValueKind]::String; return ''
+        $state.UserPathKind=[Microsoft.Win32.RegistryValueKind]::String; return ''
     } finally { if ($key) { $key.Dispose() } }
 }
 function Set-UserPath([string]$Value) {
-    if ($script:TestMode) { Replace-Managed $script:UserPathFile $script:Utf8.GetBytes($Value); return }
+    if ($state.TestMode) { Replace-Managed $state.UserPathFile $state.Utf8.GetBytes($Value); return }
     $key=Open-UserEnvironment -Writable
-    try { $key.SetValue('Path',$Value,$script:UserPathKind) } finally { $key.Dispose() }
-    Send-EnvironmentChange
+    try { $key.SetValue('Path',$Value,$state.UserPathKind) } finally { $key.Dispose() }
+    try { Send-EnvironmentChange } catch { }
 }
 function Send-EnvironmentChange {
-    if (-not ('Envswitch.EnvironmentNotification' -as [type])) {
-        Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-namespace Envswitch { public static class EnvironmentNotification {
- [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
- public static extern IntPtr SendMessageTimeout(IntPtr window, uint message, UIntPtr wparam, string lparam, uint flags, uint timeout, out UIntPtr result);
-} }
-'@
-    }
-    $result=[UIntPtr]::Zero
-    $null=[Envswitch.EnvironmentNotification]::SendMessageTimeout([IntPtr]0xffff,0x1a,[UIntPtr]::Zero,'Environment',2,5000,[ref]$result)
+    # The environment API broadcasts even for this no-op deletion; it never changes PATH's type.
+    [Environment]::SetEnvironmentVariable(('ENVSWITCH_NOTIFY_'+[guid]::NewGuid().ToString('N')),$null,'User')
 }
+
 function Test-PathEntry([string]$Value,[string]$Directory) {
     foreach ($entry in $Value.Split(';')) { if ($entry.TrimEnd('\').Equals($Directory.TrimEnd('\'),[StringComparison]::OrdinalIgnoreCase)) { return $true } }; return $false
 }
 function Cleanup {
     $rollbackFailed=$false
-    if (-not $script:Committed) {
+    if (-not $state.Committed) {
         try {
-            for ($i=$script:Journal.Count-1;$i -ge 0;$i--) {
-                $p,$backup=$script:Journal[$i]
+            for ($i=$state.Journal.Count-1;$i -ge 0;$i--) {
+                $p,$backup=$state.Journal[$i]
                 if ($backup) {
                     if ([IO.Directory]::Exists($p)) { Remove-Item -LiteralPath $p -Recurse -Force; [IO.Directory]::Move($backup,$p) }
                     elseif ([IO.File]::Exists($p)) { [IO.File]::Replace($backup,$p,$null) }
@@ -443,31 +440,31 @@ function Cleanup {
                     else { [IO.File]::Move($backup,$p) }
                 } elseif (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Recurse -Force }
             }
-            if ($script:PathChanged -and -not $script:TestMode) { Set-UserPath $script:OldUserPath }
-            if ($script:OldProcessPath) { $env:Path=$script:OldProcessPath }
-        } catch { $rollbackFailed=$true; [Console]::Error.WriteLine("error: rollback incomplete; preserve $script:Stage and reinstall using the README instructions") }
+            if ($state.PathChanged -and -not $state.TestMode) { Set-UserPath $state.OldUserPath }
+            if ($state.OldProcessPath) { $env:Path=$state.OldProcessPath }
+        } catch { $rollbackFailed=$true; [Console]::Error.WriteLine("error: rollback incomplete; preserve $($state.Stage) and reinstall using the README instructions") }
     }
-    if (-not $script:Committed -and -not $rollbackFailed -and $script:NewPayload) {
-        try { Assert-NoLinks $script:NewPayload; [IO.File]::Delete($script:NewPayload) } catch { Info "deferred cleanup: $script:NewPayload" }
+    if (-not $state.Committed -and -not $rollbackFailed -and $state.NewPayload) {
+        try { Assert-NoLinks $state.NewPayload; [IO.File]::Delete($state.NewPayload) } catch { Info "deferred cleanup: $($state.NewPayload)" }
     }
-    if ($script:Locked -and [IO.File]::Exists($script:Lock)) {
-        Assert-NoLinks $script:Lock
-        if ([IO.File]::ReadAllText($script:Lock) -ceq "$script:Token $PID`n") { [IO.File]::Delete($script:Lock) }
+    if ($state.Locked -and [IO.File]::Exists($state.Lock)) {
+        Assert-NoLinks $state.Lock
+        if ([IO.File]::ReadAllText($state.Lock) -ceq "$($state.Token) $PID`n") { [IO.File]::Delete($state.Lock) }
     }
-    if (-not $rollbackFailed -and $script:Stage -and [IO.Directory]::Exists($script:Stage)) {
-        try { Remove-Item -LiteralPath $script:Stage -Recurse -Force } catch { Info "deferred cleanup: $script:Stage" }
+    if (-not $rollbackFailed -and $state.Stage -and [IO.Directory]::Exists($state.Stage)) {
+        try { Remove-Item -LiteralPath $state.Stage -Recurse -Force } catch { Info "deferred cleanup: $($state.Stage)" }
     }
-    for ($i=$script:Created.Count-1;$i -ge 0;$i--) {
-        $p=$script:Created[$i]
+    for ($i=$state.Created.Count-1;$i -ge 0;$i--) {
+        $p=$state.Created[$i]
         if ([IO.Directory]::Exists($p) -and [IO.Directory]::GetFileSystemEntries($p).Length -eq 0) { [IO.Directory]::Delete($p) }
     }
 }
 
 try {
-    $script:TestMode=$env:ENVSWITCH_INSTALL_TEST_MODE -ceq 'install'
-    if ($env:ENVSWITCH_INSTALL_TEST_MODE -and -not $script:TestMode) { Fail 'invalid installer setting: ENVSWITCH_INSTALL_TEST_MODE' }
-    if ($script:TestMode -and -not $env:ENVSWITCH_INSTALL_TEST_API_BASE_URL) { Fail 'invalid installer setting: ENVSWITCH_INSTALL_TEST_API_BASE_URL' }
-    if ($script:TestMode -and $env:ENVSWITCH_INSTALL_TEST_FAIL_AT -and $env:ENVSWITCH_INSTALL_TEST_FAIL_AT -cnotin @('after-payload','after-launcher','after-metadata')) { Fail 'invalid installer setting: ENVSWITCH_INSTALL_TEST_FAIL_AT' }
+    $state.TestMode=$env:ENVSWITCH_INSTALL_TEST_MODE -ceq 'install'
+    if ($env:ENVSWITCH_INSTALL_TEST_MODE -and -not $state.TestMode) { Fail 'invalid installer setting: ENVSWITCH_INSTALL_TEST_MODE' }
+    if ($state.TestMode -and -not $env:ENVSWITCH_INSTALL_TEST_API_BASE_URL) { Fail 'invalid installer setting: ENVSWITCH_INSTALL_TEST_API_BASE_URL' }
+    if ($state.TestMode -and $env:ENVSWITCH_INSTALL_TEST_FAIL_AT -and $env:ENVSWITCH_INSTALL_TEST_FAIL_AT -cnotin @('after-payload','after-launcher','after-metadata')) { Fail 'invalid installer setting: ENVSWITCH_INSTALL_TEST_FAIL_AT' }
     if (-not (Test-Windows)) { Fail 'unsupported OS for this installer. Use scripts/install.sh on macOS, Linux, or WSL.' }
     $target=Get-Target
     if (-not (Test-Repo $Repo)) { Fail "invalid repository format: $Repo. Expected owner/repo." }
@@ -475,34 +472,34 @@ try {
     if (-not $AppRoot) { if (-not $env:LOCALAPPDATA) { Fail 'LOCALAPPDATA is not set. Pass -InstallDir and -AppRoot explicitly.' }; $AppRoot=Join-Path $env:LOCALAPPDATA 'Programs\envswitch' }
     $AppRoot=Normalize-Directory $AppRoot
     if (-not $InstallDir) { $InstallDir=Join-Path $AppRoot bin }; $InstallDir=Normalize-Directory $InstallDir
-    $app=Join-Path $AppRoot current; $script:Launcher=Join-Path $InstallDir envswitch.cmd; $script:Lock=Join-Path $AppRoot '.install.lock'
-    if ($AppRoot -eq $env:USERPROFILE -or $AppRoot -eq $env:HOME -or $AppRoot -eq $InstallDir -or (Test-Inside $InstallDir $app) -or (Test-Inside $AppRoot $script:Launcher) -or ($AppRoot+'\'+$InstallDir) -match '[\\/]\.install-') { Unsafe $AppRoot }
-    foreach ($p in @($app,$script:Launcher,(Join-Path $app bin),(Join-Path $app scripts),(Join-Path $app 'scripts/install.sh'),(Join-Path $app 'scripts/install.ps1'),(Join-Path $app install.json),(Join-Path $app '.version'))) { Assert-NoLinks $p }
+    $app=Join-Path $AppRoot current; $state.Launcher=Join-Path $InstallDir envswitch.cmd; $state.Lock=Join-Path $AppRoot '.install.lock'
+    if ($AppRoot -eq $env:USERPROFILE -or $AppRoot -eq $env:HOME -or $AppRoot -eq $InstallDir -or (Test-Inside $InstallDir $app) -or (Test-Inside $AppRoot $state.Launcher) -or ($AppRoot+'\'+$InstallDir) -match '[\\/]\.install-') { Unsafe $AppRoot }
+    foreach ($p in @($app,$state.Launcher,(Join-Path $app bin),(Join-Path $app scripts),(Join-Path $app 'scripts/install.sh'),(Join-Path $app 'scripts/install.ps1'),(Join-Path $app install.json),(Join-Path $app '.version'))) { Assert-NoLinks $p }
     if ((Test-Path -LiteralPath $app) -and -not [IO.Directory]::Exists($app)) { Unsafe $app }
     foreach ($p in @((Join-Path $AppRoot '.git'),(Join-Path $app '.git'),(Join-Path $InstallDir envswitch.exe))) { if (Test-Path -LiteralPath $p) { Unmanaged $p } }
-    $script:ApiBase='https://api.github.com'
-    if ($script:TestMode) {
-        $script:UserPathFile=$env:ENVSWITCH_INSTALL_TEST_USER_PATH_FILE
-        if ($script:UserPathFile) {
+    $state.ApiBase='https://api.github.com'
+    if ($state.TestMode) {
+        $state.UserPathFile=$env:ENVSWITCH_INSTALL_TEST_USER_PATH_FILE
+        if ($state.UserPathFile) {
             try {
-                $parent=Normalize-Directory ([IO.Path]::GetDirectoryName($script:UserPathFile))
-                $leaf=[IO.Path]::GetFileName($script:UserPathFile)
+                $parent=Normalize-Directory ([IO.Path]::GetDirectoryName($state.UserPathFile))
+                $leaf=[IO.Path]::GetFileName($state.UserPathFile)
                 if (-not $leaf -or $leaf -match '["\x00-\x1f\x7f-\x9f:]|[. ]$') { throw 'unsafe test path' }
-                $script:UserPathFile=Join-Path $parent $leaf
+                $state.UserPathFile=Join-Path $parent $leaf
             } catch { Fail 'invalid installer setting: ENVSWITCH_INSTALL_TEST_USER_PATH_FILE' }
         }
-        if (-not $script:UserPathFile -or -not [IO.Path]::IsPathRooted($script:UserPathFile) -or -not (Test-Inside $script:UserPathFile $env:USERPROFILE) -or $script:UserPathFile -eq $env:USERPROFILE) { Fail 'invalid installer setting: ENVSWITCH_INSTALL_TEST_USER_PATH_FILE' }
-        Assert-NoLinks $script:UserPathFile
+        if (-not $state.UserPathFile -or -not [IO.Path]::IsPathRooted($state.UserPathFile) -or -not (Test-Inside $state.UserPathFile $env:USERPROFILE) -or $state.UserPathFile -eq $env:USERPROFILE) { Fail 'invalid installer setting: ENVSWITCH_INSTALL_TEST_USER_PATH_FILE' }
+        Assert-NoLinks $state.UserPathFile
         if (-not $env:ENVSWITCH_INSTALL_TEST_API_BASE_URL) { Fail 'invalid installer setting: ENVSWITCH_INSTALL_TEST_API_BASE_URL' }
         if ($env:ENVSWITCH_INSTALL_TEST_API_BASE_URL) {
             $u=$null
             if (-not [uri]::TryCreate($env:ENVSWITCH_INSTALL_TEST_API_BASE_URL,[UriKind]::Absolute,[ref]$u) -or $u.Scheme -ne 'http' -or $u.Host -notin @('127.0.0.1','localhost','[::1]') -or $u.UserInfo -or $u.AbsolutePath -ne '/' -or $u.Query -or $u.Fragment) { Fail 'invalid installer setting: ENVSWITCH_INSTALL_TEST_API_BASE_URL' }
-            $script:ApiBase=$u.GetLeftPart([UriPartial]::Authority)
+            $state.ApiBase=$u.GetLeftPart([UriPartial]::Authority)
         }
     }
     $previous=Read-Receipt (Join-Path $app install.json)
-    if ([IO.File]::Exists($script:Launcher)) {
-        $content=[IO.File]::ReadAllText($script:Launcher,$script:Utf8); $recognized=$false
+    if ([IO.File]::Exists($state.Launcher)) {
+        $content=[IO.File]::ReadAllText($state.Launcher,$state.Utf8); $recognized=$false
         if ($previous -and (Test-ManagedLauncher $content $previous.kind $previous.payloadPath)) { $recognized=$true }
         if ((Test-ManagedLauncher $content source (Join-Path $app 'src\cli.ts'))) { $recognized=$true }
         $legacy=@('@echo off','setlocal','where bun >NUL 2>NUL','if %ERRORLEVEL% EQU 0 (',('  bun "'+(Join-Path $app 'src\cli.ts')+'" %*'),'  exit /b %ERRORLEVEL%',')','if exist "%USERPROFILE%\.bun\bin\bun.exe" (',('  "%USERPROFILE%\.bun\bin\bun.exe" "'+(Join-Path $app 'src\cli.ts')+'" %*'),'  exit /b %ERRORLEVEL%',')','echo envswitch: bun is not installed or not on PATH 1>&2','exit /b 127') -join "`n"
@@ -510,14 +507,14 @@ try {
         if ($content -match 'envswitch_(0\.0\.(?:0|[1-9][0-9]*))_x86_64-pc-windows-msvc\.exe') {
             if ((Test-ManagedLauncher $content native (Get-Payload $AppRoot native ('v'+$Matches[1]) $target))) { $recognized=$true }
         }
-        if (-not $recognized) { Unmanaged $script:Launcher }
-    } elseif (Test-Path -LiteralPath $script:Launcher) { Unmanaged $script:Launcher }
-    if ([IO.Directory]::Exists($app) -and [IO.Directory]::GetFileSystemEntries($app).Length -and -not $previous -and -not [IO.File]::Exists($script:Launcher)) {
+        if (-not $recognized) { Unmanaged $state.Launcher }
+    } elseif (Test-Path -LiteralPath $state.Launcher) { Unmanaged $state.Launcher }
+    if ([IO.Directory]::Exists($app) -and [IO.Directory]::GetFileSystemEntries($app).Length -and -not $previous -and -not [IO.File]::Exists($state.Launcher)) {
         try { if ((Read-Json ([IO.File]::ReadAllText((Join-Path $app package.json)))).name -cne 'envswitch') { throw 'name' } } catch { Unmanaged $app }
     }
     if ($WhatIfPreference) {
         $selection=if ($pin) { $pin } else { 'latest' }
-        foreach ($line in @("What if: Resolve envswitch release $selection from $Repo","What if: Verify SHA-256 and install the release's source or native payload to $app","What if: Install envswitch launcher to $script:Launcher",'What if: Write envswitch install receipt and version marker',"What if: Add $InstallDir to the user PATH if missing")) { [Console]::Out.WriteLine($line) }
+        foreach ($line in @("What if: Resolve envswitch release $selection from $Repo","What if: Verify SHA-256 and install the release's source or native payload to $app","What if: Install envswitch launcher to $($state.Launcher)",'What if: Write envswitch install receipt and version marker',"What if: Add $InstallDir to the user PATH if missing")) { [Console]::Out.WriteLine($line) }
         if ($VerifyAttestations) { [Console]::Out.WriteLine('What if: Verify GitHub artifact attestation with gh') }; if (-not $PSCommandPath) { $global:LASTEXITCODE=0; return }; exit 0
     }
     if ($PSCmdlet -and -not $PSCmdlet.ShouldProcess($AppRoot,'Install envswitch')) {
@@ -525,62 +522,62 @@ try {
     }
     $ConfirmPreference='None'
     if ($PSVersionTable.PSVersion.Major -lt 6) { [Net.ServicePointManager]::SecurityProtocol=[Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 }
-    $script:Gh=Get-Gh; $verifier=Get-Gh -Verifier
+    $state.Gh=Get-Gh; $verifier=Get-Gh -Verifier
     if ($VerifyAttestations -and -not $verifier) { Fail 'gh is required when attestation verification is requested' }
     Ensure-Directory $AppRoot
-    $script:Token=[guid]::NewGuid().ToString('N')
-    try { Write-Utf8Bytes $script:Lock $script:Utf8.GetBytes("$script:Token $PID`n") }
+    $state.Token=[guid]::NewGuid().ToString('N')
+    try { Write-Utf8Bytes $state.Lock $state.Utf8.GetBytes("$($state.Token) $PID`n") }
     catch {
-        if (Test-Path -LiteralPath $script:Lock) { Fail "another envswitch installer may be running: $script:Lock" 'retry after it exits; remove the lock only after confirming no installer is running' }
-        Fail "envswitch installation failed: cannot create installer lock: $script:Lock"
+        if (Test-Path -LiteralPath $state.Lock) { Fail "another envswitch installer may be running: $($state.Lock)" 'retry after it exits; remove the lock only after confirming no installer is running' }
+        Fail "envswitch installation failed: cannot create installer lock: $($state.Lock)"
     }
-    $script:Locked=$true
+    $state.Locked=$true
     $lockAcl=New-Object Security.AccessControl.FileSecurity; $lockAcl.SetAccessRuleProtection($true,$false)
     foreach ($sid in @([Security.Principal.WindowsIdentity]::GetCurrent().User.Value,'S-1-5-18','S-1-5-32-544')) {
         $identity=New-Object Security.Principal.SecurityIdentifier($sid)
         $lockAcl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($identity,'FullControl','Allow')))
     }
-    Set-Acl -LiteralPath $script:Lock -AclObject $lockAcl
+    Set-Acl -LiteralPath $state.Lock -AclObject $lockAcl
     $previous=Read-Receipt (Join-Path $app install.json)
-    $script:Stage=Join-Path $AppRoot ('.install-stage-'+$script:Token); New-PrivateDirectory $script:Stage
-    if ($PSCommandPath) { Copy-Item -LiteralPath $PSCommandPath -Destination (Join-Path $script:Stage executing-install.ps1) }
-    else { Write-Utf8Bytes (Join-Path $script:Stage executing-install.ps1) $script:Utf8.GetBytes([string]$MyInvocation.MyCommand.Definition) }
+    $state.Stage=Join-Path $AppRoot ('.install-stage-'+$state.Token); New-PrivateDirectory $state.Stage
+    if ($PSCommandPath) { Copy-Item -LiteralPath $PSCommandPath -Destination (Join-Path $state.Stage executing-install.ps1) }
+    else { Write-Utf8Bytes (Join-Path $state.Stage executing-install.ps1) $state.Utf8.GetBytes([string]$MyInvocation.MyCommand.Definition) }
     $endpoint='repos/'+$Repo+'/releases/'+$(if ($pin) { 'tags/'+$pin } else { 'latest' }); $releaseBytes=$null
-    if ($script:Gh) { $response=Invoke-GhCommand $script:Gh @('api',$endpoint); if ($response.Code -eq 0) { $releaseBytes=$response.Out } }
+    if ($state.Gh) { $response=Invoke-GhCommand $state.Gh @('api',$endpoint); if ($response.Code -eq 0) { $releaseBytes=$response.Out } }
     if ($null -eq $releaseBytes) {
-        try { $releaseBytes=Get-Http ($script:ApiBase+'/'+$endpoint) 'application/vnd.github+json' }
+        try { $releaseBytes=Get-Http ($state.ApiBase+'/'+$endpoint) 'application/vnd.github+json' }
         catch { if ($pin) { Fail "GitHub Release not found or unavailable: $Repo@$pin" } else { Fail "no GitHub Release found for $Repo, or access is denied" } }
     }
     try {
-        $raw=$script:Utf8.GetString($releaseBytes)
-        $release=Read-Json $raw; $script:Tag=$release.tag_name
-        if ($script:Tag -cnotmatch '\Av0\.0\.(0|[1-9][0-9]*)\z' -or ($pin -and $pin -cne $script:Tag) -or ($release.id -isnot [int] -and $release.id -isnot [long]) -or $release.id -le 0 -or $release.draft -isnot [bool] -or $release.draft -or $release.prerelease -isnot [bool] -or $release.prerelease -or $release.assets -isnot [array]) { throw 'shape' }
-        $script:Assets=New-Object 'Collections.Generic.Dictionary[string,string]' ([StringComparer]::Ordinal)
+        $raw=$state.Utf8.GetString($releaseBytes)
+        $release=Read-Json $raw; $state.Tag=$release.tag_name
+        if ($state.Tag -cnotmatch '\Av0\.0\.(0|[1-9][0-9]*)\z' -or ($pin -and $pin -cne $state.Tag) -or ($release.id -isnot [int] -and $release.id -isnot [long]) -or $release.id -le 0 -or $release.draft -isnot [bool] -or $release.draft -or $release.prerelease -isnot [bool] -or $release.prerelease -or $release.assets -isnot [array]) { throw 'shape' }
+        $state.Assets=New-Object 'Collections.Generic.Dictionary[string,string]' ([StringComparer]::Ordinal)
         $duplicates=New-Object 'Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
         foreach ($asset in $release.assets) {
-            if ($asset.name -isnot [string] -or $asset.url -isnot [string] -or $asset.url -cnotmatch ('\A'+[regex]::Escape($script:ApiBase+'/repos/')+'(?i:'+ [regex]::Escape($Repo)+')/releases/assets/[0-9]+\z')) { throw 'asset' }; if ($script:Assets.ContainsKey($asset.name)) { $null=$duplicates.Add($asset.name) }; $script:Assets[$asset.name]=$asset.url
+            if ($asset.name -isnot [string] -or $asset.url -isnot [string] -or $asset.url -cnotmatch ('\A'+[regex]::Escape($state.ApiBase+'/repos/')+'(?i:'+ [regex]::Escape($Repo)+')/releases/assets/[0-9]+\z')) { throw 'asset' }; if ($state.Assets.ContainsKey($asset.name)) { $null=$duplicates.Add($asset.name) }; $state.Assets[$asset.name]=$asset.url
         }
-        $ver=$script:Tag.Substring(1); $source='envswitch_'+$ver+'_source.tar.gz'
-        $natives=@($script:Targets | ForEach-Object { 'envswitch_'+$ver+'_'+$_+$(if ($_.EndsWith('msvc')) { '.zip' } else { '.tar.gz' }) })
-        $kind=if (@($natives | Where-Object { $script:Assets.ContainsKey($_) }).Count) { 'native' } else { 'source' }
+        $ver=$state.Tag.Substring(1); $source='envswitch_'+$ver+'_source.tar.gz'
+        $natives=@($state.Targets | ForEach-Object { 'envswitch_'+$ver+'_'+$_+$(if ($_.EndsWith('msvc')) { '.zip' } else { '.tar.gz' }) })
+        $kind=if (@($natives | Where-Object { $state.Assets.ContainsKey($_) }).Count) { 'native' } else { 'source' }
         $required=if ($kind -eq 'native') { $natives } else { @($source) }
-        if (($kind -eq 'native' -and $script:Assets.ContainsKey($source)) -or @($required | Where-Object { -not $script:Assets.ContainsKey($_) }).Count) { throw 'kind' }
+        if (($kind -eq 'native' -and $state.Assets.ContainsKey($source)) -or @($required | Where-Object { -not $state.Assets.ContainsKey($_) }).Count) { throw 'kind' }
         foreach ($n in ($required+@('SHA256SUMS','install.sh','install.ps1'))) { if ($duplicates.Contains($n)) { throw 'duplicate' } }
     } catch { Fail "invalid envswitch release metadata for $Repo" }
-    if (-not $script:Assets.ContainsKey('SHA256SUMS')) { Fail "release $script:Tag is missing SHA256SUMS; refusing unverified installation" }
-    foreach ($n in @('install.sh','install.ps1')) { if (-not $script:Assets.ContainsKey($n)) { Fail "invalid envswitch release metadata for $Repo" } }
+    if (-not $state.Assets.ContainsKey('SHA256SUMS')) { Fail "release $($state.Tag) is missing SHA256SUMS; refusing unverified installation" }
+    foreach ($n in @('install.sh','install.ps1')) { if (-not $state.Assets.ContainsKey($n)) { Fail "invalid envswitch release metadata for $Repo" } }
     $name=if ($kind -eq 'native') { 'envswitch_'+$ver+'_'+$target+'.zip' } else { $source }
-    Info "resolved envswitch $script:Tag ($kind)"; if ($kind -eq 'native') { Info "selected target: $target" }
+    Info "resolved envswitch $($state.Tag) ($kind)"; if ($kind -eq 'native') { Info "selected target: $target" }
     $manifest=Save-Asset SHA256SUMS; $archive=Save-Asset $name
-    $script:Sums=Read-Sums ([IO.File]::ReadAllBytes($manifest)) $script:Tag ($required+@('install.sh','install.ps1')); Verify-Hash $archive $name
+    $state.Sums=Read-Sums ([IO.File]::ReadAllBytes($manifest)) $state.Tag ($required+@('install.sh','install.ps1')); Verify-Hash $archive $name
     if ($VerifyAttestations) { Info "verifying GitHub attestation for $name"; $attestation=Invoke-GhCommand $verifier @('attestation','verify',$archive,'--repo',$Repo); if ($attestation.Code -ne 0) { Fail "GitHub attestation verification failed for $name" } }
-    Info "extracting $kind archive"; $tree=Join-Path $script:Stage extracted; Expand-Safe $archive $tree $kind
+    Info "extracting $kind archive"; $tree=Join-Path $state.Stage extracted; Expand-Safe $archive $tree $kind
     if ($kind -eq 'source') { $tree=Join-Path $tree envswitch }
     foreach ($n in @('install.sh','install.ps1')) { Verify-Hash (Join-Path $tree ('scripts\'+$n)) $n }
-    $payload=Get-Payload $AppRoot $kind $script:Tag $target
+    $payload=Get-Payload $AppRoot $kind $state.Tag $target
     if ($kind -eq 'native') {
-        $staged=Join-Path $script:Stage ([IO.Path]::GetFileName($payload)); Copy-Item -LiteralPath (Join-Path $tree envswitch.exe) -Destination $staged
-        if (-not (Test-Payload $staged $kind $ver $target -Staged)) { Fail "envswitch launcher verification failed: $script:Launcher" }
+        $staged=Join-Path $state.Stage ([IO.Path]::GetFileName($payload)); Copy-Item -LiteralPath (Join-Path $tree envswitch.exe) -Destination $staged
+        if (-not (Test-Payload $staged $kind $ver $target -Staged)) { Fail "envswitch launcher verification failed: $($state.Launcher)" }
     } else {
         Assert-Source $tree
         $bunCommand=Get-Command bun -CommandType Application -ErrorAction SilentlyContinue
@@ -598,76 +595,89 @@ try {
         if ($bunVersion.Code -ne 0) { Write-ToolOutput $bunVersion; Fail 'Bun verification failed' }
         Info 'installing production dependencies'; Push-Location -LiteralPath $tree
         try { $dependencies=Invoke-Captured $bun 'install --production --frozen-lockfile' 0; if ($dependencies.Code -ne 0) { Write-ToolOutput $dependencies; Fail 'bun install failed' } } finally { Pop-Location }
-        $check=Join-Path $script:Stage source-check.cmd; Write-Utf8Bytes $check $script:Utf8.GetBytes((New-Launcher source (Join-Path $tree 'src\cli.ts')))
-        if (-not (Test-Payload $check $kind $ver $target)) { Fail "envswitch launcher verification failed: $script:Launcher" }
+        $check=Join-Path $state.Stage source-check.cmd; Write-Utf8Bytes $check $state.Utf8.GetBytes((New-Launcher source (Join-Path $tree 'src\cli.ts')))
+        if (-not (Test-Payload $check $kind $ver $target)) { Fail "envswitch launcher verification failed: $($state.Launcher)" }
     }
-    $receipt=[ordered]@{schemaVersion=1;kind=$kind;repo=$Repo;appRoot=$AppRoot;installDir=$InstallDir;launcherPath=$script:Launcher;target=$(if ($kind -eq 'native') { $target } else { $null });tag=$script:Tag;payloadPath=$payload}
+    $receipt=[ordered]@{schemaVersion=1;kind=$kind;repo=$Repo;appRoot=$AppRoot;installDir=$InstallDir;launcherPath=$state.Launcher;target=$(if ($kind -eq 'native') { $target } else { $null });tag=$state.Tag;payloadPath=$payload}
     $healthy=$null -ne $previous
     foreach ($key in $receipt.Keys) { if ($healthy -and $previous.$key -cne $receipt[$key]) { $healthy=$false } }
-    $healthy=$healthy -and [IO.File]::Exists((Join-Path $app '.version')) -and [IO.File]::ReadAllText((Join-Path $app '.version'),$script:Utf8) -ceq "$script:Tag`n" -and [IO.File]::Exists($script:Launcher) -and [IO.File]::ReadAllText($script:Launcher,$script:Utf8) -ceq (New-Launcher $kind $payload) -and [IO.File]::Exists($payload)
+    $healthy=$healthy -and [IO.File]::Exists((Join-Path $app '.version')) -and [IO.File]::ReadAllText((Join-Path $app '.version'),$state.Utf8) -ceq "$($state.Tag)`n" -and [IO.File]::Exists($state.Launcher) -and [IO.File]::ReadAllText($state.Launcher,$state.Utf8) -ceq (New-Launcher $kind $payload) -and [IO.File]::Exists($payload)
     foreach ($n in @('install.sh','install.ps1')) {
         $p=Join-Path $app ('scripts\'+$n)
-        if (-not [IO.File]::Exists($p) -or (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant() -cne $script:Sums[$n]) { $healthy=$false }
+        if (-not [IO.File]::Exists($p) -or (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant() -cne $state.Sums[$n]) { $healthy=$false }
     }
     if ($kind -eq 'native' -and $healthy -and (Get-FileHash -LiteralPath $payload -Algorithm SHA256).Hash -cne (Get-FileHash -LiteralPath $staged -Algorithm SHA256).Hash) { $healthy=$false }
-    if ($healthy -and (Test-Payload $script:Launcher $kind $ver $target)) {
-        $script:Committed=$true; Cleanup; $script:Stage=$null; $script:Locked=$false
-        [Console]::Out.WriteLine("success: envswitch is already up to date ($script:Tag)"); if (-not $PSCommandPath) { $global:LASTEXITCODE=0; return }; exit 0
+    if ($healthy -and (Test-Payload $state.Launcher $kind $ver $target)) {
+        $state.Committed=$true; Cleanup; $state.Stage=$null; $state.Locked=$false
+        [Console]::Out.WriteLine("success: envswitch is already up to date ($($state.Tag))"); if (-not $PSCommandPath) { $global:LASTEXITCODE=0; return }; exit 0
     }
     $oldTag=if ($previous) { $previous.tag } else { $null }
     if (-not $oldTag -and [IO.File]::Exists((Join-Path $app '.version'))) { try { $oldTag=Convert-Tag ([IO.File]::ReadAllText((Join-Path $app '.version')).Trim([char]0xfeff,"`r","`n")) CurrentVersion } catch {} }
-    $label=if ($oldTag) { $oldTag } else { $current }; $outcome=if ($label -ceq $script:Tag -and (-not $previous -or ($previous.kind -ceq $kind -and $previous.target -ceq $receipt.target))) { 'repaired' } else { 'installed' }
+    $label=if ($oldTag) { $oldTag } else { $current }; $outcome=if ($label -ceq $state.Tag -and (-not $previous -or ($previous.kind -ceq $kind -and $previous.target -ceq $receipt.target))) { 'repaired' } else { 'installed' }
     Ensure-Directory $app; Ensure-Directory $InstallDir
     if ($kind -eq 'native') {
         Ensure-Directory (Join-Path $app bin); Assert-NoLinks $payload
         if ([IO.File]::Exists($payload)) {
             if ((Get-FileHash -LiteralPath $payload -Algorithm SHA256).Hash -cne (Get-FileHash -LiteralPath $staged -Algorithm SHA256).Hash) { Fail "existing native payload differs from verified release: $payload" 'close envswitch processes and reinstall using the README instructions; preserve the existing file until recovery is complete' }
-        } else { Info "installing binary to $payload"; [IO.File]::Move($staged,$payload); $script:NewPayload=$payload }
+        } else { Info "installing binary to $payload"; [IO.File]::Move($staged,$payload); $state.NewPayload=$payload }
     } else {
         foreach ($f in Get-ChildItem -LiteralPath $app -Force) { if ($f.Name -cnotin @('src','node_modules','package.json','bun.lock','README.md','tsconfig.json','scripts','bin','.version','install.json')) { Unmanaged $f.FullName } }
-        $old=Join-Path $script:Stage old-source; New-PrivateDirectory $old
+        $old=Join-Path $state.Stage old-source; New-PrivateDirectory $old
         foreach ($n in @('src','node_modules','package.json','bun.lock','README.md','tsconfig.json')) { $p=Join-Path $app $n; if (Test-Path -LiteralPath $p) { Assert-NoLinks $p; foreach ($f in Get-ChildItem -LiteralPath $p -Recurse -Force) { Assert-NoLinks $f.FullName; if ($f.Name -eq '.env' -or $f.Name.StartsWith('.env.',[StringComparison]::OrdinalIgnoreCase)) { Unmanaged $f.FullName } }; Copy-Item -LiteralPath $p -Destination (Join-Path $old $n) -Recurse } }
         if ([IO.Directory]::GetFileSystemEntries($old).Length) { Assert-Source $old -Existing }
         foreach ($n in @('src','node_modules','package.json','bun.lock','README.md','tsconfig.json')) {
             $p=Join-Path $app $n; $s=Join-Path $tree $n
             if (Test-Path -LiteralPath $s) { Replace-Managed $p $null $s }
-            elseif (Test-Path -LiteralPath $p) { $b=Join-Path $script:Stage ('removed-'+$n); $null=$script:Journal.Add(@($p,$b)); Move-Item -LiteralPath $p -Destination $b }
+            elseif (Test-Path -LiteralPath $p) { $b=Join-Path $state.Stage ('removed-'+$n); $null=$state.Journal.Add(@($p,$b)); Move-Item -LiteralPath $p -Destination $b }
         }
     }
     Boundary after-payload
-    Info "installing launcher to $script:Launcher"; Replace-Managed $script:Launcher $script:Utf8.GetBytes((New-Launcher $kind $payload))
+    Info "installing launcher to $($state.Launcher)"; Replace-Managed $state.Launcher $state.Utf8.GetBytes((New-Launcher $kind $payload))
     Info 'verifying envswitch launcher'
-    if (-not [IO.File]::Exists($script:Launcher)) { Fail "launcher was not installed: $script:Launcher" }
-    if (-not (Test-Payload $script:Launcher $kind $ver $target)) { Fail "envswitch launcher verification failed: $script:Launcher" }
+    if (-not [IO.File]::Exists($state.Launcher)) { Fail "launcher was not installed: $($state.Launcher)" }
+    if (-not (Test-Payload $state.Launcher $kind $ver $target)) { Fail "envswitch launcher verification failed: $($state.Launcher)" }
     Boundary after-launcher
     foreach ($n in @('install.sh','install.ps1')) { Replace-Managed (Join-Path $app ('scripts\'+$n)) $null (Join-Path $tree ('scripts\'+$n)) }
-    Replace-Managed (Join-Path $app install.json) $script:Utf8.GetBytes((ConvertTo-Json $receipt)+"`n")
-    Replace-Managed (Join-Path $app '.version') $script:Utf8.GetBytes("$script:Tag`n")
+    Replace-Managed (Join-Path $app install.json) $state.Utf8.GetBytes((ConvertTo-Json $receipt)+"`n")
+    Replace-Managed (Join-Path $app '.version') $state.Utf8.GetBytes("$($state.Tag)`n")
     $checked=Read-Receipt (Join-Path $app install.json)
     foreach ($key in $receipt.Keys) { if ($checked.$key -cne $receipt[$key]) { Fail 'envswitch installation failed: metadata verification' } }
-    if ([IO.File]::ReadAllText((Join-Path $app '.version'),$script:Utf8) -cne "$script:Tag`n") { Fail 'envswitch installation failed: metadata verification' }
+    if ([IO.File]::ReadAllText((Join-Path $app '.version'),$state.Utf8) -cne "$($state.Tag)`n") { Fail 'envswitch installation failed: metadata verification' }
     Boundary after-metadata
-    $script:OldUserPath=Get-UserPath; $script:OldProcessPath=$env:Path
-    if (-not (Test-PathEntry ([string]$script:OldUserPath) $InstallDir)) {
-        $newPath=if ($script:OldUserPath) { $script:OldUserPath+';'+$InstallDir } else { $InstallDir }
-        $script:PathChanged=$true; Set-UserPath $newPath; Info "added $InstallDir to the user PATH"
+    $state.OldUserPath=Get-UserPath; $state.OldProcessPath=$env:Path
+    if (-not (Test-PathEntry ([string]$state.OldUserPath) $InstallDir)) {
+        $newPath=if ($state.OldUserPath) { $state.OldUserPath+';'+$InstallDir } else { $InstallDir }
+        $state.PathChanged=$true; Set-UserPath $newPath; Info "added $InstallDir to the user PATH"
     }
     if (-not (Test-PathEntry $env:Path $InstallDir)) { $env:Path=$InstallDir+';'+$env:Path }
-    $script:Committed=$true; Cleanup; $script:Stage=$null; $script:Locked=$false
-    [Console]::Out.WriteLine("success: $outcome envswitch $script:Tag")
-    if ($kind -eq 'native') { Info "binary: $payload" } else { Info "source: $app" }; Info "launcher: $script:Launcher"
+    $state.Committed=$true; Cleanup; $state.Stage=$null; $state.Locked=$false
+    [Console]::Out.WriteLine("success: $outcome envswitch $($state.Tag)")
+    if ($kind -eq 'native') { Info "binary: $payload" } else { Info "source: $app" }; Info "launcher: $($state.Launcher)"
     $escaped=$InstallDir.Replace('`','``').Replace('"','`"').Replace('$','`$')
     Info 'restart your terminal, or run this command now:'; Info ('$env:Path = "'+$escaped+';$env:Path"'); Info "then run 'envswitch --help' to verify the installation"
 } catch [Management.Automation.PipelineStoppedException] {
-    $script:ExitCode=130
+    $state.ExitCode=130
     if (-not $PSCommandPath) { $global:LASTEXITCODE=130; return }; exit 130
 } catch {
     if ($_.Exception.Message.StartsWith('error: ')) { [Console]::Error.WriteLine($_.Exception.Message) }
     else { [Console]::Error.WriteLine('error: envswitch installation failed: '+$_.Exception.GetType().Name) }
-    $script:ExitCode=1
+    $state.ExitCode=1
     if (-not $PSCommandPath) { $global:LASTEXITCODE=1; return }; exit 1
 } finally {
-    try { Cleanup } catch { [Console]::Error.WriteLine('error: rollback incomplete; preserve '+$script:Stage+' and reinstall using the README instructions') }
-    $ConfirmPreference=$script:OriginalConfirm
+    try { Cleanup } catch { [Console]::Error.WriteLine('error: rollback incomplete; preserve '+$state.Stage+' and reinstall using the README instructions') }
+    $ConfirmPreference=$state.OriginalConfirm
 }
-if (-not $PSCommandPath) { $global:LASTEXITCODE=$script:ExitCode }
+if (-not $PSCommandPath) { $global:LASTEXITCODE=$state.ExitCode }
+
+    }
+    $tokens = foreach ($argument in $args) {
+        $text=[string]$argument
+        if ($text -match '^(-[A-Za-z][A-Za-z0-9]*)(?::(.*))?$') {
+            $name=$Matches[1]; $value=$Matches[2]
+            if (-not $text.Contains(':')) { $name }
+            elseif ($value -match '^\$?(true|false)$') { $name+':$'+$Matches[1].ToLowerInvariant() }
+            else { $name+":'"+$value.Replace("'","''")+"'" }
+        } else { "'"+$text.Replace("'","''")+"'" }
+    }
+    Invoke-Expression ('& $installer '+($tokens -join ' '))
+} @args
