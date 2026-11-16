@@ -13,7 +13,11 @@ use super::output::{log_progress, write_line};
 const POSTCONDITION: &str = "update failed: installer result does not match the installed receipt and version marker; reinstall envswitch with the install script from the README";
 
 pub(crate) fn run_update(_args: &ParsedArgs, deps: &mut Deps) -> Result<()> {
-    let before = locate(deps.current_exe.as_deref(), deps.app_dir.as_deref())?;
+    let before = locate(
+        deps.current_exe.as_deref(),
+        deps.app_dir.as_deref(),
+        &deps.env,
+    )?;
     let old = format!("v{}", env!("CARGO_PKG_VERSION"));
     let plan = InstallPlan {
         repo: before.repo.clone(),
@@ -37,7 +41,8 @@ pub(crate) fn run_update(_args: &ParsedArgs, deps: &mut Deps) -> Result<()> {
             format!("update failed: installer exited with code {code}"),
         ));
     }
-    let after = read_receipt(&before.app_root).ok_or_else(|| Error::user(POSTCONDITION))?;
+    let after =
+        read_receipt(&before.app_root, &deps.env).ok_or_else(|| Error::user(POSTCONDITION))?;
     let marker_path = after.app_root.join("current/.version");
     let marker = fs::read(&marker_path).ok();
     if after.repo != before.repo
@@ -94,30 +99,51 @@ fn disposition(output: &str, receipt: &Receipt) -> Option<&'static str> {
     };
     let launcher = format!("info: launcher: {}", receipt.launcher_path.display());
     let suffix = &lines[index + 1..];
-    if suffix.first().copied() != Some(location.as_str())
-        || suffix.get(1).copied() != Some(launcher.as_str())
-    {
+    let locations_match = if cfg!(windows) {
+        // Code-page output may replace unrepresentable characters. The receipt
+        // and filesystem above are authoritative; require the defined suffix.
+        suffix.first().is_some_and(|s| {
+            s.starts_with(if receipt.kind == "native" {
+                "info: binary: "
+            } else {
+                "info: source: "
+            })
+        }) && suffix
+            .get(1)
+            .is_some_and(|s| s.starts_with("info: launcher: "))
+    } else {
+        suffix.first().copied() == Some(location.as_str())
+            && suffix.get(1).copied() == Some(launcher.as_str())
+    };
+    if !locations_match {
         return None;
     }
+    if cfg!(windows) && (suffix[0] != location || suffix[1] != launcher) {
+        use std::io::Write;
+        let _ = writeln!(
+            std::io::stderr(),
+            "envswitch: warning: installer locations could not be matched after console decoding; validated the installed receipt instead"
+        );
+    }
     let guidance = &suffix[2..];
-    if !cfg!(windows) && guidance == ["info: run 'envswitch --help' to verify the installation"] {
+    if cfg!(windows) {
+        return (guidance.len() == 3
+            && guidance[0] == "info: restart your terminal, or run this command now:"
+            && guidance[1].starts_with("info: $env:Path = \"")
+            && guidance[1].ends_with(";$env:Path\"")
+            && guidance[2] == "info: then run 'envswitch --help' to verify the installation")
+            .then_some(outcome);
+    }
+    if guidance == ["info: run 'envswitch --help' to verify the installation"] {
         return Some(outcome);
     }
     let dir = receipt.install_dir.to_str()?;
-    let command = if cfg!(windows) {
-        let escaped = dir
-            .replace('`', "``")
-            .replace('"', "`\"")
-            .replace('$', "`$");
-        format!("info: $env:Path = \"{escaped};$env:Path\"")
-    } else {
-        let escaped = dir
-            .replace('\\', "\\\\")
-            .replace('"', "\\\"")
-            .replace('$', "\\$")
-            .replace('`', "\\`");
-        format!("info: export PATH=\"{escaped}:$PATH\"")
-    };
+    let escaped = dir
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('$', "\\$")
+        .replace('`', "\\`");
+    let command = format!("info: export PATH=\"{escaped}:$PATH\"");
     (guidance
         == [
             "info: restart your terminal, or run this command now:",

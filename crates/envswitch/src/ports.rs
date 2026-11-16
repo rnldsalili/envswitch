@@ -181,8 +181,9 @@ pub trait ReleaseSource: Send + Sync {
 pub trait InstallerRunner: Send + Sync {
     fn run(&self, plan: &InstallPlan) -> Result<i32>;
 
-    /// Tee stdout to the command's sink and retain it for protocol terminal-line
-    /// validation. Legacy runners supply no outcome and cannot claim success.
+    /// Forward stdout and retain it for protocol terminal-line validation.
+    /// Windows uses the raw process stdout handle to preserve code-page bytes.
+    /// Legacy runners supply no outcome and cannot claim success.
     fn run_with_output(&self, plan: &InstallPlan, _out: &mut dyn Write) -> Result<(i32, String)> {
         self.run(plan).map(|code| (code, String::new()))
     }

@@ -1,6 +1,8 @@
 //! Native update handoff to the embedded protocol-1 installers.
 
+mod console;
 pub mod embed;
+pub(crate) mod process;
 pub mod receipt;
 
 use std::fs::{self, OpenOptions};
@@ -119,6 +121,7 @@ fn run_embedded(plan: &InstallPlan, out: &mut dyn Write) -> Result<(i32, String)
             "update failed: could not run installer: invalid version tag",
         ));
     }
+    let handoff = process::Handoff::new().map_err(launch_error)?;
     let temp = PrivateDir::create(plan)?;
     let (name, script) = embed::installer_script();
     let script_path = temp.0.join(name);
@@ -146,8 +149,7 @@ fn run_embedded(plan: &InstallPlan, out: &mut dyn Write) -> Result<(i32, String)
             .arg("-InstallDir")
             .arg(install_dir)
             .arg("-Repo")
-            .arg(&plan.repo)
-            .arg("-Confirm:$false");
+            .arg(&plan.repo);
         if let Some(pin) = &plan.version {
             command.arg("-Version").arg(pin);
         }
@@ -183,6 +185,9 @@ fn run_embedded(plan: &InstallPlan, out: &mut dyn Write) -> Result<(i32, String)
     if !plan.verify_attestations {
         command.env_remove("ENVSWITCH_VERIFY_ATTESTATIONS");
     }
+    handoff.prepare(&mut command);
+    #[cfg(windows)]
+    let encoding = console::Encoding::new();
     let mut child = command
         .current_dir(&temp.0)
         .stdin(Stdio::inherit())
@@ -190,6 +195,7 @@ fn run_embedded(plan: &InstallPlan, out: &mut dyn Write) -> Result<(i32, String)
         .stdout(Stdio::piped())
         .spawn()
         .map_err(spawn_error)?;
+    handoff.started(child.id());
     let mut stdout = child.stdout.take().expect("piped stdout");
     let mut bytes = Vec::new();
     let mut buffer = [0; 8192];
@@ -200,7 +206,15 @@ fn run_embedded(plan: &InstallPlan, out: &mut dyn Write) -> Result<(i32, String)
             Ok(n) => {
                 bytes.extend_from_slice(&buffer[..n]);
                 if write_error.is_none() {
-                    write_error = out.write_all(&buffer[..n]).and_then(|()| out.flush()).err();
+                    #[cfg(not(windows))]
+                    {
+                        write_error = out.write_all(&buffer[..n]).and_then(|()| out.flush()).err();
+                    }
+                    #[cfg(windows)]
+                    {
+                        let _ = &out;
+                        write_error = console::write(&buffer[..n]).err();
+                    }
                 }
             }
             Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
@@ -209,14 +223,28 @@ fn run_embedded(plan: &InstallPlan, out: &mut dyn Write) -> Result<(i32, String)
     };
     drop(stdout);
     let status = child.wait().map_err(spawn_error)?;
+    handoff.finished();
     let cleanup = fs::remove_dir_all(&temp.0);
     let code = status_code(status);
     if code == 0 {
         read_result.map_err(launch_error)?;
         if let Some(e) = write_error {
-            return Err(launch_error(e));
+            let _ = writeln!(
+                std::io::stderr(),
+                "envswitch: warning: could not forward installer stdout: {e}"
+            );
         }
-        cleanup.map_err(launch_error)?;
+        if let Err(e) = cleanup {
+            let _ = writeln!(
+                std::io::stderr(),
+                "envswitch: warning: could not remove installer temporary directory {}: {e}",
+                temp.0.display()
+            );
+        }
     }
-    Ok((code, String::from_utf8_lossy(&bytes).into_owned()))
+    #[cfg(windows)]
+    let output = encoding.decode(&bytes);
+    #[cfg(not(windows))]
+    let output = String::from_utf8_lossy(&bytes).into_owned();
+    Ok((code, output))
 }

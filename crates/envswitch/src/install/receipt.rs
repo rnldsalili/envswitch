@@ -161,7 +161,7 @@ fn unique_keys(bytes: &[u8]) -> Option<Value> {
 }
 
 /// Validate exact derived paths without requiring a healthy payload (repair is allowed).
-pub fn read_receipt(app_root: &Path) -> Option<Receipt> {
+pub fn read_receipt(app_root: &Path, env: &crate::ports::EnvLookup) -> Option<Receipt> {
     let path = app_root.join("current/install.json");
     if !valid_path(app_root) || !no_links(&path) {
         return None;
@@ -201,7 +201,7 @@ pub fn read_receipt(app_root: &Path) -> Option<Receipt> {
         return None;
     }
     for home in ["HOME", "USERPROFILE"] {
-        if std::env::var_os(home).is_some_and(|h| same_path(&r.app_root, Path::new(&h))) {
+        if env(home).is_some_and(|h| same_path(&r.app_root, Path::new(&h))) {
             return None;
         }
     }
@@ -257,6 +257,7 @@ pub fn read_receipt(app_root: &Path) -> Option<Receipt> {
 pub(crate) fn locate(
     current_exe: Option<&Path>,
     app_dir: Option<&Path>,
+    env: &crate::ports::EnvLookup,
 ) -> crate::error::Result<Receipt> {
     use crate::error::Error;
     if app_dir.is_some_and(|p| p.join(".git").exists()) {
@@ -309,7 +310,7 @@ pub(crate) fn locate(
     if !same_path(candidate, &root.join("current")) {
         return Err(Error::user(RECEIPT_GUIDANCE));
     }
-    let receipt = read_receipt(root).ok_or_else(|| Error::user(RECEIPT_GUIDANCE))?;
+    let receipt = read_receipt(root, env).ok_or_else(|| Error::user(RECEIPT_GUIDANCE))?;
     if receipt.tag == format!("v{}", env!("CARGO_PKG_VERSION"))
         && !same_path(&receipt.payload_path, &exe)
     {

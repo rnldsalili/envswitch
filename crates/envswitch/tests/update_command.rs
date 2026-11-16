@@ -542,3 +542,15 @@ fn windows_receipt_paths_compare_without_case_and_canonical_exe_prefix() {
     t = t.with_installer(FakeInstaller::new().with_result(Ok(7)));
     assert_eq!(t.run(&["update"]), 7, "{}", t.err.text());
 }
+
+#[test]
+fn receipt_home_checks_use_injected_environment() {
+    for key in ["HOME", "USERPROFILE"] {
+        let (_temp, mut t) = installed();
+        t.env
+            .set(key, current(&t).parent().unwrap().to_str().unwrap());
+        assert_eq!(t.run(&["update"]), 1);
+        assert_eq!(t.err.text(), RECEIPT_ERROR);
+        assert!(t.installer.plans().is_empty());
+    }
+}
