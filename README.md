@@ -1,6 +1,6 @@
 # envswitch
 
-`envswitch` is a reusable Bun-powered CLI for switching local project `.env` files from 1Password. Run it from the root of the project you want to update.
+`envswitch` is a native Rust CLI for switching local project `.env` files from 1Password. Run it from the root of the project you want to update.
 
 The CLI contains generic switching logic only. Project paths, clients, environments, target names, and tag rules are loaded from a 1Password config item.
 
@@ -23,6 +23,7 @@ Then use it:
 ```bash
 envswitch          # guided switch
 envswitch update   # update to the latest release
+envswitch --version # show version and target triple
 envswitch --help   # show all commands
 ```
 
@@ -30,54 +31,137 @@ If `envswitch` is not found right after installing, restart your terminal (or ru
 
 ## Installation Details
 
-The installer installs Bun if it is missing, downloads the source release, installs it under your data directory, and creates an `envswitch` launcher on your `PATH`.
+The installers download a native binary from GitHub Releases and require a matching `SHA256SUMS` manifest before installation. Bun is not required.
 
-- macOS, Linux, WSL: source in `${XDG_DATA_HOME:-$HOME/.local/share}/envswitch/current`, launcher at `$HOME/.local/bin/envswitch`.
-- Windows: source in `$env:LOCALAPPDATA\Programs\envswitch\current`, launcher at `$env:LOCALAPPDATA\Programs\envswitch\bin\envswitch.cmd`.
+Supported release targets:
 
-If you have the GitHub CLI and prefer it over `curl`:
+| Platform | Target | Archive |
+| --- | --- | --- |
+| macOS Apple silicon | `aarch64-apple-darwin` | `.tar.gz` |
+| macOS Intel | `x86_64-apple-darwin` | `.tar.gz` |
+| Linux / WSL x86_64 | `x86_64-unknown-linux-musl` | `.tar.gz` |
+| Linux / WSL ARM64 | `aarch64-unknown-linux-musl` | `.tar.gz` |
+| Windows x86_64 | `x86_64-pc-windows-msvc` | `.zip` |
 
-```bash
-gh api repos/rnldsalili/envswitch/contents/scripts/install.sh \
-  --jq '.content' | base64 -d | bash
+Linux binaries are statically linked with musl. Windows ARM and 32-bit Windows are not supported.
+
+On macOS/Linux/WSL, the installer needs Bash, `curl` or authenticated `gh`, `tar`, standard Unix tools, and `sha256sum` or `shasum`. The Unix launcher also uses Bash. Windows requires PowerShell 5.1 or later; SHA-256 verification uses `Get-FileHash`.
+
+Default locations:
+
+- macOS/Linux/WSL: `APP_ROOT` is `${XDG_DATA_HOME:-$HOME/.local/share}/envswitch`; `INSTALL_DIR` is `$HOME/.local/bin`.
+- Windows: app root is `$env:LOCALAPPDATA\Programs\envswitch`; launcher directory is `<AppRoot>\bin`.
+
+The native layout is:
+
+```text
+APP_ROOT/current/
+  bin/envswitch_<ver>_<target>[.exe]  # versioned native payload
+  scripts/install.sh
+  scripts/install.ps1
+  .version                          # v<ver> followed by a newline
+  install.json                      # install receipt
+INSTALL_DIR/envswitch               # Unix launcher
+INSTALL_DIR/envswitch.cmd           # Windows launcher
 ```
 
-```powershell
-$rawUrl = gh api repos/rnldsalili/envswitch/contents/scripts/install.ps1 --jq ".download_url"
-irm $rawUrl | iex
-```
+The receipt records the repository, version, target, and managed paths for future updates. Older versioned binaries are retained. An upgrade from source also retains unused legacy source files; it does not remove Bun.
 
-Override the install locations with `INSTALL_DIR` (launcher) and `APP_ROOT` (source) on macOS/Linux, or `-InstallDir` and `-AppRoot` on Windows:
+### Installer Overrides
+
+On Unix, set `INSTALL_DIR` (launcher directory), `APP_ROOT` (application root), `REPO` (`owner/repo`, default `rnldsalili/envswitch`), or `ENVSWITCH_VERSION` (pin, `0.0.N` or `v0.0.N`). Set variables on `bash`, not `curl`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rnldsalili/envswitch/main/scripts/install.sh |
-  INSTALL_DIR="$HOME/.local/bin" APP_ROOT="$HOME/.local/share/envswitch" bash
+  ENVSWITCH_VERSION=v0.0.42 INSTALL_DIR="$HOME/.local/bin" APP_ROOT="$HOME/.local/share/envswitch" bash
 ```
+
+Use an existing release version in place of `v0.0.42`. Without a pin, the installer selects the latest release. Both installers support `GITHUB_TOKEN` for GitHub API authentication and use authenticated `gh` when available.
+
+On Windows, download the script to pass parameters: `-InstallDir`, `-AppRoot`, `-Repo`, `-Version` (same pin format), and `-WhatIf` (preview without downloads or writes):
 
 ```powershell
-.\scripts\install.ps1 -InstallDir "$env:USERPROFILE\bin" -AppRoot "$env:LOCALAPPDATA\envswitch"
+Invoke-WebRequest https://raw.githubusercontent.com/rnldsalili/envswitch/main/scripts/install.ps1 -OutFile install.ps1
+.\install.ps1 -InstallDir "$env:USERPROFILE\bin" -AppRoot "$env:LOCALAPPDATA\envswitch" -Repo rnldsalili/envswitch -WhatIf
 ```
 
-### Manual Installation
+Remove `-WhatIf` to install. Use absolute installation paths.
 
-Download the source release archive, extract it, install dependencies with Bun, and create a small launcher on your `PATH`.
+### Verification and Manual Installation
 
-```bash
-gh release download --repo rnldsalili/envswitch --pattern 'envswitch_*_source.tar.gz'
-mkdir -p "$HOME/.local/share/envswitch"
-tar -xzf envswitch_*_source.tar.gz -C "$HOME/.local/share/envswitch"
-mv "$HOME/.local/share/envswitch/envswitch" "$HOME/.local/share/envswitch/current"
-(cd "$HOME/.local/share/envswitch/current" && bun install --production --frozen-lockfile)
-mkdir -p "$HOME/.local/bin"
-printf '#!/usr/bin/env bash\nexec bun "%s/src/cli.ts" "$@"\n' "$HOME/.local/share/envswitch/current" > "$HOME/.local/bin/envswitch"
-chmod +x "$HOME/.local/bin/envswitch"
-```
-
-Release assets use this naming format:
+Download the archive matching your platform and `SHA256SUMS` from the same GitHub release. Release assets use these names (`<ver>` has no leading `v`):
 
 ```text
-envswitch_0.1.0_source.tar.gz
+envswitch_<ver>_aarch64-apple-darwin.tar.gz
+envswitch_<ver>_x86_64-apple-darwin.tar.gz
+envswitch_<ver>_x86_64-unknown-linux-musl.tar.gz
+envswitch_<ver>_aarch64-unknown-linux-musl.tar.gz
+envswitch_<ver>_x86_64-pc-windows-msvc.zip
+SHA256SUMS
+install.sh
+install.ps1
 ```
+
+For example, on Linux x86_64 (replace the version with an existing release):
+
+```bash
+gh release download v0.0.42 --repo rnldsalili/envswitch --pattern 'envswitch_0.0.42_x86_64-unknown-linux-musl.tar.gz' --pattern SHA256SUMS
+sha256sum envswitch_0.0.42_x86_64-unknown-linux-musl.tar.gz
+# On macOS: shasum -a 256 <archive>
+```
+
+Compare the complete hash with the entry for that exact archive filename in `SHA256SUMS`; stop if it is missing or differs. On Windows, use `Get-FileHash -Algorithm SHA256 <archive>` and compare the hash with the matching manifest entry (hexadecimal case does not matter).
+
+After verification, extract with `tar -xzf <archive>` on Unix or `Expand-Archive <archive>` on Windows. Place the extracted `envswitch` (or `envswitch.exe`) binary in a directory on your `PATH`; on Unix, ensure it is executable with `chmod +x <path-to-binary>`. Check it with `envswitch --version`.
+
+Manual copies do not have an installer receipt. `envswitch update` requires an installer-managed installation; manual copies receive reinstall guidance instead.
+
+Both installers can additionally require GitHub attestation verification using `gh`: set `ENVSWITCH_VERIFY_ATTESTATIONS=1` on the Unix `bash` invocation, or pass `-VerifyAttestations` to the downloaded PowerShell script. A missing verifier or failed attestation aborts installation. To verify a downloaded archive yourself:
+
+```bash
+gh attestation verify <archive> --repo rnldsalili/envswitch
+```
+
+SHA-256 verification is mandatory even with attestations. The public install one-liners execute a mutable bootstrap script; payload checksums do not verify that script before execution.
+
+## Upgrading from the Bun Version
+
+Upgrading from the Bun version: run `envswitch update` during the bridge release to prepare for native updates. If you skipped the bridge and update fails with `release asset not found or unavailable` or `matching asset not found`, rerun the install command below. Updates preserve your install paths when they are recorded in an install receipt. When reinstalling, supply any custom install paths explicitly. Your project `.env` files and Bun installation are not removed.
+
+macOS, Linux, or WSL:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rnldsalili/envswitch/main/scripts/install.sh | bash
+```
+
+Windows PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/rnldsalili/envswitch/main/scripts/install.ps1 | iex
+```
+
+For an older custom installation, use the same app root, launcher directory, and repository you originally selected. The installer cannot discover every old custom launcher. Restart your terminal after reinstalling, then run `envswitch --version`; a native installation prints `envswitch <version> <target-triple>`. Reinstalling at the default location does not repair a different launcher that appears earlier on PATH.
+
+Custom Unix example (replace these locations/repo with the actual old values; set variables on **bash**, not curl):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rnldsalili/envswitch/main/scripts/install.sh |
+  REPO=rnldsalili/envswitch APP_ROOT="$HOME/.local/share/envswitch" INSTALL_DIR="$HOME/.local/bin" bash
+```
+
+Custom Windows example (download the script, then pass parameters):
+
+```powershell
+$installer = Join-Path $env:TEMP ("envswitch-install-" + [guid]::NewGuid() + ".ps1")
+try {
+    Invoke-WebRequest https://raw.githubusercontent.com/rnldsalili/envswitch/main/scripts/install.ps1 -OutFile $installer
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $installer -Repo rnldsalili/envswitch -AppRoot "$env:LOCALAPPDATA\Programs\envswitch" -InstallDir "$env:LOCALAPPDATA\Programs\envswitch\bin"
+} finally {
+    Remove-Item -LiteralPath $installer -ErrorAction SilentlyContinue
+}
+```
+
+Running `envswitch update` from the final TypeScript bridge release migrates an installer-managed installation to the native release automatically.
 
 ## Commands
 
@@ -88,13 +172,26 @@ envswitch list --vault <vault> --config-item <item> targets
 envswitch switch --vault <vault> --config-item <item> --client <client> --env local --dry-run
 envswitch switch --vault <vault> --config-item <item> --client <client> --env local
 envswitch update
+envswitch --version
 ```
 
-Run `envswitch` with no arguments for guided switch prompts. Guided mode uses arrow-key selection menus for 1Password vaults, config items, clients, environments, targets, and dry-run/write mode. It only shows vaults and config items containing the `envswitch-config` tag, auto-selects single available choices, and defaults to writing `.env` files unless you choose dry-run.
+Run `envswitch` with no arguments for guided switch prompts. Guided mode uses arrow-key selection menus for 1Password vaults, config items, clients, environments, targets, and dry-run/write mode. It only shows vaults and config items containing the `envswitch-config` tag, auto-selects single available choices, and defaults to writing `.env` files unless you choose dry-run. Press Esc to cancel a prompt (exit status 130).
 
 Use `envswitch switch ...` for scripts and non-interactive terminals. `--env` defaults to `local`, and `--target` defaults to `all`.
 
-Use `envswitch update` to update an installed copy to the latest GitHub release. It re-runs the bundled install script in place, skips the reinstall when you are already on the latest version, and reports the old and new versions. It does not work from a git checkout; use `git pull` there instead.
+Use `envswitch --version` to print `envswitch <version> <target-triple>`.
+
+`envswitch update` always runs the embedded installer, even at the same version, so it can check health and repair missing payloads, scripts, or metadata. It uses the repository and destinations saved in the receipt. Conflicting existing versioned binaries require manual recovery rather than automatic replacement. Source checkouts should use `git pull`; copies without a valid receipt receive reinstall guidance.
+
+Update prints progress on stderr (`envswitch [info] updating envswitch <old> -> latest`) and leaves installer output visible. After verified success, it prints one summary:
+
+```text
+envswitch is already up to date (<new>)
+updated envswitch <old> -> <new>
+repaired envswitch <new>
+```
+
+Successful updates, repairs, and unchanged installs exit 0. Installer failures forward the installer's exit status (Unix signals use `128 + signal`); controlled update validation failures exit 1. No success summary follows failure.
 
 ## Prerequisites
 
@@ -493,11 +590,13 @@ If a target receives the wrong variables, check for incorrect `client:*` or `gro
 
 ## Development
 
-These commands are for contributors and release maintainers. Normal installation uses the source release from GitHub Releases.
+The native crate is `crates/envswitch`. From the repository root:
 
 ```bash
-bun test
-bun run build
+cargo build
+cargo test --locked
+cargo test --locked --test parity -- --ignored
+bash test/install-sh.test.sh
 ```
 
-The build command runs the TypeScript check. Release packaging is handled by the GitHub Actions workflow.
+See [parity/README.md](parity/README.md) for parity setup, the frozen Bun oracle used only for development, and platform requirements. Linux update parity requires a packaged musl target as described there. The Bash installer suite uses isolated synthetic releases.
