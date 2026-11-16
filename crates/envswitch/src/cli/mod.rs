@@ -39,7 +39,11 @@ pub fn init_process() {
     #[cfg(windows)]
     {
         let _ = enable_ansi_support::enable_ansi_support();
-        let _ = ctrlc::set_handler(|| std::process::exit(130));
+        let _ = ctrlc::set_handler(|| {
+            if !crate::install::process::handoff_active() {
+                std::process::exit(130);
+            }
+        });
     }
 }
 
