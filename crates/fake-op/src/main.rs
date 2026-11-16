@@ -29,6 +29,12 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
         .iter()
         .find(|entry| entry["argv"] == serde_json::json!(args))
         .ok_or_else(|| format!("unconfigured fake-op argv: {}", serde_json::json!(args)))?;
+    if let Some(delay) = response.get("delayMs") {
+        let millis = delay
+            .as_u64()
+            .ok_or("fixture delayMs must be an unsigned integer")?;
+        std::thread::sleep(std::time::Duration::from_millis(millis));
+    }
     let mut stdout = io::stdout().lock();
     if let Some(encoded) = response["stdoutBase64"].as_str() {
         stdout.write_all(&decode_base64(encoded)?)?;

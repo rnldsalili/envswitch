@@ -10,7 +10,7 @@ use std::path::Path;
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 
 use crate::error::{Error, Result, io_error, io_error_dest};
-use crate::jsutil::{is_env_key, js_is_space};
+use crate::jsutil::{compare_utf16, is_env_key, js_is_space};
 use crate::model::EnvMap;
 
 /// TS `stringifyEnv(values)` (02 §6.1): keys sorted by UTF-16 code unit,
@@ -19,7 +19,7 @@ use crate::model::EnvMap;
 /// `\n` (an empty map gives `"\n"`).
 pub fn stringify_env(values: &EnvMap) -> Result<String> {
     let mut keys: Vec<_> = values.keys().collect();
-    keys.sort_by(|left, right| left.encode_utf16().cmp(right.encode_utf16()));
+    keys.sort_by(|left, right| compare_utf16(left, right));
     let mut lines = Vec::with_capacity(keys.len());
     for key in keys {
         if !is_env_key(key) {

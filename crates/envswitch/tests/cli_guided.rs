@@ -35,10 +35,16 @@ fn config_op(id: &str) -> FakeOp {
 #[test]
 fn rejects_guided_mode_without_an_interactive_terminal_before_any_op_call() {
     let project = TempProject::new();
-    for (stdin, stdout) in [(false, false), (true, false), (false, true)] {
+    for (stdin, stdout, stderr) in [
+        (false, false, false),
+        (true, false, true),
+        (false, true, true),
+        (true, true, false),
+    ] {
         let mut test = support::deps(project.root()).with_vaults(FakeVaultLister::forbidden());
         test.deps.stdin_is_tty = stdin;
         test.deps.stdout_is_tty = stdout;
+        test.deps.stderr_is_tty = stderr;
         assert_eq!(test.run(&[]), 1);
         assert_eq!(
             test.err.text(),
@@ -132,8 +138,14 @@ fn scans_in_parallel_preserves_factory_order_and_reuses_selected_client() {
     assert!(test.err.bytes().is_empty());
     assert!(prompt.records().is_empty());
     assert_eq!(
-        test.events.lines().last().unwrap(),
-        "info:reading config item Chosen"
+        test.events.lines(),
+        [
+            "info:listing 1Password vaults",
+            "done:found 2 vault(s)",
+            "info:checking vaults for config items tagged envswitch-config",
+            "done:found 1 vault(s) with config items",
+            "info:reading config item Chosen",
+        ]
     );
 }
 

@@ -180,6 +180,16 @@ pub trait InstallerRunner: Send + Sync {
     fn run_with_output(&self, plan: &InstallPlan, _out: &mut dyn Write) -> Result<(i32, String)> {
         self.run(plan).map(|code| (code, String::new()))
     }
+
+    /// Forward stdout and route handoff warnings to the caller's stderr sink.
+    fn run_with_writers(
+        &self,
+        plan: &InstallPlan,
+        out: &mut dyn Write,
+        _err: &mut dyn Write,
+    ) -> Result<(i32, String)> {
+        self.run_with_output(plan, out)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -199,7 +209,7 @@ pub struct Deps {
     pub root: PathBuf,
     /// Environment lookup (`CI`, `NO_COLOR`, `GITHUB_TOKEN`, ...).
     pub env: EnvLookup,
-    /// Guided mode requires `stdin_is_tty && stdout_is_tty` unless a
+    /// Guided mode requires stdin, stdout and stderr TTYs unless a
     /// `prompter` is injected.
     pub stdin_is_tty: bool,
     pub stdout_is_tty: bool,

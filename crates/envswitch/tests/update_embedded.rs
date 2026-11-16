@@ -1,4 +1,6 @@
 //! Every subprocess has isolated homes and a symlink-only PATH. Never write tools.
+mod support;
+
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -233,13 +235,18 @@ fn runner_child() {
         Box::new(Vec::new())
     };
     let result = if let Some(exe) = std::env::var_os("ENVSWITCH_D3_CLI_BROKEN") {
+        let warnings = support::SharedBuf::new();
         let mut deps = envswitch::ports::Deps::real().unwrap();
         deps.current_exe = Some(exe.into());
         deps.out = Box::new(Broken);
-        serde_json::json!({"code":envswitch::run(vec!["update".into()], &mut deps)})
+        deps.err = warnings.boxed();
+        serde_json::json!({"code":envswitch::run(vec!["update".into()], &mut deps),"warnings":warnings.text()})
     } else {
-        match EmbeddedInstaller.run_with_output(&plan, stdout.as_mut()) {
-            Ok((code, output)) => serde_json::json!({"code":code,"output":output}),
+        let mut warnings = Vec::new();
+        match EmbeddedInstaller.run_with_writers(&plan, stdout.as_mut(), &mut warnings) {
+            Ok((code, output)) => {
+                serde_json::json!({"code":code,"output":output,"warnings":String::from_utf8(warnings).unwrap()})
+            }
             Err(e) => serde_json::json!({"code":e.exit_code(),"error":e.to_string()}),
         }
     };
@@ -323,9 +330,12 @@ for action,pin,code in [('0',None,0),('7','v0.0.42',7),('signal',None,143),('int
             assert (root/'child-cleaned').read_text()=='cleaned'
             assert result['output']=='child cleanup complete\n',result
             (root/'child-cleaned').unlink(); (root/'ready').unlink()
-        if action=='broken': assert 'warning: could not forward installer stdout:' in stderr,stderr
+        if action=='broken':
+            assert 'warning: could not forward installer stdout:' in result['warnings'],result
+            assert 'warning:' not in stderr,stderr
         if action=='cleanup':
-            assert 'warning: could not remove installer temporary directory' in stderr,stderr
+            assert 'warning: could not remove installer temporary directory' in result['warnings'],result
+            assert 'warning:' not in stderr,stderr
             assert Path(record['script']).parent.is_file()
             Path(record['script']).parent.unlink()
         else: assert not Path(record['script']).parent.exists(),record
@@ -461,8 +471,10 @@ try:
         broken_env=dict(env,ENVSWITCH_D3_RESULT=str(root/'result.json'),ENVSWITCH_D3_CLI_BROKEN=str(old))
         broken=subprocess.run([sys.argv[3],'--exact','runner_child','--nocapture'],env=broken_env,capture_output=True)
         assert broken.returncode==0,broken.stdout+broken.stderr
-        assert json.loads((root/'result.json').read_text())['code']==0,broken.stderr
-        assert b'warning: could not forward installer stdout:' in broken.stderr,broken.stderr
+        result=json.loads((root/'result.json').read_text())
+        assert result['code']==0,result
+        assert 'warning: could not forward installer stdout:' in result['warnings'],result
+        assert b'warning:' not in broken.stderr,broken.stderr
     assert sum(p.endswith('/latest') for p,_ in server.requests)==4,server.requests
     assert not any('/tags/' in p for p,_ in server.requests)
     assert all(p.startswith('/repos/demo/suite/') and auth is None for p,auth in server.requests)
