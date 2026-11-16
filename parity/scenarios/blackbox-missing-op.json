@@ -1,0 +1,13 @@
+{
+  "id": "blackbox-missing-op",
+  "kind": "blackbox",
+  "argv": [
+    "doctor",
+    "--vault",
+    "alpha",
+    "--config-item",
+    "cfg"
+  ],
+  "missingOp": true,
+  "divergence": "a6"
+}

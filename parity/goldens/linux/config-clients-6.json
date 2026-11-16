@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "id": "config-clients-6",
+  "kind": "config",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "",
+  "exitCode": 0,
+  "prompts": [],
+  "progress": [],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "clients": [
+      ""
+    ]
+  }
+}

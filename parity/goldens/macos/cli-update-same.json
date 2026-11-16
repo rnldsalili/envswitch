@@ -2,7 +2,11 @@
   "schemaVersion": 1,
   "id": "cli-update-same",
   "kind": "cli",
-  "divergence": "e1",
+  "divergence": [
+    "e1",
+    "e2",
+    "e3"
+  ],
   "stdoutBase64": "ZW52c3dpdGNoIGlzIGFscmVhZHkgdXAgdG8gZGF0ZSAodjAuMC40KQo=",
   "stderrBase64": "",
   "exitCode": 0,

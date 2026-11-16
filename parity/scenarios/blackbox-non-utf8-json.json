@@ -1,0 +1,30 @@
+{
+  "id": "blackbox-non-utf8-json",
+  "kind": "blackbox",
+  "divergence": "a5",
+  "argv": [
+    "list",
+    "--vault",
+    "alpha",
+    "--config-item",
+    "cfg"
+  ],
+  "expectOpCalls": true,
+  "op": {
+    "responses": [
+      {
+        "argv": [
+          "item",
+          "get",
+          "cfg",
+          "--vault",
+          "alpha",
+          "--format",
+          "json",
+          "--reveal"
+        ],
+        "stdoutBase64": "eyJmaWVsZHMiOlt7ImxhYmVsIjoiY29uZmlnIiwidmFsdWUiOiL/In1dfQ=="
+      }
+    ]
+  }
+}

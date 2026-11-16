@@ -59,5 +59,6 @@
       "path": "apps/web/.env",
       "type": "dir"
     }
-  ]
+  ],
+  "divergence": "d1"
 }

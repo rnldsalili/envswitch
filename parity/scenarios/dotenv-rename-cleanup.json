@@ -11,5 +11,6 @@
       "path": ".env",
       "type": "dir"
     }
-  ]
+  ],
+  "divergence": "d1"
 }

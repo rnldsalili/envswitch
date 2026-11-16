@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "path-enotdir",
   "kind": "path",
-  "divergence": null,
+  "divergence": "d1",
   "stdoutBase64": "",
   "stderrBase64": "ZW52c3dpdGNoOiBFTk9URElSOiBub3QgYSBkaXJlY3RvcnksIGxzdGF0ICd7Uk9PVH0vYWZpbGUvc3ViJwo=",
   "exitCode": 2,

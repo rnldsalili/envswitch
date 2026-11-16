@@ -3,6 +3,7 @@ export type Difference = { path: string; expected: unknown; actual: unknown };
 export function differences(expected: any, actual: any, path = "$", result: Difference[] = []): Difference[] {
   if (Object.is(expected, actual)) return result;
   if (expected && actual && typeof expected === "object" && typeof actual === "object" && Array.isArray(expected) === Array.isArray(actual)) {
+    if (!Array.isArray(expected) && JSON.stringify(Object.keys(expected)) !== JSON.stringify(Object.keys(actual))) result.push({ path: `${path}.[key order]`, expected: Object.keys(expected), actual: Object.keys(actual) });
     for (const key of [...new Set([...Object.keys(expected), ...Object.keys(actual)])].sort()) differences(expected[key], actual[key], `${path}.${key}`, result);
   } else result.push({ path, expected, actual });
   return result;

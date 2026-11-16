@@ -2,7 +2,11 @@
   "schemaVersion": 1,
   "id": "cli-update-fetch-throws",
   "kind": "cli",
-  "divergence": "e1",
+  "divergence": [
+    "e1",
+    "e2",
+    "e3"
+  ],
   "stdoutBase64": "",
   "stderrBase64": "ZW52c3dpdGNoOiBkZW1vLXN1aXRlIGZldGNoIGZhaWx1cmUK",
   "exitCode": 2,

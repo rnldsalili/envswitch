@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "id": "cli-list-layers",
+  "kind": "cli",
+  "divergence": null,
+  "stdoutBase64": "c2hhcmVkCWxheWVyOnNoYXJlZApncm91cAlsYXllcjpncm91cAp0YXJnZXQJbGF5ZXI6dGFyZ2V0CmNsaWVudAlsYXllcjpjbGllbnQKY2xpZW50LXRhcmdldAlsYXllcjpjbGllbnQtdGFyZ2V0Cg==",
+  "stderrBase64": "ZW52c3dpdGNoIFtpbmZvXSByZWFkaW5nIGNvbmZpZyBpdGVtIGNmZwplbnZzd2l0Y2ggW2RvbmVdIGxvYWRlZCBjb25maWcgaXRlbSBjZmcK",
+  "exitCode": 0,
+  "prompts": [],
+  "progress": [
+    {
+      "status": "info",
+      "message": "reading config item cfg"
+    },
+    {
+      "status": "done",
+      "message": "loaded config item cfg"
+    }
+  ],
+  "opCalls": [
+    [
+      "item",
+      "get",
+      "cfg",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ]
+  ],
+  "readCounts": {
+    "alpha/cfg": 1
+  },
+  "factoryCalls": [
+    "alpha"
+  ],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

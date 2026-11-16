@@ -1,6 +1,7 @@
 {
   "id": "op-lone-surrogate-value",
   "kind": "op",
+  "divergence": "a7",
   "method": "env",
   "item": {
     "id": "alpha",

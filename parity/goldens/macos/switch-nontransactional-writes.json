@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "switch-nontransactional-writes",
   "kind": "switch",
-  "divergence": null,
+  "divergence": "d1",
   "stdoutBase64": "",
   "stderrBase64": "ZW52c3dpdGNoOiBFSVNESVI6IGlsbGVnYWwgb3BlcmF0aW9uIG9uIGEgZGlyZWN0b3J5LCByZW5hbWUgJ3tST09UfS9hcHBzL3dlYi8uLmVudi57UElEfS57VVVJRH0udG1wJyAtPiAne1JPT1R9L2FwcHMvd2ViLy5lbnYnCg==",
   "exitCode": 2,

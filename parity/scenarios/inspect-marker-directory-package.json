@@ -24,5 +24,6 @@
       "path": "package.json",
       "type": "dir"
     }
-  ]
+  ],
+  "divergence": "d1"
 }

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "dotenv-mkdir-enotdir",
   "kind": "dotenv",
-  "divergence": null,
+  "divergence": "d1",
   "stdoutBase64": "",
   "stderrBase64": "ZW52c3dpdGNoOiBFTk9URElSOiBub3QgYSBkaXJlY3RvcnksIG1rZGlyICd7Uk9PVH0vYWZpbGUvc3ViJwo=",
   "exitCode": 2,

@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "config-tags-client-null",
+  "kind": "config",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoOiBjb25maWcudGFncy5jbGllbnQgbXVzdCBiZSBhIG5vbi1lbXB0eSBzdHJpbmcK",
+  "exitCode": 1,
+  "prompts": [],
+  "progress": [],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

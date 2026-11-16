@@ -1,0 +1,17 @@
+{
+  "id": "path-eacces",
+  "kind": "path",
+  "output": "locked/sub/.env",
+  "platforms": [
+    "macos",
+    "linux"
+  ],
+  "divergence": "d1",
+  "files": [
+    {
+      "path": "locked",
+      "type": "dir",
+      "mode": 0
+    }
+  ]
+}

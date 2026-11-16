@@ -1,12 +1,12 @@
-import { mkdtemp, mkdir, writeFile, chmod, rm, symlink, readdir, lstat, readFile, readlink } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, chmod, rm, symlink, readdir, lstat, readFile, readlink, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname, sep, relative, isAbsolute } from "node:path";
 
-export async function context(s: any) {
+export async function context(s: any, resume?: { tmp: string; before: any }) {
   const previousUmask = process.umask(0o022);
   let tempToClean: string | undefined;
   try {
-  const tmp = await mkdtemp(join(tmpdir(), "envswitch-parity-"));
+  const tmp = resume?.tmp ?? await realpath(await mkdtemp(join(tmpdir(), "envswitch-parity-")));
   tempToClean = tmp;
   const paths: Record<string, string> = { ROOT: join(tmp, "demo-suite"), APP: join(tmp, "app", "current"), HOME: join(tmp, "home"), OUTSIDE: join(tmp, "outside"), TMP: tmp, SEP: sep, INSTALLER: process.platform === "win32" ? "install.ps1" : "install.sh", DRIVE: process.platform === "win32" ? resolve(tmp).slice(0, 2) : "C:" };
   const expandString = (str: string) => str.replace(/\{([A-Z]+)\}/g, (match, key) => paths[key] ?? match);
@@ -28,6 +28,8 @@ export async function context(s: any) {
   const bytes = (data: string | Buffer) => {
     // Replace only known UTF-8 path sequences; leave all other bytes untouched.
     let buffer = Buffer.from(data);
+    // latin1 is a reversible byte view, including malformed UTF-8.
+    if (buffer.includes(Buffer.from(tmp))) buffer = Buffer.from(buffer.toString("latin1").replace(/\.\d+\.[0-9a-f]{8}-[0-9a-f-]{27}\.tmp/g, ".{PID}.{UUID}.tmp"), "latin1");
     for (const [key, value] of replacements) {
       const needle = Buffer.from(value), parts: Buffer[] = [];
       let pos = 0, next;
@@ -63,7 +65,10 @@ export async function context(s: any) {
         if (dir === tmp && name === ".transport") continue;
         const path = join(dir, name), stat = await lstat(path), mode = process.platform === "win32" ? null : stat.mode & 0o777;
         if (stat.isSymbolicLink()) files.push({ path: normalizeString(path), kind: "symlink", target: normalizeString((await readlink(path)).replace(/^\\\\\?\\/, "")), mode });
-        else if (stat.isDirectory()) { directories.push({ path: normalizeString(path), mode }); await walk(path); }
+        else if (stat.isDirectory()) {
+          directories.push({ path: normalizeString(path), mode });
+          try { await walk(path); } catch (error: any) { if (error.code !== "EACCES") throw error; }
+        }
         else files.push({ path: normalizeString(path), kind: "file", bytesBase64: bytes(await readFile(path)), mode });
       }
     }
@@ -76,9 +81,9 @@ export async function context(s: any) {
   for (const [key, value] of Object.entries(s.env ?? {})) { if (value === null) delete env[key]; else env[key] = String(value); }
   // HOME/profile locations are never scenario-overridable.
   for (const key of ["HOME", "USERPROFILE", "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "LOCALAPPDATA", "APPDATA", "BUN_RUNTIME_TRANSPILER_CACHE_PATH"]) if (s.env?.[key] !== undefined) throw new Error(`cannot override ${key}`);
-  await actions(s.files);
-  const before = await snapshot();
-  return { tmp, paths, safe, expand, normalize, normalizeString, bytes, actions, snapshot, before, env, cleanup: () => rm(tmp, { recursive: true, force: true }) };
+  if (!resume) await actions(s.files);
+  const before = resume?.before ?? await snapshot();
+  return { tmp, paths, safe, expand, normalize, normalizeString, bytes, actions, snapshot, before, env, cleanup: async () => { for (const f of s.files ?? []) if (f.type === "dir" && f.mode !== undefined) await chmod(safe(f.path), 0o755).catch(() => {}); await rm(tmp, { recursive: true, force: true }); } };
   } catch (error) {
     if (tempToClean) await rm(tempToClean, { recursive: true, force: true });
     throw error;
@@ -94,7 +99,7 @@ export function countRead(counts: Record<string, number>, args: string[]) {
 export async function finish(t: ReturnType<typeof transcript>, c: Awaited<ReturnType<typeof context>>) {
   const state = await c.snapshot();
   Object.assign(t, state);
-  t.writtenFiles = state.files.filter(f => !c.before.files.some(before => JSON.stringify(before) === JSON.stringify(f)));
+  t.writtenFiles = state.files.filter(f => !c.before.files.some((before: any) => JSON.stringify(before) === JSON.stringify(f)));
   t.leftoverTempFiles = state.files.filter(f => /\.tmp$/.test(f.path)).map(f => f.path);
-  return c.normalize(t);
+  return JSON.parse(JSON.stringify(c.normalize(t)));
 }

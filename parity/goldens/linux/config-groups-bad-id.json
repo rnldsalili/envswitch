@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "config-groups-bad-id",
+  "kind": "config",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoOiB0YXJnZXQgYXBpIGdyb3VwIGJhZCBncm91cCBjb250YWlucyB1bnN1cHBvcnRlZCBjaGFyYWN0ZXJzCg==",
+  "exitCode": 1,
+  "prompts": [],
+  "progress": [],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

@@ -2,7 +2,7 @@
 export type ResponseFixture = { argv: string[]; stdout?: string; stderr?: string; exitCode?: number };
 export function responsesFor(s: any): ResponseFixture[] {
   const responses: ResponseFixture[] = (s.op?.responses ?? []).map((r: any) => ({
-    argv: r.argv, stdout: r.stdoutRepeat ? r.stdoutRepeat.value.repeat(r.stdoutRepeat.count) : r.stdout ?? "",
+    argv: r.argv, stdout: r.stdout ?? "", ...(r.stdoutRepeat ? { stdoutSize: { byte: r.stdoutRepeat.value.charCodeAt(0), size: r.stdoutRepeat.count } } : {}), ...(r.stdoutBase64 ? { stdoutBase64: r.stdoutBase64 } : {}), ...(r.stdoutSize ? { stdoutSize: r.stdoutSize } : {}),
     stderr: r.stderr ?? "", exitCode: r.exitCode ?? 0,
   }));
   const add = (argv: string[], value: unknown) => {

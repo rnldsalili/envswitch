@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readdir, readFile, writeFile, rm } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { materialize } from "./oracle/materialize.ts";
+import { materialize, verifyOracle } from "./oracle/materialize.ts";
 import { buildFake } from "./build-fake.ts";
 import { runScenario } from "./adapters/ts/run.ts";
 import { runBlackbox } from "./blackbox/run.ts";
@@ -19,6 +19,7 @@ const scratch = await mkdtemp(join(tmpdir(), "envswitch-oracle-"));
 let fake: Awaited<ReturnType<typeof buildFake>> | undefined;
 try {
   const oracle = process.env.ENVSWITCH_ORACLE_DIR ? resolve(process.env.ENVSWITCH_ORACLE_DIR) : await materialize(join(scratch, "oracle"));
+  await verifyOracle(oracle);
   const metadata = JSON.parse(await readFile(join(oracle, "oracle-metadata.json"), "utf8"));
   if (metadata.commit !== "53de029a25a717c8ac824ca8553035e2b0fec991" || metadata.bun !== "1.4.0" || metadata.locale !== "en-US") throw new Error("incorrect oracle metadata");
   fake = await buildFake();
@@ -31,7 +32,7 @@ try {
     if (s.platforms && !s.platforms.includes(os)) continue;
     if (s.id + ".json" !== file) throw new Error(`scenario filename/id mismatch: ${file}`);
     generated.add(file);
-    const t = s.kind === "blackbox" ? await runBlackbox(s, [process.execPath, join(oracle, "src", "cli.ts")], fake.binary) : await runScenario(s, oracle);
+    const t = s.kind === "blackbox" ? await runBlackbox(s, [process.execPath, join(oracle, "src", "cli.ts")], fake.binary, check && await Bun.file(join(output, file)).exists() ? await Bun.file(join(output, file)).json() : undefined) : await runScenario(s, oracle);
     if (check) {
       if (!await Bun.file(join(output, file)).exists()) { console.error(`missing golden: ${os}/${file}`); ok = false; }
       else ok = compare(await Bun.file(join(output, file)).json(), t) && ok;
@@ -46,6 +47,6 @@ try {
     await writeFile(join(output, "_metadata.json"), metadataText);
     for (const file of (await readdir(output)).filter(f => f.endsWith(".json"))) if (!generated.has(file)) await rm(join(output, file));
   }
-  console.log(`${check ? "Verified" : "Generated"} ${os} goldens: ${JSON.stringify(counts)}`);
+  console.log(`${check ? ok ? "Verified" : "Mismatched" : "Generated"} ${os} goldens: ${JSON.stringify(counts)}`);
   if (!ok) process.exitCode = 1;
 } finally { await fake?.cleanup(); await rm(scratch, { recursive: true, force: true }); }

@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "id": "switch-read-failure-aborts",
+  "kind": "switch",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoOiBzYWZlIGZhaWx1cmUK",
+  "exitCode": 2,
+  "prompts": [],
+  "progress": [
+    {
+      "status": "info",
+      "message": "validating project root {ROOT}"
+    },
+    {
+      "status": "info",
+      "message": "listing candidate 1Password items"
+    },
+    {
+      "status": "done",
+      "message": "found 9 candidate item(s)"
+    },
+    {
+      "status": "info",
+      "message": "processing api -> {ROOT}/apps/api/.env"
+    },
+    {
+      "status": "info",
+      "message": "reading shared"
+    }
+  ],
+  "opCalls": [
+    [
+      "item",
+      "list",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--tags",
+      "envswitch,project:demo-suite,env:local"
+    ],
+    [
+      "item",
+      "get",
+      "shared",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ]
+  ],
+  "readCounts": {
+    "alpha/shared": 1
+  },
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

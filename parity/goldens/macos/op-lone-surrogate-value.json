@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "op-lone-surrogate-value",
   "kind": "op",
-  "divergence": null,
+  "divergence": "a7",
   "stdoutBase64": "",
   "stderrBase64": "",
   "exitCode": 0,

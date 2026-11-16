@@ -2,7 +2,11 @@
   "schemaVersion": 1,
   "id": "cli-update-install",
   "kind": "cli",
-  "divergence": "e3",
+  "divergence": [
+    "e1",
+    "e2",
+    "e3"
+  ],
   "stdoutBase64": "dXBkYXRlZCBlbnZzd2l0Y2ggdjAuMC40IC0+IHYwLjAuNQo=",
   "stderrBase64": "ZW52c3dpdGNoIFtpbmZvXSB1cGRhdGluZyBlbnZzd2l0Y2ggdjAuMC40IC0+IHYwLjAuNQo=",
   "exitCode": 0,

@@ -1,0 +1,178 @@
+{
+  "schemaVersion": 1,
+  "id": "switch-collation-canonical-equal",
+  "kind": "switch",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "",
+  "exitCode": 0,
+  "prompts": [],
+  "progress": [
+    {
+      "status": "info",
+      "message": "validating project root {ROOT}"
+    },
+    {
+      "status": "info",
+      "message": "listing candidate 1Password items"
+    },
+    {
+      "status": "done",
+      "message": "found 2 candidate item(s)"
+    },
+    {
+      "status": "info",
+      "message": "processing api -> {ROOT}/apps/api/.env"
+    },
+    {
+      "status": "info",
+      "message": "reading é"
+    },
+    {
+      "status": "info",
+      "message": "reading é"
+    },
+    {
+      "status": "info",
+      "message": "writing {ROOT}/apps/api/.env"
+    },
+    {
+      "status": "done",
+      "message": "wrote {ROOT}/apps/api/.env"
+    }
+  ],
+  "opCalls": [
+    [
+      "item",
+      "list",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--tags",
+      "env:local"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-0",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-1",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ]
+  ],
+  "readCounts": {
+    "alpha/alpha-0": 1,
+    "alpha/alpha-1": 1
+  },
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [
+    {
+      "path": "{ROOT}/apps/api/.env",
+      "kind": "file",
+      "bytesBase64": "V0lOTkVSPTE6ZcyBCg==",
+      "mode": 384
+    }
+  ],
+  "writtenFiles": [
+    {
+      "path": "{ROOT}/apps/api/.env",
+      "kind": "file",
+      "bytesBase64": "V0lOTkVSPTE6ZcyBCg==",
+      "mode": 384
+    }
+  ],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}/apps",
+      "mode": 488
+    },
+    {
+      "path": "{ROOT}/apps/api",
+      "mode": 488
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": [
+    {
+      "target": {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      },
+      "outputPath": "{ROOT}/apps/api/.env",
+      "written": true,
+      "keyCount": 1,
+      "layers": [
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-0",
+            "title": "é",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "0:é"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-1",
+            "title": "é",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "1:é"
+          }
+        }
+      ],
+      "overwrittenKeys": [
+        "WINNER"
+      ]
+    }
+  ]
+}

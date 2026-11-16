@@ -3,8 +3,8 @@
   "id": "blackbox-dry-run",
   "kind": "blackbox",
   "divergence": null,
-  "stdoutBase64": "RHJ5IHJ1biAyIHRhcmdldChzKSBmcm9tIGRlbW8tc3VpdGUKLSBhcGkgLT4gL3ByaXZhdGV7Uk9PVH0vYXBwcy9hcGkvLmVudgogIGtleXM6IDYKICBsYXllcnM6IHNoYXJlZDpzaGFyZWQsIGdyb3VwOmFwaS1ncm91cCwgdGFyZ2V0OmFwaS10YXJnZXQsIGNsaWVudDphbHBoYSwgY2xpZW50LXRhcmdldDphbHBoYS1hcGkKICBvdmVyd3JpdHRlbjogQ09NTU9OCi0gd2ViIC0+IC9wcml2YXRle1JPT1R9L2FwcHMvd2ViLy5lbnYKICBrZXlzOiA2CiAgbGF5ZXJzOiBzaGFyZWQ6c2hhcmVkLCBncm91cDphcHAtZ3JvdXAsIHRhcmdldDp3ZWItdGFyZ2V0LCBjbGllbnQ6YWxwaGEsIGNsaWVudC10YXJnZXQ6YWxwaGEtd2ViCiAgb3ZlcndyaXR0ZW46IENPTU1PTgo=",
-  "stderrBase64": "ZW52c3dpdGNoIFtpbmZvXSByZWFkaW5nIGNvbmZpZyBpdGVtIGNmZwplbnZzd2l0Y2ggW2RvbmVdIGxvYWRlZCBjb25maWcgaXRlbSBjZmcKZW52c3dpdGNoIFtpbmZvXSB2YWxpZGF0aW5nIHByb2plY3Qgcm9vdCAvcHJpdmF0ZXtST09UfQplbnZzd2l0Y2ggW2luZm9dIGxpc3RpbmcgY2FuZGlkYXRlIDFQYXNzd29yZCBpdGVtcwplbnZzd2l0Y2ggW2RvbmVdIGZvdW5kIDkgY2FuZGlkYXRlIGl0ZW0ocykKZW52c3dpdGNoIFtpbmZvXSBwcm9jZXNzaW5nIGFwaSAtPiAvcHJpdmF0ZXtST09UfS9hcHBzL2FwaS8uZW52CmVudnN3aXRjaCBbaW5mb10gcmVhZGluZyBzaGFyZWQKZW52c3dpdGNoIFtpbmZvXSByZWFkaW5nIGFwaS1ncm91cAplbnZzd2l0Y2ggW2luZm9dIHJlYWRpbmcgYXBpLXRhcmdldAplbnZzd2l0Y2ggW2luZm9dIHJlYWRpbmcgYWxwaGEKZW52c3dpdGNoIFtpbmZvXSByZWFkaW5nIGFscGhhLWFwaQplbnZzd2l0Y2ggW2RyeS1ydW5dIHdvdWxkIHdyaXRlIC9wcml2YXRle1JPT1R9L2FwcHMvYXBpLy5lbnYKZW52c3dpdGNoIFtpbmZvXSBwcm9jZXNzaW5nIHdlYiAtPiAvcHJpdmF0ZXtST09UfS9hcHBzL3dlYi8uZW52CmVudnN3aXRjaCBbaW5mb10gcmVhZGluZyBhcHAtZ3JvdXAKZW52c3dpdGNoIFtpbmZvXSByZWFkaW5nIHdlYi10YXJnZXQKZW52c3dpdGNoIFtpbmZvXSByZWFkaW5nIGFscGhhLXdlYgplbnZzd2l0Y2ggW2RyeS1ydW5dIHdvdWxkIHdyaXRlIC9wcml2YXRle1JPT1R9L2FwcHMvd2ViLy5lbnYK",
+  "stdoutBase64": "RHJ5IHJ1biAyIHRhcmdldChzKSBmcm9tIGRlbW8tc3VpdGUKLSBhcGkgLT4ge1JPT1R9L2FwcHMvYXBpLy5lbnYKICBrZXlzOiA2CiAgbGF5ZXJzOiBzaGFyZWQ6c2hhcmVkLCBncm91cDphcGktZ3JvdXAsIHRhcmdldDphcGktdGFyZ2V0LCBjbGllbnQ6YWxwaGEsIGNsaWVudC10YXJnZXQ6YWxwaGEtYXBpCiAgb3ZlcndyaXR0ZW46IENPTU1PTgotIHdlYiAtPiB7Uk9PVH0vYXBwcy93ZWIvLmVudgogIGtleXM6IDYKICBsYXllcnM6IHNoYXJlZDpzaGFyZWQsIGdyb3VwOmFwcC1ncm91cCwgdGFyZ2V0OndlYi10YXJnZXQsIGNsaWVudDphbHBoYSwgY2xpZW50LXRhcmdldDphbHBoYS13ZWIKICBvdmVyd3JpdHRlbjogQ09NTU9OCg==",
+  "stderrBase64": "ZW52c3dpdGNoIFtpbmZvXSByZWFkaW5nIGNvbmZpZyBpdGVtIGNmZwplbnZzd2l0Y2ggW2RvbmVdIGxvYWRlZCBjb25maWcgaXRlbSBjZmcKZW52c3dpdGNoIFtpbmZvXSB2YWxpZGF0aW5nIHByb2plY3Qgcm9vdCB7Uk9PVH0KZW52c3dpdGNoIFtpbmZvXSBsaXN0aW5nIGNhbmRpZGF0ZSAxUGFzc3dvcmQgaXRlbXMKZW52c3dpdGNoIFtkb25lXSBmb3VuZCA5IGNhbmRpZGF0ZSBpdGVtKHMpCmVudnN3aXRjaCBbaW5mb10gcHJvY2Vzc2luZyBhcGkgLT4ge1JPT1R9L2FwcHMvYXBpLy5lbnYKZW52c3dpdGNoIFtpbmZvXSByZWFkaW5nIHNoYXJlZAplbnZzd2l0Y2ggW2luZm9dIHJlYWRpbmcgYXBpLWdyb3VwCmVudnN3aXRjaCBbaW5mb10gcmVhZGluZyBhcGktdGFyZ2V0CmVudnN3aXRjaCBbaW5mb10gcmVhZGluZyBhbHBoYQplbnZzd2l0Y2ggW2luZm9dIHJlYWRpbmcgYWxwaGEtYXBpCmVudnN3aXRjaCBbZHJ5LXJ1bl0gd291bGQgd3JpdGUge1JPT1R9L2FwcHMvYXBpLy5lbnYKZW52c3dpdGNoIFtpbmZvXSBwcm9jZXNzaW5nIHdlYiAtPiB7Uk9PVH0vYXBwcy93ZWIvLmVudgplbnZzd2l0Y2ggW2luZm9dIHJlYWRpbmcgYXBwLWdyb3VwCmVudnN3aXRjaCBbaW5mb10gcmVhZGluZyB3ZWItdGFyZ2V0CmVudnN3aXRjaCBbaW5mb10gcmVhZGluZyBhbHBoYS13ZWIKZW52c3dpdGNoIFtkcnktcnVuXSB3b3VsZCB3cml0ZSB7Uk9PVH0vYXBwcy93ZWIvLmVudgo=",
   "exitCode": 0,
   "prompts": [],
   "progress": [
@@ -18,7 +18,7 @@
     },
     {
       "status": "info",
-      "message": "validating project root /private{ROOT}"
+      "message": "validating project root {ROOT}"
     },
     {
       "status": "info",
@@ -30,7 +30,7 @@
     },
     {
       "status": "info",
-      "message": "processing api -> /private{ROOT}/apps/api/.env"
+      "message": "processing api -> {ROOT}/apps/api/.env"
     },
     {
       "status": "info",
@@ -54,11 +54,11 @@
     },
     {
       "status": "dry-run",
-      "message": "would write /private{ROOT}/apps/api/.env"
+      "message": "would write {ROOT}/apps/api/.env"
     },
     {
       "status": "info",
-      "message": "processing web -> /private{ROOT}/apps/web/.env"
+      "message": "processing web -> {ROOT}/apps/web/.env"
     },
     {
       "status": "info",
@@ -74,7 +74,7 @@
     },
     {
       "status": "dry-run",
-      "message": "would write /private{ROOT}/apps/web/.env"
+      "message": "would write {ROOT}/apps/web/.env"
     }
   ],
   "opCalls": [

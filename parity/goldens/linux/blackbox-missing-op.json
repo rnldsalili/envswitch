@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "id": "blackbox-missing-op",
+  "kind": "blackbox",
+  "divergence": "a6",
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoIFtpbmZvXSBjaGVja2luZyAxUGFzc3dvcmQgYXV0aGVudGljYXRpb24KZW52c3dpdGNoOiBFeGVjdXRhYmxlIG5vdCBmb3VuZCBpbiAkUEFUSDogIm9wIgo=",
+  "exitCode": 2,
+  "prompts": [],
+  "progress": [
+    {
+      "status": "info",
+      "message": "checking 1Password authentication"
+    }
+  ],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

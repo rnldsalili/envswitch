@@ -2,7 +2,11 @@
   "schemaVersion": 1,
   "id": "cli-update-unknown-current",
   "kind": "cli",
-  "divergence": "e1",
+  "divergence": [
+    "e1",
+    "e2",
+    "e3"
+  ],
   "stdoutBase64": "dXBkYXRlZCBlbnZzd2l0Y2ggKHVua25vd24pIC0+IHYwLjAuNQo=",
   "stderrBase64": "ZW52c3dpdGNoIFtpbmZvXSB1cGRhdGluZyBlbnZzd2l0Y2ggKHVua25vd24gdmVyc2lvbikgLT4gdjAuMC41Cg==",
   "exitCode": 0,

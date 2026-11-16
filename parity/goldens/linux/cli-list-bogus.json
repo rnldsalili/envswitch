@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "id": "cli-list-bogus",
+  "kind": "cli",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoIFtpbmZvXSByZWFkaW5nIGNvbmZpZyBpdGVtIGNmZwplbnZzd2l0Y2ggW2RvbmVdIGxvYWRlZCBjb25maWcgaXRlbSBjZmcKZW52c3dpdGNoOiB1bmtub3duIGxpc3Qgc3ViamVjdDogYm9ndXMK",
+  "exitCode": 1,
+  "prompts": [],
+  "progress": [
+    {
+      "status": "info",
+      "message": "reading config item cfg"
+    },
+    {
+      "status": "done",
+      "message": "loaded config item cfg"
+    }
+  ],
+  "opCalls": [
+    [
+      "item",
+      "get",
+      "cfg",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ]
+  ],
+  "readCounts": {
+    "alpha/cfg": 1
+  },
+  "factoryCalls": [
+    "alpha"
+  ],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

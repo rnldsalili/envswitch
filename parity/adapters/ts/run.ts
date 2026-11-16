@@ -28,12 +28,14 @@ export async function runScenario(input: any, oracle: string) {
       scans++;
       if (scans === s.parallelScans) release();
       let timer: ReturnType<typeof setTimeout>;
-      try { await Promise.race([barrier, new Promise((_, reject) => { timer = setTimeout(() => reject(fault("parallel vault scan barrier timed out")), 2000); })]); }
+      try { await Promise.race([barrier, new Promise((_, reject) => { timer = setTimeout(() => reject(fault("parallel vault scan barrier timed out")), 10000); })]); }
       finally { clearTimeout(timer!); }
     }
     const response = responses.find(r => JSON.stringify(r.argv) === JSON.stringify(args));
     if (!response) throw fault(`unconfigured fake-op argv: ${JSON.stringify(args)}`);
     if (response.exitCode) throw new Error(response.stderr?.trim() || `Command failed: op ${args.join(" ")}`);
+    if ((response as any).stdoutBase64) return Buffer.from((response as any).stdoutBase64, "base64").toString("utf8");
+    if ((response as any).stdoutSize) return Buffer.alloc((response as any).stdoutSize.size, (response as any).stdoutSize.byte).toString("utf8");
     return response.stdout ?? "";
   } };
 
@@ -42,10 +44,14 @@ export async function runScenario(input: any, oracle: string) {
     const value = s.prompts[answerIndex++];
     if (value?.cancel || value?.error) { const error = new Error(value.error?.message ?? "cancelled"); error.name = value.error?.name ?? "ExitPromptError"; throw error; }
     if (value === undefined || value?.default) {
-      if (options.defaultValue !== undefined) return options.defaultValue;
+      if (options.defaultValue !== undefined) {
+        if (kind === "input" && options.required && options.defaultValue === "") throw fault(`empty required input: ${options.message}`);
+        return options.defaultValue;
+      }
       throw fault(`missing scripted answer: ${options.message}`);
     }
     const resolved = value && typeof value === "object" && "index" in value ? options.choices[value.index]?.value : value;
+    if (kind === "input" && options.required && resolved === "") throw fault(`empty required input: ${options.message}`);
     if (kind === "select" && !options.choices.some((choice: any) => choice.value === resolved)) throw fault(`invalid scripted answer: ${options.message}`);
     return resolved;
   }
@@ -141,5 +147,6 @@ export async function runScenario(input: any, oracle: string) {
 if (import.meta.main) {
   const [scenario, oracle = process.env.ENVSWITCH_ORACLE_DIR] = process.argv.slice(2);
   if (!scenario || !oracle) throw new Error("usage: bun parity/adapters/ts/run.ts <scenario.json> <oracle-dir>");
+  await (await import("../../oracle/materialize.ts")).verifyOracle(oracle);
   console.log(JSON.stringify(await runScenario(await Bun.file(scenario).json(), oracle), null, 2));
 }

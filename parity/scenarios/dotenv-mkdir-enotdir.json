@@ -11,5 +11,6 @@
       "path": "afile",
       "content": "alpha"
     }
-  ]
+  ],
+  "divergence": "d1"
 }

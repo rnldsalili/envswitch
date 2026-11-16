@@ -1,0 +1,262 @@
+{
+  "schemaVersion": 1,
+  "id": "switch-dry-api",
+  "kind": "switch",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "",
+  "exitCode": 0,
+  "prompts": [],
+  "progress": [
+    {
+      "status": "info",
+      "message": "validating project root {ROOT}"
+    },
+    {
+      "status": "info",
+      "message": "listing candidate 1Password items"
+    },
+    {
+      "status": "done",
+      "message": "found 9 candidate item(s)"
+    },
+    {
+      "status": "info",
+      "message": "processing api -> {ROOT}/apps/api/.env"
+    },
+    {
+      "status": "info",
+      "message": "reading shared"
+    },
+    {
+      "status": "info",
+      "message": "reading api-group"
+    },
+    {
+      "status": "info",
+      "message": "reading api-target"
+    },
+    {
+      "status": "info",
+      "message": "reading alpha"
+    },
+    {
+      "status": "info",
+      "message": "reading alpha-api"
+    },
+    {
+      "status": "dry-run",
+      "message": "would write {ROOT}/apps/api/.env"
+    }
+  ],
+  "opCalls": [
+    [
+      "item",
+      "list",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--tags",
+      "envswitch,project:demo-suite,env:local"
+    ],
+    [
+      "item",
+      "get",
+      "shared",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "group-api",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "target-api",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "client",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "ct-api",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ]
+  ],
+  "readCounts": {
+    "alpha/shared": 1,
+    "alpha/group-api": 1,
+    "alpha/target-api": 1,
+    "alpha/client": 1,
+    "alpha/ct-api": 1
+  },
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": [
+    {
+      "target": {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      },
+      "outputPath": "{ROOT}/apps/api/.env",
+      "written": false,
+      "keyCount": 6,
+      "layers": [
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "shared",
+            "title": "shared",
+            "tags": [
+              "envswitch",
+              "project:demo-suite",
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "COMMON": "shared",
+            "SHARED": "1"
+          }
+        },
+        {
+          "name": "group",
+          "rank": 2,
+          "item": {
+            "id": "group-api",
+            "title": "api-group",
+            "tags": [
+              "envswitch",
+              "project:demo-suite",
+              "env:local",
+              "layer:group",
+              "group:apis"
+            ]
+          },
+          "values": {
+            "COMMON": "api-group",
+            "GROUP_API": "1"
+          }
+        },
+        {
+          "name": "target",
+          "rank": 3,
+          "item": {
+            "id": "target-api",
+            "title": "api-target",
+            "tags": [
+              "envswitch",
+              "project:demo-suite",
+              "env:local",
+              "layer:target",
+              "target:api"
+            ]
+          },
+          "values": {
+            "COMMON": "api-target",
+            "TARGET_API": "1"
+          }
+        },
+        {
+          "name": "client",
+          "rank": 4,
+          "item": {
+            "id": "client",
+            "title": "alpha",
+            "tags": [
+              "envswitch",
+              "project:demo-suite",
+              "env:local",
+              "layer:client",
+              "client:alpha"
+            ]
+          },
+          "values": {
+            "COMMON": "alpha",
+            "CLIENT": "1"
+          }
+        },
+        {
+          "name": "client-target",
+          "rank": 5,
+          "item": {
+            "id": "ct-api",
+            "title": "alpha-api",
+            "tags": [
+              "envswitch",
+              "project:demo-suite",
+              "env:local",
+              "layer:client-target",
+              "client:alpha",
+              "group:apis"
+            ]
+          },
+          "values": {
+            "COMMON": "alpha-api",
+            "CT_API": "1"
+          }
+        }
+      ],
+      "overwrittenKeys": [
+        "COMMON"
+      ]
+    }
+  ]
+}

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "switch-collation-non-latin",
   "kind": "switch",
-  "divergence": "g1",
+  "divergence": null,
   "stdoutBase64": "",
   "stderrBase64": "",
   "exitCode": 0,

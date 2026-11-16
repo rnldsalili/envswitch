@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "id": "path-eacces",
+  "kind": "path",
+  "divergence": "d1",
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoOiBFQUNDRVM6IHBlcm1pc3Npb24gZGVuaWVkLCBsc3RhdCAne1JPT1R9L2xvY2tlZC9zdWInCg==",
+  "exitCode": 2,
+  "prompts": [],
+  "progress": [],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}/locked",
+      "mode": 0
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

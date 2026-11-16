@@ -1,7 +1,7 @@
 # envswitch parity harness (F1, TS phase)
 
 The frozen oracle is `53de029a25a717c8ac824ca8553035e2b0fec991`, Bun **1.4.0**,
-ICU **78.1**, Unicode **17.0**, default locale **en-US**. The corpus contains **463** scenarios (454 on macOS/Linux; 462 on Windows).
+ICU **78.1**, Unicode **17.0**, default locale **en-US**. The corpus contains **474** scenarios (465 on macOS/Linux; 472 on Windows).
 No oracle source or
 production test is edited. Everything uses synthetic data and fresh temporary
 projects. No real 1Password invocation, installer, network update, or user profile
@@ -30,21 +30,34 @@ bun "$env:ENVSWITCH_ORACLE_DIR/node_modules/typescript/bin/tsc" -p parity/tsconf
 ```
 
 The destination of the materializer must be empty. It runs `git archive` at the
-full SHA, `bun install --frozen-lockfile`, and writes `oracle-metadata.json`.
+full SHA with `core.autocrlf=false`, `bun install --frozen-lockfile`, and writes `oracle-metadata.json`.
 `parity/oracle/materialize.sh` delegates to the same cross-platform Bun script.
 The materializer's package cache and HOME/profile roots live inside that temporary
 export. Generation creates/removes its own export unless `ENVSWITCH_ORACLE_DIR`
 points to an already materialized export. Use that variable to reuse an export;
-never point it at the moving repository checkout.
+never point it at the moving repository checkout. Reused exports are verified
+against the pinned src tree: filenames, Git blob hashes and Unix executable bits.
 
-`generate.ts` builds `crates/fake-op` in a temporary copy with a temporary
-`[workspace]` table, then runs its integration test, rustfmt and clippy. It does
-not create a workspace manifest or modify the shared Cargo lockfile. Rustup's
-installed toolchain is located read-only; Cargo caches, HOME and profile paths for
-the actual build are isolated in the temporary build. Rust 1.100.0, rustfmt and
-clippy must already be installed. Linux/Windows CI generates the baseline on that
-OS and immediately reproduces it; macOS CI also checks the committed baseline.
-There is a deliberately explicit Rust-adapter placeholder in the workflow.
+`generate.ts` copies the workspace manifests, committed Cargo.lock and crates into
+an isolated temporary build and builds/tests/lints fake-op with **--locked**.
+Only fake-op's workspace package entry was added to the shared lock. It never
+resolves dependencies without the lock. `ENVSWITCH_PARITY_CARGO_HOME` can select
+an existing private Cargo cache; otherwise the build creates/removes its own.
+HOME/profile roots remain isolated. Rust 1.100.0, rustfmt and clippy must exist.
+
+macOS and Linux goldens are committed. Every OS with a committed baseline runs
+`--check` exactly once in CI. If Windows goldens are missing, CI generates and
+uploads `windows-parity-goldens`, then **fails** with a message to commit them;
+a fresh self-generated baseline is never accepted as parity. The workflow also
+checks `build-scenarios.ts --check`, validates every golden against the schema,
+and compiles/tests the Rust adapter while its integration test stays ignored.
+
+Linux goldens were generated under Bun 1.4.0 copied from `oven/bun:1.4.0` into
+Debian bookworm with Rust 1.100.0 and the en_US.UTF-8 locale. Run as a nonroot
+user so the EACCES fixture remains meaningful. `parity/linux.Dockerfile` describes
+the environment. When the host checkout's gitdir is inaccessible to Docker, fetch
+a local `git bundle` of rust-port into a container temp repository and set
+`GIT_DIR` to it; the materializer still exports/verifies the original oracle SHA.
 
 To run one scenario or compare two transcripts:
 
@@ -66,7 +79,7 @@ collection and removes stale scenario files. Goldens are never hand edited.
 
 Each `scenarios/*.json` is **inputs only**, with a filename equal to `<id>.json`.
 Required fields are `id` and `kind`; optional `platforms` is an allowlist of
-`macos`, `linux`, `windows`. Optional `divergence` names exactly one approved row
+`macos`, `linux`, `windows`. Optional `divergence` is a row ID or a nonempty array of approved row IDs
 in `docs/rust-port/DIVERGENCES.md` and never changes the captured TS outcome.
 
 | Kind | Inputs / exported oracle entry point |
@@ -115,18 +128,21 @@ Common inputs:
   candidate items: empty. Config detail `cfg` is generated from the scenario.
 - `op.responses`: exact-argv responses `{argv,stdout?,stderr?,exitCode?}`, taking
   precedence over shorthand. An unmatched invocation is a harness error, never
-  a golden. `stdoutRepeat: {value,count}` is a compact **input-only** expansion
-  used for the 50 MiB maxBuffer case. `candidateTags: string[]` declares exact
+  a golden. `stdoutBase64` supplies arbitrary bytes, and
+  `stdoutSize: {byte,size}` streams a repeated byte without large fixture files.
+  Legacy `stdoutRepeat: {value,count}` expands into that size fixture. Both
+  exactly 52428800 bytes and one byte above it exercise the real stdout cap. `candidateTags: string[]` declares exact
   comma-joined candidate queries for nonstandard templates/envs; standard local,
   dev and demo-suite queries are supplied by default. Fixture matching never
   implements classification: every returned candidate is rechecked by the oracle.
 - `prompts`: ordered answers across select and input calls. A string/boolean
   answers by value; `{index:N}` selects a choice; `{default:true}` accepts the
   supplied default. Exhausted answers also accept a supplied default, otherwise
-  fail the harness. `{cancel:true}` throws `ExitPromptError`; `{error:{name,message}}`
+  fail the harness. A required input explicitly answered `""` is also a harness
+  fault (whitespace remains valid at the prompt seam). `{cancel:true}` throws `ExitPromptError`; `{error:{name,message}}`
   throws a different scripted error. Unused answers are a harness failure.
   Exactly one choice auto-selects in the oracle and consumes **no** scripted answer.
-- `parallelScans: N` holds config-tag list responses behind a bounded barrier
+- `parallelScans: N` holds config-tag list responses behind a 10-second barrier
   until N scans have started, proving concurrent discovery. Response order and
   factory reuse remain visible in the transcript.
 - `mutateOnRead: {item,files}` applies setup operations immediately before that
@@ -153,7 +169,7 @@ All fields always exist; absent function results are null (an undefined property
 inside a returned JS object is omitted, as with `parseArgs([]).command`).
 
 ```text
-{schemaVersion:1, id, kind, divergence:string|null,
+{schemaVersion:1, id, kind, divergence:string|string[]|null,
  stdoutBase64, stderrBase64, exitCode:int,
  prompts:[{kind,message,choices:[{label,value}]|null,default,required:bool|null}],
  progress:[{status,message}], opCalls:string[][], readCounts:{"vault/item":int},
@@ -194,16 +210,21 @@ also traced. No subprocess is ever started by the fake.
 
 The black-box runner requires an existing native fake at the given absolute path,
 prepends its directory to PATH, verifies PATH resolution, and calls that exact
-binary's handshake **before every CLI child**. A wrong token, stderr, nonzero
+binary's handshake **before every CLI child**. An alternate `op`/`op.exe` in the CLI executable directory (or Windows System32)
+is rejected before any handshake or CLI launch. CLI executables must be absolute.
+The a6 scenario verifies the fake first, then uses a separate empty PATH directory
+for the absolute CLI. A golden expecting opCalls cannot reproduce with an empty
+invocation trace. A wrong token, stderr, nonzero
 status, missing trace, missing fake or unknown invocation aborts the harness.
 The CLI then uses that PATH to exercise real process spawning. Both successful
 and failed command outputs, stderr trimming, secret stdout exclusion and the
 50 MiB stdout limit are covered.
 
-The diff runner prints field paths and decodes stdout/stderr for readable diffs;
+The diff runner compares **object key order recursively**, including result,
+flags, env maps and readCounts. It prints field paths and decodes stdout/stderr for readable diffs;
 any mismatch exits nonzero. Approved divergence markers are reported separately,
 including when the TS baseline matches. They are **not blanket waivers**: the
-later Rust adapter must explicitly validate each row's replacement assertion.
+Rust adapter explicitly validates each row's replacement assertion.
 No arbitrary diff may be discarded merely because a scenario has a marker.
 
 ## Coverage and source-vs-contract notes
@@ -227,31 +248,104 @@ No arbitrary diff may be discarded merely because a scenario has a marker.
   no library printing, nontransactional writes, and the symlink swap hook.
 - Rows 17–22: `op-*` lenient response parsing/field mapping/argv, plus black-box
   failure secrecy/maxBuffer. The source accepts lone-surrogate JSON strings;
-  `op-lone-surrogate-value` records this unapproved portability edge (02 §5.3).
+  `op-lone-surrogate-value` records approved divergence a7 (02 §5.3).
 - Rows 23–25: all 22 dotenv table entries plus empty map, key sort/errors, U+2029,
   create/replace/serialization-before-mkdir, modes/umask, rename cleanup and file
   symlink replacement on Unix. Expanded collation writes `WINNER` bytes for
   accents, canonical equivalence, punctuation, case, numeric, non-Latin and API ties.
 
 The corrected empty-token and four-line-terminator contracts agree with source.
-Two remaining textual inconsistencies must not guide the Rust implementation:
+One remaining textual inconsistency must not guide the Rust implementation:
 02 §2.3's suggested rejection of Windows `C:x` contradicts TS and the explicit
 approved **parity** decision; Windows-only scenarios retain Node behavior.
-DIVERGENCES c2 describes TS list wraparound, whereas `createInquirerPrompt`
-actually passes `loop:false` (01 §5.4 agrees with source). Prompt navigation is
-outside this scripted lane; c2 remains a PTY smoke/replacement responsibility.
-No production behavior was changed to resolve either wording issue.
+DIVERGENCES c2 now correctly records TS no-wrap/prefix jump versus Rust
+wrap/substring filtering; real navigation remains a separate PTY smoke lane.
+The lone-surrogate value is marked **a7**: Rust must reject it with exit 2 and
+`op item get output is not valid JSON: `, rather than silently replacing it.
+Collation scenarios have **no g1 marker**: en-US is already fixed on the oracle,
+so Rust must match their winners and stable order exactly.
 
-## Rust adapter handoff
+## Rust adapter and integration gate
 
-Implement every kind above against the frozen crate API, with equivalent fake
-runner, factory, prompt and update ports. Reuse these inputs, transport fixtures,
-normalization rules and transcript schema; preserve result key presence, ordered
-prompts/progress/argv and read counts. Create the same setup/filesystem snapshots,
-including mode/cleanup/error checks, and translate generic prompt values to the
-crate's choice indices without losing labels/defaults. Use the real native CLI in
-the shared black-box runner. Add row-specific replacement assertions for approved
-divergences (including `--version` and update); keep en-US collation. A Rust JSON
-parser rejecting lone surrogates is **not** currently an approved divergence.
-No Rust adapter, receipt model, prompt renderer or new production abstraction is
-included in this phase.
+`crates/envswitch/tests/parity.rs` loads every applicable input and OS golden.
+It drives all 12 kinds through the real Rust library/`cli::run`; the blackbox kind
+uses the built native binary and the shared guarded runner. The ignored test is:
+
+```sh
+cargo build --locked -p envswitch-fake-op
+# Optional implemented-S1 transport smoke, without running stubbed cli::run:
+cargo test --locked --test parity scaffold_version_transcript -- --ignored --nocapture
+ENVSWITCH_PARITY_FILTER=formatProgressEvent cargo test --locked --test parity -- --ignored --nocapture
+# Filter can be an exact kind or a scenario-id prefix; omit it to run everything.
+```
+
+The runner catches each panic separately, cleans up its sandbox, continues, and
+prints per-kind passed/failed totals. Each library case runs in an isolated Rust
+test subprocess, capturing stray process stdout/stderr as well as injected
+writers, with private HOME/PATH and private cwd/umask changes. It fails if nothing matches or any selected
+scenario fails. Stubs are failures, never skips/passes. JSON objects use a small
+ordered transport representation so serde_json's default map sorting cannot hide
+ordering regressions. The bridge under `adapters/rust/` only shares setup, fixture
+expansion, normalization, byte encoding and filesystem snapshots; **no TS
+production function is called by the Rust lane**. `ENVSWITCH_PARITY_BUN` can select
+an absolute Bun executable. `SharedBuf`, `EventLog`, `EnvVars`, `ScriptedPrompter`,
+`ConcurrencyGate`, `FakeReleaseSource` and `FakeInstaller` are reused unchanged.
+
+Each marked row has an explicit replacement assertion in `parity/divergences.rs`:
+prototype fields/flags and integer order get exact replacement objects/messages;
+JSON/spawn suffix rules check prefixes and exit status; a7 checks exit 2; listed
+d1 filesystem codes remain exact; f1 checks `version_line()` bytes. No marker
+waives unrelated fields. Prompt UX/signal/installer-only rows require their
+separate lanes instead of granting a blanket exemption.
+
+Native update fixtures (e1/e2/e3 together) have explicit `rustUpdate` receipt
+settings in the input. The bridge creates synthetic managed payload/launcher/
+receipt files, includes them in the expected filesystem state, and predicts only
+the injected installer's declared writes. The adapter forwards those settings and
+compiled version through the real frozen ports. Assertions require one embedded
+installer-port call, no separate latest lookup, the exact persisted settings,
+compiled-version/latest progress, status/summary, and unchanged cleanup checks.
+A TS `fetchError` has no throwing equivalent in frozen `ReleaseSource -> Option`;
+the fake fails loudly if called, and native update must not call it because the
+installer owns resolution. No support or production file was changed.
+
+## Result shapes and defaults
+
+The following are exact successful `result` shapes, with object keys in the shown
+order. Error results stay null. Absent optional properties are omitted, not null.
+`<env>` denotes a string-valued object in insertion order.
+
+| Kind | `result` |
+| --- | --- |
+| parseArgs | `{command?, positional:string[], flags:{[name]:string|true}}` |
+| formatProgressEvent | string; no appended newline |
+| cli | null (exit code/streams/prompts carry the result) |
+| blackbox | null (no factory/update introspection) |
+| config | `{targets:[target], project?, clients?, environments?, tags?}`; target `{name,output,groups?}`, project `{id?,rootMarkers?:[{path?,packageJsonName?}]}`, tags `{base?,project?,env?,client?,target?,group?,layer?}` |
+| tags | `{tags:{base:string[],project?,env?,client?,target?,group?,layer?},candidates:string[]}` |
+| path | resolved absolute output string |
+| classify | `"shared"|"group"|"target"|"client"|"client-target"|null` |
+| inspect | `[{target,outputPath:string,parentExists:boolean}]` |
+| switch | `[{target,outputPath,written:boolean,keyCount:number,layers:[{name,rank,item:{id,title,tags},values:<env>}],overwrittenKeys:string[]}]` |
+| dotenv | serialized string, or null when `write:true` |
+| op | auth→null; vaults→`[{id,name}]`; items→`[{id,title,tags}]`; config→untrimmed string; env→`<env>` |
+
+Defaults: root/cwd ROOT, vault alpha, config-item cfg, env local, client alpha,
+target all, switch dryRun false, log enabled, formatter color supplied explicitly,
+TTY flags false. Tags params default `{}` but their candidate query env defaults
+to local. `op.items` tags default `[]`; `op.config` item defaults cfg; `op.env`
+item defaults `{id:"alpha",title:"alpha"}`. Dotenv output defaults `nested/.env`,
+write defaults false, operation umask defaults 022. An absent config means the
+single api target/groups shown above; explicit null does not default. An absent
+update latest is undefined, installer code defaults 0, and `.version` is rewritten
+only when TS `updatedVersion` is supplied. Native replacement setup/installer
+rules are explicit above. Prompt scripts may accept an existing default when
+exhausted; no answer plus no default and unused answers are harness faults.
+
+The in-process transport returns configured stdout (UTF-8 decoding replaces bad
+bytes); successful stderr is ignored. A configured nonzero exit throws exactly
+`Error(stderr.trim() || "Command failed: op <args joined by space>")`, exit 2.
+This intentionally models the runner seam; only blackbox exercises real spawn,
+raw bytes, stdout-cap enforcement and the runtime-specific empty-stderr suffix.
+`transcript.schema.json` has per-kind `$defs` and conditional result validation;
+the self-check validates **every committed OS golden** against it.

@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "id": "tags-default",
+  "kind": "tags",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "",
+  "exitCode": 0,
+  "prompts": [],
+  "progress": [],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": {
+    "tags": {
+      "base": [
+        "envswitch"
+      ],
+      "project": "project:demo-suite",
+      "env": "env:local",
+      "client": "client:alpha",
+      "target": "target:api",
+      "group": "group:apis",
+      "layer": "layer:shared"
+    },
+    "candidates": [
+      "envswitch",
+      "project:demo-suite",
+      "env:local"
+    ]
+  }
+}

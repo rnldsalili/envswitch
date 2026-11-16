@@ -1,0 +1,27 @@
+{
+  "id": "cli-guided-cancel-mode",
+  "kind": "cli",
+  "argv": [],
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "clients": [
+      "alpha"
+    ],
+    "environments": [
+      "local"
+    ]
+  },
+  "prompts": [
+    {
+      "cancel": true
+    }
+  ]
+}

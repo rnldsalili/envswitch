@@ -157,7 +157,7 @@ const collation = {
   "expanded": ["_x", "-x", "~t", "1abc", "a", "A", "a b", "a.b", "ab", "alpha", "b", "B", "éclair", "ezra", "item10", "item2", "x_1", "x-1", "Zeta", "ä", "z", "e\u0301", "é", "Ω", "中", "あ"],
   "accent-winner": ["z", "ä"], "canonical-equal": ["é", "e\u0301"], "punctuation-winner": ["-x", "_x"], "case-winner": ["A", "a"], "numeric-winner": ["item2", "item10"], "non-latin": ["中", "Ω", "あ"], "equal-title-api-order": ["same", "same", "same"],
 };
-for (const [name, titles] of Object.entries(collation)) add("switch", `collation-${name}`, { config: minimal, divergence: "g1", op: { items: titles.map((title, i) => ({ id: `alpha-${i}`, title, tags: ["env:local", "layer:shared"] })), values: Object.fromEntries(titles.map((title, i) => [`alpha-${i}`, { WINNER: `${i}:${title}` }])) } });
+for (const [name, titles] of Object.entries(collation)) add("switch", `collation-${name}`, { config: minimal, op: { items: titles.map((title, i) => ({ id: `alpha-${i}`, title, tags: ["env:local", "layer:shared"] })), values: Object.fromEntries(titles.map((title, i) => [`alpha-${i}`, { WINNER: `${i}:${title}` }])) } });
 add("switch", "symlink-swap-before-write", { config: minimal, files: [{ path: "apps/api", type: "dir" }], op: { items: [{ id: "alpha", title: "alpha", tags: ["env:local", "layer:shared"] }], values: { alpha: { A: "1" } } }, mutateOnRead: { item: "alpha", files: [{ path: "apps/api", remove: true }, { path: "apps/api", link: "{OUTSIDE}" }] } });
 add("switch", "nontransactional-writes", { config, op: { items: [item("alpha", "alpha", ["layer:shared"])], values: { alpha: { A: "1" } } }, files: [{ path: "apps/web/.env", type: "dir" }] });
 
@@ -222,7 +222,7 @@ for (const [name, files, update, divergence] of [
   ["unknown-latest", installed, {}, "e1"], ["empty-current", [...installFiles, { path: "{APP}/.version", content: " \n" }], {}, "e1"],
   ["no-reread-fallback", installFiles, { latest: "v0.0.5" }, "e1"], ["fetch-throws", installed, { fetchError: "demo-suite fetch failure" }, "e1"],
   ["installer-throws", installed, { installerError: "demo-suite installer failure" }, "e2"],
-] as any[]) add("cli", `update-${name}`, { argv: ["update", "ignored"], files, update, divergence });
+] as any[]) add("cli", `update-${name}`, { argv: ["update", "ignored"], files, update, divergence: name === "install" ? ["e1", "e2", "e3"] : [...new Set(["e1", "e2", divergence])] });
 
 for (const [name, argv, extra] of [
   ["help", ["--help"], {}], ["guard", [], {}], ["doctor", doctorArgs, { config }], ["list", listArgs, { config }],
@@ -244,13 +244,36 @@ add("cli", "guided-id-title-fallback", { config: { ...minimal, clients: ["alpha"
 add("switch", "read-failure-aborts", { config, op: { items: layerItems, values, responses: [raw(get("shared"), "DEMO_SUITE_PRIVATE", 1, "safe failure")] } });
 add("op", "vault-malformed", { method: "vaults", divergence: "a5", op: { responses: [raw(["vault", "list", "--format", "json"], "{")] } });
 add("op", "env-null-fields", { method: "env", item: { id: "alpha", title: "alpha" }, op: { details: { alpha: { fields: [null] } } } });
-add("op", "lone-surrogate-value", { method: "env", item: { id: "alpha", title: "alpha" }, op: { responses: [raw(get("alpha"), '{"fields":[{"label":"A","value":"\\ud800"}]}')] } });
+add("op", "lone-surrogate-value", { divergence: "a7", method: "env", item: { id: "alpha", title: "alpha" }, op: { responses: [raw(get("alpha"), '{"fields":[{"label":"A","value":"\\ud800"}]}')] } });
 add("blackbox", "maxbuffer-failure", { argv: doctorArgs, op: { responses: [{ argv: ["whoami", "--format", "json"], stdoutRepeat: { value: "x", count: 52428801 }, stderr: "", exitCode: 0 }] } });
 
+
+add("blackbox", "missing-op", { argv: doctorArgs, missingOp: true, divergence: "a6" });
+add("cli", "guided-vault-list-failure", { argv: [], prompts: [], op: { responses: [raw(["vault", "list", "--format", "json"], "", 7, "safe vault failure")] } });
+add("cli", "guided-vault-list-malformed", { argv: [], prompts: [], divergence: "a5", op: { responses: [raw(["vault", "list", "--format", "json"], "{")] } });
+add("cli", "guided-cancel-mode", { argv: [], config: { ...minimal, clients: ["alpha"], environments: ["local"] }, prompts: [{ cancel: true }] });
+add("cli", "guided-duplicate-vault-ids", { argv: [], config: { ...minimal, clients: ["alpha"], environments: ["local"] }, op: { vaults: [{ id: "alpha", name: "alpha" }, { id: "alpha", name: "beta" }] }, prompts: [{ index: 1 }, true] });
+add("cli", "guided-duplicate-item-ids", { argv: [], config: { ...minimal, clients: ["alpha"], environments: ["local"] }, op: { configItems: [{ id: "cfg", title: "alpha" }, { id: "cfg", title: "beta" }] }, prompts: [{ index: 1 }, true] });
+add("blackbox", "maxbuffer-exact-limit", { argv: doctorArgs, expectOpCalls: true, op: { responses: [{ argv: ["whoami", "--format", "json"], stdoutSize: { byte: 120, size: 52428800 }, stderr: "", exitCode: 0 }] } });
+add("blackbox", "non-utf8-stdout", { argv: doctorArgs, expectOpCalls: true, op: { responses: [{ argv: ["whoami", "--format", "json"], stdoutBase64: "/wD+", stderr: "", exitCode: 0 }] } });
+add("blackbox", "non-utf8-json", { divergence: "a5", argv: listArgs, expectOpCalls: true, op: { responses: [{ argv: get(), stdoutBase64: Buffer.from('{"fields":[{"label":"config","value":"').toString("base64") } ] } });
+// Invalid UTF-8 inside otherwise valid JSON decodes to U+FFFD before JSON parsing.
+scenarios.at(-1).op.responses[0].stdoutBase64 = Buffer.concat([Buffer.from('{"fields":[{"label":"config","value":"'), Buffer.from([255]), Buffer.from('"}]}')]).toString("base64");
+add("path", "eacces", { output: "locked/sub/.env", platforms: ["macos", "linux"], divergence: "d1", files: [{ path: "locked", type: "dir", mode: 0 }] });
+add("cli", "update-extra-positional", { argv: ["update", "extra"], files: installed, update: { latest: "0.0.4" }, divergence: ["e1", "e2", "e3"] });
+for (const s of scenarios) if (s.id.startsWith("cli-update-")) {
+  s.divergence = ["e1", "e2", "e3"];
+  s.rustUpdate = { repo: "demo-suite/alpha", installDir: "{TMP}/launcher" };
+}
+for (const s of scenarios) if (["path-enotdir", "dotenv-mkdir-enotdir", "dotenv-rename-cleanup", "switch-nontransactional-writes", "inspect-marker-directory-package"].includes(s.id)) s.divergence = "d1";
+
 const ids = new Set();
+const check = process.argv.includes("--check");
 for (const s of scenarios) {
   if (ids.has(s.id)) throw new Error(`duplicate id: ${s.id}`); ids.add(s.id);
-  await writeFile(join(dir, s.id + ".json"), JSON.stringify(s, null, 2) + "\n");
+  const serialized = JSON.stringify(s, null, 2) + "\n";
+  if (check) { if (!await Bun.file(join(dir, s.id + ".json")).exists() || await Bun.file(join(dir, s.id + ".json")).text() !== serialized) throw new Error(`scenario generator drift: ${s.id}`); }
+  else await writeFile(join(dir, s.id + ".json"), serialized);
 }
-for (const file of await readdir(dir)) if (file.endsWith(".json") && !ids.has(file.slice(0, -5))) await rm(join(dir, file));
+for (const file of await readdir(dir)) if (file.endsWith(".json") && !ids.has(file.slice(0, -5))) { if (check) throw new Error(`stale scenario: ${file}`); await rm(join(dir, file)); }
 console.log(`Wrote ${scenarios.length} input scenarios`);

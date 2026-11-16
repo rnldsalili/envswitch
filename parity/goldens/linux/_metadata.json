@@ -1,0 +1,10 @@
+{
+  "commit": "53de029a25a717c8ac824ca8553035e2b0fec991",
+  "bun": "1.4.0",
+  "icu": "78.3",
+  "unicode": "17.0",
+  "locale": "en-US",
+  "LANG": "en_US.UTF-8",
+  "LC_ALL": "en_US.UTF-8",
+  "os": "linux"
+}

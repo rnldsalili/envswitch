@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "id": "cli-update-missing-installer",
+  "kind": "cli",
+  "divergence": [
+    "e1",
+    "e2",
+    "e3"
+  ],
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoOiBpbnN0YWxsZXIgbm90IGZvdW5kIGF0IHtBUFB9L3NjcmlwdHMvaW5zdGFsbC5zaDsgcmVpbnN0YWxsIGVudnN3aXRjaCB3aXRoIHRoZSBpbnN0YWxsIHNjcmlwdCBmcm9tIHRoZSBSRUFETUUK",
+  "exitCode": 1,
+  "prompts": [],
+  "progress": [],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

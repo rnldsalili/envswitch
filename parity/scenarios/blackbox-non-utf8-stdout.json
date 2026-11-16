@@ -1,0 +1,26 @@
+{
+  "id": "blackbox-non-utf8-stdout",
+  "kind": "blackbox",
+  "argv": [
+    "doctor",
+    "--vault",
+    "alpha",
+    "--config-item",
+    "cfg"
+  ],
+  "expectOpCalls": true,
+  "op": {
+    "responses": [
+      {
+        "argv": [
+          "whoami",
+          "--format",
+          "json"
+        ],
+        "stdoutBase64": "/wD+",
+        "stderr": "",
+        "exitCode": 0
+      }
+    ]
+  }
+}

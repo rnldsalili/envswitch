@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "id": "cli-update-source-checkout",
+  "kind": "cli",
+  "divergence": [
+    "e1",
+    "e2",
+    "e3"
+  ],
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoOiBlbnZzd2l0Y2ggdXBkYXRlIG9ubHkgd29ya3MgZm9yIGluc3RhbGxlZCBjb3BpZXM7IHRoaXMgbG9va3MgbGlrZSBhIHNvdXJjZSBjaGVja291dCAodXNlIGdpdCBwdWxsIGluc3RlYWQpCg==",
+  "exitCode": 1,
+  "prompts": [],
+  "progress": [],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [
+    {
+      "path": "{APP}/.version",
+      "kind": "file",
+      "bytesBase64": "djAuMC40Cg==",
+      "mode": 420
+    },
+    {
+      "path": "{APP}/scripts/install.sh",
+      "kind": "file",
+      "bytesBase64": "Zml4dHVyZSBvbmx5OyBuZXZlciBleGVjdXRlZA==",
+      "mode": 420
+    }
+  ],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{APP}/.git",
+      "mode": 493
+    },
+    {
+      "path": "{APP}/scripts",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

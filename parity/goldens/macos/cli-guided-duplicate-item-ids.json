@@ -1,0 +1,160 @@
+{
+  "schemaVersion": 1,
+  "id": "cli-guided-duplicate-item-ids",
+  "kind": "cli",
+  "divergence": null,
+  "stdoutBase64": "ZW52c3dpdGNoIGd1aWRlZCBzd2l0Y2gKUHJvamVjdCByb290OiB7Uk9PVH0KRHJ5IHJ1biAxIHRhcmdldChzKSBmcm9tIGRlbW8tc3VpdGUKLSBhcGkgLT4ge1JPT1R9L2FwcHMvYXBpLy5lbnYKICBrZXlzOiAwCiAgbGF5ZXJzOiBub25lCg==",
+  "stderrBase64": "ZW52c3dpdGNoIFtpbmZvXSBsaXN0aW5nIDFQYXNzd29yZCB2YXVsdHMKZW52c3dpdGNoIFtkb25lXSBmb3VuZCAxIHZhdWx0KHMpCmVudnN3aXRjaCBbaW5mb10gY2hlY2tpbmcgdmF1bHRzIGZvciBjb25maWcgaXRlbXMgdGFnZ2VkIGVudnN3aXRjaC1jb25maWcKZW52c3dpdGNoIFtkb25lXSBmb3VuZCAxIHZhdWx0KHMpIHdpdGggY29uZmlnIGl0ZW1zCmVudnN3aXRjaCBbaW5mb10gcmVhZGluZyBjb25maWcgaXRlbSBhbHBoYQplbnZzd2l0Y2ggW2RvbmVdIGxvYWRlZCBjb25maWcgaXRlbSBhbHBoYQplbnZzd2l0Y2ggW2luZm9dIHZhbGlkYXRpbmcgcHJvamVjdCByb290IHtST09UfQplbnZzd2l0Y2ggW2luZm9dIGxpc3RpbmcgY2FuZGlkYXRlIDFQYXNzd29yZCBpdGVtcwplbnZzd2l0Y2ggW2RvbmVdIGZvdW5kIDAgY2FuZGlkYXRlIGl0ZW0ocykKZW52c3dpdGNoIFtpbmZvXSBwcm9jZXNzaW5nIGFwaSAtPiB7Uk9PVH0vYXBwcy9hcGkvLmVudgplbnZzd2l0Y2ggW2RyeS1ydW5dIHdvdWxkIHdyaXRlIHtST09UfS9hcHBzL2FwaS8uZW52Cg==",
+  "exitCode": 0,
+  "prompts": [
+    {
+      "kind": "select",
+      "message": "Config item",
+      "choices": [
+        {
+          "label": "alpha (cfg)",
+          "value": "cfg"
+        },
+        {
+          "label": "beta (cfg)",
+          "value": "cfg"
+        }
+      ],
+      "default": null,
+      "required": null
+    },
+    {
+      "kind": "select",
+      "message": "Mode",
+      "choices": [
+        {
+          "label": "Dry run",
+          "value": true
+        },
+        {
+          "label": "Write .env files",
+          "value": false
+        }
+      ],
+      "default": false,
+      "required": null
+    }
+  ],
+  "progress": [
+    {
+      "status": "info",
+      "message": "listing 1Password vaults"
+    },
+    {
+      "status": "done",
+      "message": "found 1 vault(s)"
+    },
+    {
+      "status": "info",
+      "message": "checking vaults for config items tagged envswitch-config"
+    },
+    {
+      "status": "done",
+      "message": "found 1 vault(s) with config items"
+    },
+    {
+      "status": "info",
+      "message": "reading config item alpha"
+    },
+    {
+      "status": "done",
+      "message": "loaded config item alpha"
+    },
+    {
+      "status": "info",
+      "message": "validating project root {ROOT}"
+    },
+    {
+      "status": "info",
+      "message": "listing candidate 1Password items"
+    },
+    {
+      "status": "done",
+      "message": "found 0 candidate item(s)"
+    },
+    {
+      "status": "info",
+      "message": "processing api -> {ROOT}/apps/api/.env"
+    },
+    {
+      "status": "dry-run",
+      "message": "would write {ROOT}/apps/api/.env"
+    }
+  ],
+  "opCalls": [
+    [
+      "vault",
+      "list",
+      "--format",
+      "json"
+    ],
+    [
+      "item",
+      "list",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--tags",
+      "envswitch-config"
+    ],
+    [
+      "item",
+      "get",
+      "cfg",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "list",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--tags",
+      "env:local"
+    ]
+  ],
+  "readCounts": {
+    "alpha/cfg": 1
+  },
+  "factoryCalls": [
+    "alpha"
+  ],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "id": "cli-guided-cancel-mode",
+  "kind": "cli",
+  "divergence": null,
+  "stdoutBase64": "ZW52c3dpdGNoIGd1aWRlZCBzd2l0Y2gKUHJvamVjdCByb290OiB7Uk9PVH0K",
+  "stderrBase64": "ZW52c3dpdGNoIFtpbmZvXSBsaXN0aW5nIDFQYXNzd29yZCB2YXVsdHMKZW52c3dpdGNoIFtkb25lXSBmb3VuZCAxIHZhdWx0KHMpCmVudnN3aXRjaCBbaW5mb10gY2hlY2tpbmcgdmF1bHRzIGZvciBjb25maWcgaXRlbXMgdGFnZ2VkIGVudnN3aXRjaC1jb25maWcKZW52c3dpdGNoIFtkb25lXSBmb3VuZCAxIHZhdWx0KHMpIHdpdGggY29uZmlnIGl0ZW1zCmVudnN3aXRjaCBbaW5mb10gcmVhZGluZyBjb25maWcgaXRlbSBkZW1vLXN1aXRlCmVudnN3aXRjaCBbZG9uZV0gbG9hZGVkIGNvbmZpZyBpdGVtIGRlbW8tc3VpdGUK",
+  "exitCode": 130,
+  "prompts": [
+    {
+      "kind": "select",
+      "message": "Mode",
+      "choices": [
+        {
+          "label": "Dry run",
+          "value": true
+        },
+        {
+          "label": "Write .env files",
+          "value": false
+        }
+      ],
+      "default": false,
+      "required": null
+    }
+  ],
+  "progress": [
+    {
+      "status": "info",
+      "message": "listing 1Password vaults"
+    },
+    {
+      "status": "done",
+      "message": "found 1 vault(s)"
+    },
+    {
+      "status": "info",
+      "message": "checking vaults for config items tagged envswitch-config"
+    },
+    {
+      "status": "done",
+      "message": "found 1 vault(s) with config items"
+    },
+    {
+      "status": "info",
+      "message": "reading config item demo-suite"
+    },
+    {
+      "status": "done",
+      "message": "loaded config item demo-suite"
+    }
+  ],
+  "opCalls": [
+    [
+      "vault",
+      "list",
+      "--format",
+      "json"
+    ],
+    [
+      "item",
+      "list",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--tags",
+      "envswitch-config"
+    ],
+    [
+      "item",
+      "get",
+      "cfg",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ]
+  ],
+  "readCounts": {
+    "alpha/cfg": 1
+  },
+  "factoryCalls": [
+    "alpha"
+  ],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

@@ -7,5 +7,13 @@
   ],
   "files": [],
   "update": {},
-  "divergence": "e2"
+  "divergence": [
+    "e1",
+    "e2",
+    "e3"
+  ],
+  "rustUpdate": {
+    "repo": "demo-suite/alpha",
+    "installDir": "{TMP}/launcher"
+  }
 }

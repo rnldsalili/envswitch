@@ -51,5 +51,8 @@ fn native_protocol_traces_handshake_response_and_unknown_argv() {
             json!(["account", "list"])
         ]
     );
+    fs::write(&fixture, json!({"responses":[{"argv":["raw"],"stdoutBase64":"/wD+"},{"argv":["sized"],"stdoutSize":{"byte":120,"size":16385}}]}).to_string()).unwrap();
+    assert_eq!(invoke(&["raw"]).stdout, [255, 0, 254]);
+    assert_eq!(invoke(&["sized"]).stdout, vec![120; 16385]);
     fs::remove_dir_all(dir).unwrap();
 }

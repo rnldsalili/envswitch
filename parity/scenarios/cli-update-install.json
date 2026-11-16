@@ -19,5 +19,13 @@
     "latest": "v0.0.5",
     "updatedVersion": "v0.0.5\n"
   },
-  "divergence": "e3"
+  "divergence": [
+    "e1",
+    "e2",
+    "e3"
+  ],
+  "rustUpdate": {
+    "repo": "demo-suite/alpha",
+    "installDir": "{TMP}/launcher"
+  }
 }
