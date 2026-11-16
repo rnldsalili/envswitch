@@ -5,6 +5,7 @@
 //! | `User`     | `EnvswitchError` thrown by `fail()`                    | 1    |
 //! | `Internal` | any other thrown value: `op` failures, fs errors, ...  | 2    |
 //! | `Cancelled`| `ExitPromptError` (Ctrl-C / Esc in a prompt, D3)       | 130  |
+//! | `Status`   | `update`: installer exited nonzero (INSTALLER-PROTOCOL §7.2, DIVERGENCES e6) | child status |
 //!
 //! `Display` is the bare message. The CLI prints `envswitch: {msg}` to stderr
 //! for `User` and `Internal`, and prints nothing for `Cancelled`.
@@ -28,6 +29,12 @@ pub enum Error {
     /// The `Display` text exists only for debugging and is never printed.
     #[error("prompt cancelled")]
     Cancelled,
+    /// A failure that carries an explicit process exit status (the embedded
+    /// installer's nonzero status, `128 + signal` for Unix signals). The CLI
+    /// prints `envswitch: {message}` like `User`/`Internal`, then exits with
+    /// `code`. Used only by `update` (INSTALLER-PROTOCOL §7.2, DIVERGENCES e6).
+    #[error("{message}")]
+    Status { code: i32, message: String },
 }
 
 /// Crate-wide result alias.
@@ -44,12 +51,21 @@ impl Error {
         Error::Internal(message.into())
     }
 
-    /// Process exit code for this error: 1, 2, or 130.
+    /// `Error::Status { code, message }`.
+    pub fn status(code: i32, message: impl Into<String>) -> Self {
+        Error::Status {
+            code,
+            message: message.into(),
+        }
+    }
+
+    /// Process exit code for this error: 1, 2, 130, or the carried status.
     pub fn exit_code(&self) -> i32 {
         match self {
             Error::User(_) => 1,
             Error::Internal(_) => 2,
             Error::Cancelled => 130,
+            Error::Status { code, .. } => *code,
         }
     }
 }
