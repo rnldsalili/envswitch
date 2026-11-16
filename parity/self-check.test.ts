@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { differences } from "./diff/compare.ts";
 import { verifyOracle } from "./oracle/materialize.ts";
 import { runScenario } from "./adapters/ts/run.ts";
+import { nativeFixture } from "./adapters/rust/update.ts";
 import { normalizeOrdered, plain } from "./adapters/rust/ordered.ts";
 import { validate } from "./schema.ts";
 import { context } from "./context.ts";
@@ -143,6 +144,34 @@ describe("parity harness invariants", () => {
     expect(skipped.progress.filter((p: any) => p.message.startsWith("skipping vault")).map((p: any) => p.message)).toEqual([
       "skipping vault alpha (could not list items)", "skipping vault beta (could not list items)",
     ]);
+  });
+  test("native update fakes commit protocol state and emit exact terminal outcomes", async () => {
+    const target = process.platform === "darwin" ? "aarch64-apple-darwin" : process.platform === "win32" ? "x86_64-pc-windows-msvc" : "aarch64-unknown-linux-musl";
+    for (const id of ["cli-update-install", "cli-update-same", "cli-update-missing-installer", "cli-update-installer-status-4", "cli-update-installer-throws"]) {
+      const input = await Bun.file(join(import.meta.dir, "scenarios", id + ".json")).json(), c = await context(input);
+      try {
+        const scenario = c.expand(input), expected: any = {};
+        const native = (await nativeFixture(c, scenario, expected, { version: "0.0.0", target }))!;
+        const before = JSON.parse(await readFile(join(c.paths.APP, "install.json"), "utf8"));
+        expect(before.tag).toBe("v0.0.0"); expect(before.payloadPath).toBe(native.currentExe);
+        expect(await Bun.file(native.currentExe).exists()).toBe(true);
+        await c.actions(native.onInstall);
+        const after = await c.snapshot();
+        expect(after.files).toEqual(expected.files); expect(after.directories).toEqual(expected.directories);
+        if (input.update?.exitCode || input.update?.installerError) {
+          expect(native.stdout).toBe(""); expect(native.onInstall).toEqual([]);
+        } else {
+          const receipt = await Bun.file(join(c.paths.APP, "install.json")).json();
+          expect(await readFile(join(c.paths.APP, ".version"), "utf8")).toBe(receipt.tag + "\n");
+          expect(await Bun.file(receipt.payloadPath).exists()).toBe(true);
+          expect(await Bun.file(receipt.launcherPath).exists()).toBe(true);
+          expect(native.stdout).toContain(scenario.rustUpdate.disposition === "unchanged" ? `success: envswitch is already up to date (${receipt.tag})\n` : `success: ${scenario.rustUpdate.disposition} envswitch ${receipt.tag}\n`);
+          expect(scenario.rustUpdate.installerStdout).toBe(c.normalizeString(native.stdout));
+          if (scenario.rustUpdate.disposition === "unchanged") expect(native.onInstall).toEqual([]);
+          else expect(native.stdout).toContain(`info: binary: ${receipt.payloadPath}\ninfo: launcher: ${receipt.launcherPath}\n`);
+        }
+      } finally { await c.cleanup(); }
+    }
   });
   test("parser empty-next errata and scope terminators stay covered", async () => {
     const t = await golden("parseArgs-empty-help-next");

@@ -10,7 +10,6 @@ use crate::support::{
 use envswitch::{Error, Result, model::*, op::client::OnePasswordClient, ports::*};
 use serde_json::Value;
 use std::{
-    fs,
     io::Write,
     path::{Path, PathBuf},
     sync::{Arc, Condvar, Mutex},
@@ -246,13 +245,13 @@ pub fn execute(s: &J, bundle: &Value, path: &Path, bridge: &Bridge) -> Result<J>
                         vars.set(k, v.text());
                     }
                 }
+                if let Some(install_dir) = bundle["native"]["installDir"].as_str() {
+                    // The synthetic launcher is already on the injected PATH; no profile change is needed.
+                    vars.set("PATH", install_dir);
+                    let home = bundle["paths"]["HOME"].as_str().unwrap();
+                    vars.set("HOME", home).set("USERPROFILE", home);
+                }
                 let update = s.get("update");
-                let version_file = app.join(".version");
-                let updated = if update.has("updatedVersion") {
-                    Some(update.get("updatedVersion").text().to_owned())
-                } else {
-                    None
-                };
                 let native_actions = bundle["native"]["onInstall"]
                     .as_array()
                     .cloned()
@@ -261,7 +260,10 @@ pub fn execute(s: &J, bundle: &Value, path: &Path, bridge: &Bridge) -> Result<J>
                 let native_path = path.to_path_buf();
                 let fake = FakeInstaller::new()
                     .with_result(if update.has("installerError") {
-                        Err(Error::internal(update.get("installerError").text()))
+                        Err(Error::internal(format!(
+                            "update failed: could not run installer: {}",
+                            update.get("installerError").text()
+                        )))
                     } else {
                         Ok(update.get("exitCode").int() as i32)
                     })
@@ -273,8 +275,6 @@ pub fn execute(s: &J, bundle: &Value, path: &Path, bridge: &Bridge) -> Result<J>
                                     Some(&serde_json::to_string(&native_actions).unwrap()),
                                 )
                                 .expect("native fixture installer");
-                        } else if let Some(v) = &updated {
-                            fs::write(&version_file, v).unwrap();
                         }
                     });
                 let interactive = if s.has("isInteractive") {
@@ -329,6 +329,7 @@ pub fn execute(s: &J, bundle: &Value, path: &Path, bridge: &Bridge) -> Result<J>
                     }),
                     installer: Box::new(Installer {
                         fake,
+                        stdout: bundle["native"]["stdout"].as_str().unwrap_or("").into(),
                         calls: calls.clone(),
                     }),
                 };

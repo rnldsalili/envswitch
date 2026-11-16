@@ -747,7 +747,8 @@
         "appRoot",
         "installDir",
         "version",
-        "currentVersion"
+        "currentVersion",
+        "verifyAttestations"
       ],
       "properties": {
         "repo": {
@@ -770,6 +771,9 @@
         },
         "currentVersion": {
           "type": "string"
+        },
+        "verifyAttestations": {
+          "type": "boolean"
         }
       }
     }

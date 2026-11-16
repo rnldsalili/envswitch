@@ -333,6 +333,7 @@ impl ReleaseSource for Release {
 }
 pub struct Installer {
     pub fake: FakeInstaller,
+    pub stdout: String,
     pub calls: Arc<Mutex<Calls>>,
 }
 impl InstallerRunner for Installer {
@@ -357,10 +358,21 @@ impl InstallerRunner for Installer {
                         plan.version.as_ref().map(J::string).unwrap_or(J::null()),
                     ),
                     ("currentVersion", J::string(&plan.current_version)),
+                    ("verifyAttestations", J::bool(plan.verify_attestations)),
                 ]),
             ),
         ]));
         self.fake.run(plan)
+    }
+    fn run_with_output(
+        &self,
+        plan: &InstallPlan,
+        out: &mut dyn std::io::Write,
+    ) -> Result<(i32, String)> {
+        let code = self.run(plan)?;
+        out.write_all(self.stdout.as_bytes())
+            .map_err(|error| Error::internal(error.to_string()))?;
+        Ok((code, self.stdout.clone()))
     }
 }
 pub fn counts(calls: &[Vec<String>]) -> J {

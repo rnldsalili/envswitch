@@ -11,7 +11,7 @@ export async function buildFake() {
     const locate = Bun.spawn(["rustup", "which", "cargo"], { stdout: "pipe", stderr: "inherit" });
     const cargo = (await new Response(locate.stdout).text()).trim();
     if (await locate.exited || !cargo) throw new Error("cannot locate installed Cargo toolchain");
-    const env = { ...process.env, HOME: home, USERPROFILE: home, CARGO_HOME: process.env.ENVSWITCH_PARITY_CARGO_HOME ?? join(dir, "cargo-home"), RUSTUP_HOME: join(dir, "rustup-home"),
+    const env = { ...process.env, HOME: home, USERPROFILE: home, CARGO_HOME: process.env.ENVSWITCH_PARITY_CARGO_HOME ?? join(dir, "cargo-home"), CARGO_TARGET_DIR: join(dir, "target"), RUSTUP_HOME: join(dir, "rustup-home"),
       XDG_CACHE_HOME: join(home, "cache"), XDG_CONFIG_HOME: join(home, "config"), XDG_DATA_HOME: join(home, "data"),
       LOCALAPPDATA: join(home, "local"), APPDATA: join(home, "roaming"), PATH: dirname(cargo) + delimiter + process.env.PATH };
     for (const key of Object.keys(env)) if (key.toUpperCase() === "PATH" && key !== "PATH") delete (env as Record<string, string | undefined>)[key];

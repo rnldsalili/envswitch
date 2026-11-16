@@ -279,8 +279,10 @@ add("cli", "guided-two-unreadable-vaults", { config, argv: [], parallelScans: 3,
   responses: [raw(list("envswitch-config", "alpha-bad"), "", 1, "unreadable"), raw(list("envswitch-config", "beta-bad"), "", 1, "unreadable")],
 }, prompts: ["alpha", "local", "all", true] });
 for (const s of scenarios) if (s.id.startsWith("cli-update-")) {
-  s.divergence = ["e1", "e2", "e3", ...(s.update?.exitCode ? ["e6"] : [])];
-  s.rustUpdate = { repo: "demo-suite/alpha", installDir: "{TMP}/launcher" };
+  s.divergence = ["e1", "e2", "e3", "e5", ...(s.update?.exitCode ? ["e6"] : [])];
+  s.rustUpdate = { repo: "demo-suite/alpha", installDir: "{TMP}/launcher", disposition:
+    ["cli-update-same", "cli-update-extra-positional"].includes(s.id) ? "unchanged" :
+    ["cli-update-missing-installer", "cli-update-empty-current"].includes(s.id) ? "repaired" : "installed" };
 }
 for (const s of scenarios) if (["path-enotdir", "dotenv-mkdir-enotdir", "dotenv-rename-cleanup", "switch-nontransactional-writes", "inspect-marker-directory-package"].includes(s.id)) s.divergence = "d1";
 
