@@ -150,7 +150,7 @@ For D3, derive a candidate root only from canonical `current_exe`: require `.../
 
 Missing or invalid receipt on a copied native binary is a controlled reinstall-guidance error (§7); do not guess defaults or reconstruct it from environment overrides. A structurally valid receipt with a missing payload can be repaired by an installer. Missing receipt repair is supported by a **direct reinstall** with explicit/default destinations, after positive ownership checks; D3 itself requires a receipt to know those destinations. An invalid receipt never grants cleanup authority: a direct installer also fails on it rather than trusting or deleting it.
 
-### 4.2 Launcher contents
+### 4.2 Launcher contents (protocol v1, amendment 1)
 
 Unix native launcher, LF, replacing `<Q(payloadPath)>` with a single-quoted Bash literal (escape each embedded apostrophe as `'\''`):
 
@@ -181,11 +181,11 @@ Windows launchers are UTF-8 without BOM, CRLF. The ASCII prefix changes the code
 ```bat
 @echo off
 setlocal DisableDelayedExpansion
-for /f "tokens=2 delims=:" %%C in ('chcp') do set "_ENVSWITCH_CP=%%C"
+for /f "tokens=2 delims=:." %%C in ('chcp') do set "_ENVSWITCH_CP=%%C"
 chcp 65001 >nul
 "<CMD(payloadPath)>" %*
 set "_ENVSWITCH_EXIT=%ERRORLEVEL%"
-chcp %_ENVSWITCH_CP% >nul
+chcp %_ENVSWITCH_CP% >nul 2>&1
 exit /b %_ENVSWITCH_EXIT%
 ```
 
@@ -206,7 +206,7 @@ goto envswitch_finish
 "%USERPROFILE%\.bun\bin\bun.exe" "<CMD(payloadPath)>" %*
 set "_ENVSWITCH_EXIT=%ERRORLEVEL%"
 :envswitch_finish
-chcp %_ENVSWITCH_CP% >nul
+chcp %_ENVSWITCH_CP% >nul 2>&1
 exit /b %_ENVSWITCH_EXIT%
 ```
 

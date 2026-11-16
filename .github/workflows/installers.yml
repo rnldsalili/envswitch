@@ -1,0 +1,71 @@
+name: Installer protocol
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+env:
+  POWERSHELL_TELEMETRY_OPTOUT: '1'
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+permissions:
+  contents: read
+jobs:
+  bash:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: bash -n scripts/install.sh test/install-sh.test.sh
+      - if: runner.os == 'macOS'
+        run: bash test/install-sh.test.sh
+      - if: runner.os == 'Linux'
+        run: |
+          docker pull python:3.13-bookworm
+          docker run --rm --network none -v "$GITHUB_WORKSPACE:/work" -w /work python:3.13-bookworm bash test/install-sh.test.sh
+      - run: if command -v shellcheck >/dev/null; then shellcheck scripts/install.sh test/install-sh.test.sh test/install/test-json-awk.sh; fi
+      - if: runner.os == 'macOS'
+        run: sh test/install/test-json-awk.sh "$PWD" /usr/bin/awk
+      - if: runner.os == 'Linux'
+        run: |
+          sh test/install/test-json-awk.sh "$PWD" gawk
+          sh test/install/test-json-awk.sh "$PWD" mawk
+          docker pull alpine:3.22
+          docker run --rm --network none -v "$GITHUB_WORKSPACE:/work" alpine:3.22 sh /work/test/install/test-json-awk.sh /work busybox awk
+  alpine:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: docker build -f test/install/Dockerfile.alpine -t envswitch-installers-alpine test/install
+      - run: docker run --rm --network none -v "$GITHUB_WORKSPACE:/work" -w /work envswitch-installers-alpine bash test/install-sh.test.sh
+  powershell:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2025, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - if: runner.os == 'Linux'
+        run: |
+          docker pull mcr.microsoft.com/powershell:7.4-ubuntu-22.04
+          docker run --rm --network none -e POWERSHELL_TELEMETRY_OPTOUT=1 -v "$GITHUB_WORKSPACE:/work" mcr.microsoft.com/powershell:7.4-ubuntu-22.04 pwsh -NoProfile -File /work/test/install-ps.Tests.ps1
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./test/install-ps.Tests.ps1
+      - if: runner.os == 'Windows'
+        shell: powershell
+        run: ./test/install-ps.Tests.ps1
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & "$env:SystemRoot/SysWOW64/WindowsPowerShell/v1.0/powershell.exe" -NoProfile -File ./test/install-ps.Tests.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
