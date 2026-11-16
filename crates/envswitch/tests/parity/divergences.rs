@@ -145,16 +145,19 @@ pub fn apply(s: &J, expected: &mut J, actual: &J, b: &Bridge) -> Result<(), Stri
                 expected.set("stderrBase64", actual.get("stderrBase64").clone());
             }
             "a7" => {
+                // Same path as TS's own invalid-JSON handling (parseJson → fail): exit 1.
                 require(
-                    actual.get("exitCode").int() == 2,
-                    "a7 lone surrogate is exit 2",
+                    actual.get("exitCode").int() == 1,
+                    "a7 lone surrogate is exit 1",
                 )?;
+                let e = text(actual, "stderrBase64", b);
                 require(
-                    text(actual, "stderrBase64", b)
-                        .starts_with("envswitch: op item get output is not valid JSON: "),
+                    e.starts_with("envswitch: op item get ")
+                        && e.contains(" output is not valid JSON: ")
+                        && e.ends_with('\n'),
                     "a7 JSON diagnostic prefix",
                 )?;
-                expected.set("exitCode", J::number(2));
+                expected.set("exitCode", J::number(1));
                 expected.set("result", J::null());
                 expected.set("stderrBase64", actual.get("stderrBase64").clone());
             }
