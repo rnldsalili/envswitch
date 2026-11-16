@@ -113,7 +113,6 @@ impl CommandRunner for ChildRunner {
 }
 
 #[test]
-#[ignore = "needs C1"]
 fn real_child_stdout_never_appears_in_error_messages() {
     let op = OnePasswordClient::new("synthetic", Arc::new(ChildRunner));
     let error = op.assert_authenticated().unwrap_err();
@@ -144,7 +143,6 @@ fn accepts_exact_stdout_cap_and_rejects_one_more_byte() {
 }
 
 #[test]
-#[ignore = "needs C1"]
 fn overflow_prefers_trimmed_stderr_and_caps_both_pipes_like_execfile() {
     assert_eq!(
         child("envswitch-child-cap-stderr").unwrap_err(),

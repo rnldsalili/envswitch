@@ -190,7 +190,6 @@ fn vault_and_config_labels_preserve_empty_and_duplicate_id_fallbacks() {
 }
 
 #[test]
-#[ignore = "needs C1/C2/C3"]
 fn runs_guided_switch_with_full_prompt_sequence_and_title_logs() {
     let project = TempProject::new();
     let prompt = ScriptedPrompter::new([
@@ -268,7 +267,6 @@ fn runs_guided_switch_with_full_prompt_sequence_and_title_logs() {
 }
 
 #[test]
-#[ignore = "needs C1/C2/C3"]
 fn skips_inaccessible_vaults_and_still_completes_a_guided_write() {
     let project = TempProject::new();
     let prompt = ScriptedPrompter::new([
@@ -297,7 +295,6 @@ fn skips_inaccessible_vaults_and_still_completes_a_guided_write() {
 }
 
 #[test]
-#[ignore = "needs C1/C2/C3"]
 fn write_mode_is_the_guided_default() {
     let project = TempProject::new();
     let prompt = ScriptedPrompter::new([
@@ -328,7 +325,6 @@ fn write_mode_is_the_guided_default() {
 }
 
 #[test]
-#[ignore = "needs C1/C2/C3"]
 fn input_fallback_has_required_and_environment_default_and_single_target_is_automatic() {
     let project = TempProject::new();
     let prompt = ScriptedPrompter::new([
@@ -373,7 +369,6 @@ fn input_fallback_has_required_and_environment_default_and_single_target_is_auto
 }
 
 #[test]
-#[ignore = "needs C1/C2/C3"]
 fn multiple_choices_show_vault_and_selected_vaults_config_items() {
     let project = TempProject::new();
     let prompt = ScriptedPrompter::new([

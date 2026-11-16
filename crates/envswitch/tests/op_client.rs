@@ -61,7 +61,6 @@ fn authentication_ignores_stdout_and_uses_exact_argv() {
 }
 
 #[test]
-#[ignore = "needs C1"]
 fn vaults_are_lenient_and_use_exact_argv() {
     let runner = StaticRunner::json(
         r#"[{"id":"vault-a","name":"Vault A"},{"id":"fallback","name":3},{"name":"name only"}]"#,
@@ -91,7 +90,6 @@ fn vaults_are_lenient_and_use_exact_argv() {
 }
 
 #[test]
-#[ignore = "needs C1"]
 fn lists_items_in_api_order_and_filters_tags_without_normalizing_strings() {
     let runner = StaticRunner::json(
         r#"[{"id":"i","title":false,"tags":["a",1,null,"","b"]},{"id":2,"title":"  title  ","tags":"ignored"}]"#,
@@ -131,7 +129,6 @@ fn lists_items_in_api_order_and_filters_tags_without_normalizing_strings() {
 }
 
 #[test]
-#[ignore = "needs C1"]
 fn rejects_malformed_lists_with_user_errors() {
     for (raw, expected) in [
         ("{}", "op item list returned non-array JSON"),
@@ -177,7 +174,6 @@ fn rejects_malformed_lists_with_user_errors() {
 }
 
 #[test]
-#[ignore = "needs C1"]
 fn config_requires_first_exact_label_with_nonempty_value_and_returns_it_untrimmed() {
     for raw in [
         r#"{"fields":[]}"#,
@@ -214,7 +210,6 @@ fn config_requires_first_exact_label_with_nonempty_value_and_returns_it_untrimme
 }
 
 #[test]
-#[ignore = "needs C1"]
 fn env_fields_use_labels_trim_and_last_duplicate_wins_at_first_position() {
     let runner = StaticRunner::json(
         r#"{"fields":[
@@ -262,7 +257,6 @@ fn env_fields_use_labels_trim_and_last_duplicate_wins_at_first_position() {
 }
 
 #[test]
-#[ignore = "needs C1"]
 fn rejects_bad_item_details_and_validates_all_fields_before_selecting_config() {
     for raw in ["null", "[]", "{}", r#"{"fields":null}"#] {
         let op = OnePasswordClient::new("vault", StaticRunner::json(raw));
@@ -296,7 +290,6 @@ fn rejects_bad_item_details_and_validates_all_fields_before_selecting_config() {
 }
 
 #[test]
-#[ignore = "needs C1"]
 fn failed_commands_use_trimmed_stderr_or_safe_command_fallback() {
     for stderr in [" \u{feff}safe failure\u{00a0}\n", "", " \t\n"] {
         let runner = Arc::new(StaticRunner {

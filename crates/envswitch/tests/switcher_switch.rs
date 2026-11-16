@@ -181,7 +181,6 @@ fn layer_summary(result: &SwitchResult, index: usize) -> Vec<String> {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[ignore = "needs C1/C2"]
 fn dry_run_merges_supported_layers_without_writing_files() {
     let project = TempProject::new();
     let op = ts_op();
@@ -209,7 +208,6 @@ fn dry_run_merges_supported_layers_without_writing_files() {
 }
 
 #[test]
-#[ignore = "needs C1/C2"]
 fn dry_run_logs_progress_when_a_logger_is_provided() {
     let project = TempProject::new();
     let (result, events) = run(&ts_op(), &request(ts_config(), project.root(), "api", true));
@@ -232,7 +230,6 @@ fn dry_run_logs_progress_when_a_logger_is_provided() {
 }
 
 #[test]
-#[ignore = "needs C1/C2"]
 fn writes_merged_values_in_group_aware_layer_order() {
     let project = TempProject::new();
     let (result, _) = run(
@@ -256,7 +253,6 @@ fn writes_merged_values_in_group_aware_layer_order() {
 }
 
 #[test]
-#[ignore = "needs C1/C2"]
 fn caches_item_reads_across_targets_in_one_switch() {
     let project = TempProject::new();
     let op = ts_op();
@@ -331,7 +327,6 @@ fn caches_item_reads_across_targets_in_one_switch() {
 }
 
 #[test]
-#[ignore = "needs C1/C2"]
 fn rechecks_output_parents_immediately_before_writing() {
     let base = TempProject::named("project");
     let root = base.root().to_path_buf();
@@ -370,7 +365,6 @@ fn rechecks_output_parents_immediately_before_writing() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[ignore = "needs C1/C2"]
 fn writes_every_target_with_oracle_events_and_bytes() {
     let project = TempProject::new();
     let (result, events) = run(
@@ -419,7 +413,6 @@ fn writes_every_target_with_oracle_events_and_bytes() {
 }
 
 #[test]
-#[ignore = "needs C1/C2"]
 fn a_failed_read_aborts_after_earlier_targets_were_written() {
     let project = TempProject::new();
     let op = ts_op().with_read_error("app-group", Error::internal("op read failed"));
@@ -448,7 +441,6 @@ fn a_failed_read_aborts_after_earlier_targets_were_written() {
 }
 
 #[test]
-#[ignore = "needs C1/C2"]
 fn validation_fails_before_any_op_call() {
     // Oracle: only `validating project root` is logged and `op` is never
     // called when the root, selection, or an output path is invalid.
@@ -499,7 +491,6 @@ fn validation_fails_before_any_op_call() {
 }
 
 #[test]
-#[ignore = "needs C1/C2"]
 fn an_empty_candidate_list_writes_a_single_newline() {
     let project = TempProject::new();
     let op = FakeOp::new("Demo");
@@ -520,7 +511,6 @@ fn an_empty_candidate_list_writes_a_single_newline() {
 }
 
 #[test]
-#[ignore = "needs C1/C2"]
 fn inspect_reports_output_paths_and_parent_existence() {
     let project = TempProject::new();
     project.dir("apps/api");
@@ -548,7 +538,6 @@ fn inspect_reports_output_paths_and_parent_existence() {
 }
 
 #[test]
-#[ignore = "needs C1/C2"]
 fn inspect_checks_root_markers_first() {
     let project = TempProject::new();
     let config = parse_config(
@@ -570,7 +559,6 @@ fn inspect_checks_root_markers_first() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[ignore = "needs C1/C2"]
 fn collation_golden_writes_the_oracle_env_bytes() {
     use collation_golden::{FULL_ENV, GROUPS, TITLES};
 
@@ -628,7 +616,6 @@ fn collation_golden_writes_the_oracle_env_bytes() {
 const CHILD_ENV: &str = "ENVSWITCH_C3_SWITCH_CHILD";
 
 #[test]
-#[ignore = "needs C1/C2"]
 fn switch_and_inspect_never_print() {
     if std::env::var_os(CHILD_ENV).is_some() {
         let project = TempProject::new();

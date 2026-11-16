@@ -57,7 +57,6 @@ fn classify(config: &Config, extra: &[&str], target: &str) -> Option<LayerName> 
 }
 
 #[test]
-#[ignore = "needs C1/C2"]
 fn classifies_only_items_that_belong_to_the_selected_target() {
     let config = ts_config();
     let cases: [(&[&str], &str, Option<LayerName>); 18] = [
@@ -126,7 +125,6 @@ fn classifies_only_items_that_belong_to_the_selected_target() {
 }
 
 #[test]
-#[ignore = "needs C1/C2"]
 fn recognizes_unknown_scopes_with_custom_tag_templates() {
     let config = config(json!({
         "project": { "id": "demo" },
@@ -153,7 +151,6 @@ fn recognizes_unknown_scopes_with_custom_tag_templates() {
 }
 
 #[test]
-#[ignore = "needs C1/C2"]
 fn scope_wildcard_excludes_exactly_the_js_line_terminators() {
     // Oracle table (`classifyItemForTarget` on a `layer:shared` item with one
     // extra tag): CR, LF, U+2028, U+2029 never match the scope wildcard, NEL
@@ -226,7 +223,6 @@ type TemplateCase = (
 );
 
 #[test]
-#[ignore = "needs C1/C2"]
 fn custom_template_cases_match_the_oracle() {
     use LayerName::{Client, Group, Shared};
     let cases: Vec<TemplateCase> = vec![
@@ -512,7 +508,6 @@ fn custom_template_cases_match_the_oracle() {
 }
 
 #[test]
-#[ignore = "needs C1/C2"]
 fn project_placeholder_falls_back_to_the_cwd_basename() {
     // Oracle run with `process.chdir(<tmp>/demo-suite)`.
     let config = config(json!({

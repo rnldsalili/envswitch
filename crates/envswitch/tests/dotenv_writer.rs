@@ -17,7 +17,6 @@ fn empty_map_is_one_newline() {
 }
 
 #[test]
-#[ignore = "needs C1"]
 fn serialization_matches_all_22_oracle_goldens() {
     for (value, expected) in [
         ("", "K=\n"),
@@ -52,7 +51,6 @@ fn serialization_matches_all_22_oracle_goldens() {
 }
 
 #[test]
-#[ignore = "needs C1"]
 fn sorts_keys_and_reports_first_invalid_key_in_utf16_order() {
     assert_eq!(
         stringify_env(&values(&[("B", "two words"), ("A", "1"), ("EMPTY", "")])).unwrap(),
@@ -71,7 +69,6 @@ fn sorts_keys_and_reports_first_invalid_key_in_utf16_order() {
 }
 
 #[test]
-#[ignore = "needs C1"]
 fn writes_env_file_and_replaces_existing_content_without_temp_leftovers() {
     let root = tempfile::tempdir().unwrap();
     let output = root.path().join("nested/.env");
@@ -90,7 +87,6 @@ fn writes_env_file_and_replaces_existing_content_without_temp_leftovers() {
 }
 
 #[test]
-#[ignore = "needs C1"]
 fn serialization_failure_preserves_existing_file_and_creates_no_directory() {
     let root = tempfile::tempdir().unwrap();
     let output = root.path().join(".env");

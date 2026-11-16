@@ -11,7 +11,6 @@ fn command_deps(project: &TempProject, config: &str) -> support::TestDeps {
 }
 
 #[test]
-#[ignore = "needs C1/C2/C3"]
 fn string_flags_preserve_untrimmed_values_and_report_errors_in_statement_order() {
     let project = TempProject::new();
     for (argv, error) in [
@@ -69,7 +68,6 @@ fn string_flags_preserve_untrimmed_values_and_report_errors_in_statement_order()
 }
 
 #[test]
-#[ignore = "needs C1/C2/C3"]
 fn list_subjects_keep_raw_target_paths_and_empty_clients() {
     let project = TempProject::new();
     for (subject, expected) in [
@@ -126,7 +124,6 @@ fn list_subjects_keep_raw_target_paths_and_empty_clients() {
 }
 
 #[test]
-#[ignore = "needs C1/C2/C3"]
 fn list_loads_config_before_validating_its_subject() {
     let project = TempProject::new();
     let mut test = command_deps(&project, CONFIG);
@@ -155,7 +152,6 @@ fn list_loads_config_before_validating_its_subject() {
 }
 
 #[test]
-#[ignore = "needs C1/C2/C3"]
 fn doctor_reports_authentication_and_parent_status_in_config_order() {
     let project = TempProject::new();
     project.dir("services/api");
@@ -198,7 +194,6 @@ fn doctor_reports_authentication_and_parent_status_in_config_order() {
 }
 
 #[test]
-#[ignore = "needs C1/C2/C3"]
 fn doctor_auth_failure_stops_before_loading_config_and_returns_two() {
     let project = TempProject::new();
     let op = FakeOp::new("v").with_auth_error(Error::internal("sign in first"));
@@ -214,7 +209,6 @@ fn doctor_auth_failure_stops_before_loading_config_and_returns_two() {
 }
 
 #[test]
-#[ignore = "needs C1/C2/C3"]
 fn switch_defaults_write_all_targets_and_dry_run_summaries_include_overwrites() {
     let project = TempProject::new();
     let op = FakeOp::new("v")
@@ -295,7 +289,6 @@ fn switch_defaults_write_all_targets_and_dry_run_summaries_include_overwrites() 
 }
 
 #[test]
-#[ignore = "needs C1/C2/C3"]
 fn empty_layers_summary_says_none_and_omits_overwrites() {
     let project = TempProject::new();
     let mut test = command_deps(&project, CONFIG);

@@ -72,12 +72,7 @@ impl CommandRunner for ExecCommandRunner {
             .map_err(|error| Error::internal(error.to_string()))?;
         if let Some(failure) = failure {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            // TODO(C1 merge): call js_trim directly once the helper is implemented.
-            let stderr = if stderr.is_empty() {
-                ""
-            } else {
-                js_trim(&stderr)
-            };
+            let stderr = js_trim(&stderr);
             return Err(Error::internal(if stderr.is_empty() {
                 failure
             } else {
