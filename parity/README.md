@@ -238,7 +238,7 @@ No arbitrary diff may be discarded merely because a scenario has a marker.
   defaults, input fallback, all prompts/labels, factory reuse, parallel barrier,
   skipped unreadable/invalid vaults, cancellation and non-TTY guards.
 - 01 §9 rows 16–23: `cli-update-*` plus `cli-unknown-update`. Original TS outcomes
-  remain recorded with e1/e2/e3; receipt, compiled-version and embedded-installer
+  remain recorded with e1/e2/e3/e5 (and e6 for nonzero installer status); receipt, compiled-version and embedded-installer
   replacement assertions belong to the next Rust phase/D3.
 - 02 §8.2 rows 1–9: `config-*`, `path-*`, `inspect-*`, `switch-*` validation,
   JS whitespace/null/presence/check order, all reachable config diagnostics,
@@ -263,8 +263,9 @@ One remaining textual inconsistency must not guide the Rust implementation:
 approved **parity** decision; Windows-only scenarios retain Node behavior.
 DIVERGENCES c2 now correctly records TS no-wrap/prefix jump versus Rust
 wrap/substring filtering; real navigation remains a separate PTY smoke lane.
-The lone-surrogate value is marked **a7**: Rust must reject it with exit 2 and
-`op item get output is not valid JSON: `, rather than silently replacing it.
+The lone-surrogate value is marked **a7**: Rust rejects it through the normal
+JSON parse-error path (exit 1 and `op item get <item> output is not valid JSON: `),
+rather than silently replacing it.
 Collation scenarios have **no g1 marker**: en-US is already fixed on the oracle,
 so Rust must match their winners and stable order exactly.
 
@@ -296,7 +297,7 @@ an absolute Bun executable. `SharedBuf`, `EventLog`, `EnvVars`, `ScriptedPrompte
 
 Each marked row has an explicit replacement assertion in `parity/divergences.rs`:
 prototype fields/flags and integer order get exact replacement objects/messages;
-JSON/spawn suffix rules check prefixes and exit status; a7 checks exit 2; a8
+JSON/spawn suffix rules check prefixes and exit status; a7 checks exit 1; a8
 checks config/package parse-error prefixes and exit 1. e6 forwards installer
 status (including Unix 128+signal); h1 preserves the full deterministic fake
 transcript without relaxing message order. Listed
@@ -304,13 +305,23 @@ d1 filesystem codes remain exact; f1 checks `version_line()` bytes. No marker
 waives unrelated fields. Prompt UX/signal/installer-only rows require their
 separate lanes instead of granting a blanket exemption.
 
-Native update fixtures (e1/e2/e3 together) have explicit `rustUpdate` receipt
-settings in the input. The bridge creates synthetic managed payload/launcher/
-receipt files, includes them in the expected filesystem state, and predicts only
-the injected installer's declared writes. The adapter forwards those settings and
+Native update fixtures (e1/e2/e3/e5 together) have explicit `rustUpdate` receipt
+settings in the input. The bridge creates a protocol-1 install with a receipt, canonical `.version`,
+versioned payload, executable launcher, and bundled script fixtures. It includes
+that state in the expected filesystem snapshot and predicts only the injected
+installer's declared writes. `rustUpdate.disposition` chooses installed,
+unchanged, or repaired; unchanged makes no writes, and repairs restore declared
+missing metadata/scripts while reusing identical payloads. The adapter forwards those settings and
 compiled version through the real frozen ports. Assertions require one embedded
 installer-port call, no separate latest lookup, the exact persisted settings,
 compiled-version/latest progress, status/summary, and unchanged cleanup checks.
+The wrapper implements `run_with_output`: it forwards and returns the exact §6
+terminal line and location/guidance suffix, then D3 checks the committed state
+before writing its §7.4 summary. Installer errors model an unexpected spawn
+failure as exit 2 with `update failed: could not run installer: ...`; nonzero
+installer statuses are forwarded under e6. The injected PATH already includes
+the private launcher directory, so Unix emits the no-profile-change guidance.
+Windows emits its required three guidance lines without writing User PATH.
 A TS `fetchError` has no throwing equivalent in frozen `ReleaseSource -> Option`;
 the fake records any lookup without throwing; replacement assertions reject
 that call because the embedded installer owns resolution. No support or production file was changed.
@@ -359,3 +370,15 @@ the self-check validates **every committed OS golden** against it.
 The a8 corpus covers overflow (`1e400`), total nesting depth 129, and lone UTF-16
 surrogates in config item JSON, through both parseConfig and CLI config loading.
 No i1 TS scenario is generated: that source case hangs; C1 owns its Rust-only test.
+
+For native **update** parity on Linux, build/test for the corresponding packaged
+musl target (`aarch64-unknown-linux-musl` or `x86_64-unknown-linux-musl`), for example:
+
+```sh
+cargo build --locked --workspace --bins --target aarch64-unknown-linux-musl
+LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 cargo test --locked --test parity --target aarch64-unknown-linux-musl -- --ignored --nocapture
+```
+
+`parity/linux.Dockerfile` installs the host's musl target and linker. A GNU debug
+target is not one of the protocol's five supported receipt targets. The fake-op
+builder uses its own target directory even when a caller exports CARGO_TARGET_DIR.

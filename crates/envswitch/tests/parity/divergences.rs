@@ -175,6 +175,7 @@ pub fn apply(s: &J, expected: &mut J, actual: &J, b: &Bridge) -> Result<(), Stri
                 }
             }
             "e1" | "e2" | "e3" | "h1" => {}
+            "e5" if s.get("kind").text() == "cli" && s.get("argv").at(0).text() == "update" => {}
             "e6" => {
                 let status = s.get("update").get("exitCode").int();
                 require(
@@ -236,8 +237,11 @@ fn update(s: &J, e: &mut J, a: &J, b: &Bridge, rows: &[&str]) -> Result<(), Stri
     // Every fixture here supplies a managed receipt in the adapter. The production
     // updater must use its compiled version and embedded installer, never the TS lookup.
     require(
-        rows.contains(&"e1") && rows.contains(&"e2") && rows.contains(&"e3"),
-        "native update fixtures require e1/e2/e3 together",
+        rows.contains(&"e1")
+            && rows.contains(&"e2")
+            && rows.contains(&"e3")
+            && rows.contains(&"e5"),
+        "native update fixtures require e1/e2/e3/e5 together",
     )?;
     let calls = a.get("updateCalls").items();
     require(
@@ -251,7 +255,7 @@ fn update(s: &J, e: &mut J, a: &J, b: &Bridge, rows: &[&str]) -> Result<(), Stri
     )?;
     let plan = call.get("plan");
     require(
-        plan.get("currentVersion").text().trim_start_matches('v') == env!("CARGO_PKG_VERSION"),
+        plan.get("currentVersion").text() == format!("v{}", env!("CARGO_PKG_VERSION")),
         "e1 current version is compiled",
     )?;
     require(
@@ -261,7 +265,7 @@ fn update(s: &J, e: &mut J, a: &J, b: &Bridge, rows: &[&str]) -> Result<(), Stri
         "e3 persisted receipt settings forwarded",
     )?;
     require(
-        plan.get("version").is_null(),
+        plan.get("version").is_null() && plan.get("verifyAttestations") == &J::bool(false),
         "ordinary D3 installer resolves latest once",
     )?;
     if s.get("update").get("exitCode").int() != 0 {
@@ -271,7 +275,7 @@ fn update(s: &J, e: &mut J, a: &J, b: &Bridge, rows: &[&str]) -> Result<(), Stri
         )?;
     }
     let status = if s.get("update").has("installerError") {
-        1
+        2
     } else {
         s.get("update").get("exitCode").int()
     };
@@ -305,19 +309,14 @@ fn update(s: &J, e: &mut J, a: &J, b: &Bridge, rows: &[&str]) -> Result<(), Stri
         )?;
     } else {
         require(stderr == progress, "success stderr contains only progress")?;
-        let tag = s
-            .get("update")
-            .get("updatedVersion")
-            .str_or(s.get("update").get("latest").str_or("v0.0.4"))
-            .trim();
-        let tag = if tag.starts_with('v') {
-            tag.to_owned()
-        } else {
-            format!("v{tag}")
-        };
         require(
-            text(a, "stdoutBase64", b) == format!("updated envswitch {compiled} -> {tag}\n"),
-            "native update validated result summary",
+            text(a, "stdoutBase64", b)
+                == format!(
+                    "{}{}",
+                    s.get("rustUpdate").get("installerStdout").text(),
+                    s.get("rustUpdate").get("summary").text()
+                ),
+            "native installer terminal/suffix and CLI disposition summary",
         )?;
     }
     for key in [

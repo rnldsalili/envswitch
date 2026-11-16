@@ -7,34 +7,8 @@ import { responsesFor } from "../../fixture.ts";
 import { runBlackbox } from "../../blackbox/run.ts";
 import { ordered, plain, normalizeOrdered } from "./ordered.ts";
 
-async function nativeFixture(c: Awaited<ReturnType<typeof context>>, s: any, expected: any, build: { version: string; target: string }) {
-  if (!s.rustUpdate) return null;
-  const suffix = process.platform === "win32" ? ".exe" : "";
-  const appRoot = join(c.tmp, "app"), installDir = s.rustUpdate.installDir;
-  const canonical = (v: string) => "v" + v.trim().replace(/^v/, "");
-  const oldFile = c.before.files.find((f: any) => f.path === "{APP}" + (process.platform === "win32" ? "\\" : "/") + ".version");
-  const oldTag = canonical(oldFile ? Buffer.from(oldFile.bytesBase64, "base64").toString().trim() || "0.0.4" : "0.0.4");
-  const payload = (tag: string) => join(c.paths.APP, "bin", `envswitch_${tag.slice(1)}_${build.target}${suffix}`);
-  const launcher = join(installDir, process.platform === "win32" ? "envswitch.cmd" : "envswitch");
-  const recipe = (tag: string) => {
-    const receipt = { schemaVersion: 1, kind: "native", repo: s.rustUpdate.repo, appRoot, installDir, launcherPath: launcher, target: build.target, tag, payloadPath: payload(tag) };
-    return [{ path: payload(tag), content: "fixture payload\n", mode: 0o755 }, { path: launcher, content: "fixture launcher\n", mode: 0o755 }, { path: join(c.paths.APP, "install.json"), content: JSON.stringify(receipt) + "\n", mode: 0o644 }];
-  };
-  await c.actions([...recipe(oldTag), { path: payload(canonical(build.version)), content: "fixture payload\n", mode: 0o755 }]);
-  const before = await c.snapshot();
-  const sourceGuard = s.files?.some((f: any) => f.path === join(c.paths.APP, ".git"));
-  const success = !sourceGuard && !s.update?.installerError && !(s.update?.exitCode);
-  const newTag = canonical(s.update?.updatedVersion ?? s.update?.latest ?? oldTag);
-  const onInstall: any[] = success ? [...recipe(newTag), { path: join(c.paths.APP, ".version"), content: newTag + "\n" }] : [];
-  // Predict only the fixture installer's writes. Production writes still have to compare exactly.
-  const predicted = new Map(before.files.map((f: any) => [f.path, f]));
-  for (const f of onInstall) predicted.set(c.normalizeString(f.path), { path: c.normalizeString(f.path), kind: "file", bytesBase64: c.bytes(f.content), mode: process.platform === "win32" ? null : f.mode ?? 0o644 });
-  const sort = (a: any, b: any) => c.expand(a.path) < c.expand(b.path) ? -1 : c.expand(a.path) > c.expand(b.path) ? 1 : 0;
-  expected.files = [...predicted.values()].sort(sort);
-  expected.writtenFiles = expected.files.filter((f: any) => !before.files.some((v: any) => JSON.stringify(v) === JSON.stringify(f)));
-  expected.directories = before.directories;
-  return { before, onInstall, currentExe: payload(canonical(build.version)) };
-}
+import { nativeFixture } from "./update.ts";
+
 const [action, arg, arg2, arg3] = process.argv.slice(2);
 if (action === "decode-base64") {
   console.log(JSON.stringify(Array.from(Buffer.from(arg, "base64"))));

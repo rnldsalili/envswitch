@@ -22,10 +22,12 @@
   "divergence": [
     "e1",
     "e2",
-    "e3"
+    "e3",
+    "e5"
   ],
   "rustUpdate": {
     "repo": "demo-suite/alpha",
-    "installDir": "{TMP}/launcher"
+    "installDir": "{TMP}/launcher",
+    "disposition": "installed"
   }
 }
