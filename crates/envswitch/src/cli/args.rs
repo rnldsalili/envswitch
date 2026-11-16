@@ -1,8 +1,5 @@
 //! Hand-written argument parser (contract 01 §1–2; D4). Owner: C4.
 
-// Stub file: remove when implemented.
-#![allow(unused_variables, clippy::todo)]
-
 use indexmap::IndexMap;
 
 /// A parsed flag value (TS `string | true`).
@@ -28,5 +25,27 @@ pub struct ParsedArgs {
 /// TS `parseArgs(argv)` (01 §1, including the empty-next-token erratum and
 /// DIVERGENCES a3/a4). `argv` excludes the program name.
 pub fn parse_args(argv: &[String]) -> ParsedArgs {
-    todo!("C4: 01 §1")
+    let mut result = ParsedArgs {
+        command: argv.first().cloned(),
+        ..ParsedArgs::default()
+    };
+    let mut tokens = argv.iter().skip(1).peekable();
+    while let Some(token) = tokens.next() {
+        let Some(raw) = token.strip_prefix("--") else {
+            result.positional.push(token.clone());
+            continue;
+        };
+        let (name, value) = if let Some((name, value)) = raw.split_once('=') {
+            (name, FlagValue::Value(value.to_string()))
+        } else if tokens
+            .peek()
+            .is_some_and(|next| !next.is_empty() && !next.starts_with("--"))
+        {
+            (raw, FlagValue::Value(tokens.next().unwrap().clone()))
+        } else {
+            (raw, FlagValue::True)
+        };
+        result.flags.insert(name.to_string(), value);
+    }
+    result
 }
