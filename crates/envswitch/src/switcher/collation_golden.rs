@@ -4,7 +4,7 @@
 //! (`Intl.Collator().resolvedOptions()`: locale `en-US`, ICU 78.1, Unicode 17.0):
 //!
 //! ```text
-//! LANG=en_US.UTF-8 bun crates/envswitch/src/switcher/oracle/collation_golden.ts \
+//! LANG=en_US.UTF-8 bun crates/envswitch/tests/switcher_oracle/collation_golden.ts \
 //!   . crates/envswitch/src/switcher/collation_golden.rs && cargo fmt
 //! ```
 //!

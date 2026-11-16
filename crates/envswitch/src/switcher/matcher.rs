@@ -10,6 +10,7 @@
 //! 2. [`TagMatcher::from_tags`] turns the rendered strings into the matcher,
 //!    compiling the three scope patterns (`switcher.ts:282-286`).
 
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
@@ -24,8 +25,16 @@ pub(crate) const SCOPE_SENTINEL: &str = "__ENVSWITCH_SCOPE__";
 
 /// JS `.+` without flags: one or more UTF-16 units that are not one of the
 /// four JS line terminators. Rust `.` only excludes `\n`, so the class is
-/// spelled out (02 §3.5 erratum, plan review 04 finding 8).
+/// spelled out (02 §3.5 erratum, plan review 04 finding 8). It runs on
+/// [`code_unit_string`]s, so each matched char is exactly one UTF-16 unit.
 const SCOPE_WILDCARD: &str = r"[^\r\n\x{2028}\x{2029}]+";
+
+/// Surrogate unit `u` (0xD800..=0xDFFF) is represented by the scalar
+/// `SURROGATE_BASE + (u - 0xD800)`, i.e. U+10D800..=U+10DFFF. That range lies
+/// inside Supplementary Private Use Area-B (U+100000..=U+10FFFD), so every
+/// value is a valid scalar, none is a line terminator, and none can collide
+/// with a BMP unit (BMP units map to themselves).
+const SURROGATE_BASE: u32 = 0x10_D800;
 
 /// The tags a [`TagMatcher`] is built from, already rendered.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -52,9 +61,9 @@ pub(crate) struct MatcherTags {
 #[derive(Debug, Clone)]
 pub(crate) struct TagMatcher {
     common_tags: Vec<String>,
-    target_tag_pattern: Regex,
-    client_tag_pattern: Regex,
-    group_tag_pattern: Regex,
+    target_tag_pattern: ScopePattern,
+    client_tag_pattern: ScopePattern,
+    group_tag_pattern: ScopePattern,
     current_client_tag: Option<String>,
     current_target_tags_by_target: HashMap<String, HashSet<String>>,
     current_group_tags_by_target: HashMap<String, HashSet<String>>,
@@ -219,21 +228,64 @@ fn render_scope(config: &Config, scope: Scope, cwd: &Path) -> String {
     rendered.unwrap_or_default()
 }
 
+/// A compiled scope pattern that matches like a JS `RegExp` without the `u`
+/// flag: on UTF-16 code units, so a wildcard can take half of a surrogate
+/// pair (`scope/{client}{client}` matches `scope/😀` in TS).
+#[derive(Debug, Clone)]
+pub(crate) struct ScopePattern(Regex);
+
+impl ScopePattern {
+    /// `pattern.test(tag)`.
+    pub(crate) fn is_match(&self, tag: &str) -> bool {
+        self.0.is_match(&code_unit_string(tag))
+    }
+}
+
+/// Re-encodes `s` so that each UTF-16 code unit is one `char`: BMP units map
+/// to themselves, surrogate units to U+10D800..=U+10DFFF
+/// ([`SURROGATE_BASE`]). The mapping is injective, so literal matching is
+/// unchanged, while `[^…]` classes now consume one unit at a time.
+fn code_unit_string(s: &str) -> Cow<'_, str> {
+    if s.chars().all(|c| u32::from(c) <= 0xFFFF) {
+        return Cow::Borrowed(s);
+    }
+    Cow::Owned(
+        s.encode_utf16()
+            .map(|unit| {
+                let unit = u32::from(unit);
+                let scalar = if (0xD800..=0xDFFF).contains(&unit) {
+                    SURROGATE_BASE + (unit - 0xD800)
+                } else {
+                    unit
+                };
+                char::from_u32(scalar)
+                    .expect("non-surrogate BMP units and U+10D800..=U+10DFFF are scalars")
+            })
+            .collect(),
+    )
+}
+
 /// TS `scopeTagPattern` after rendering: escape every regex metacharacter,
 /// replace every sentinel with [`SCOPE_WILDCARD`], and anchor with `^…$`.
 ///
-/// The sentinel is pure `[A-Z_]`, which `regex::escape` never touches, so the
-/// replacement finds exactly the sentinels of the rendered template. The
+/// Splitting the rendered template on the sentinel and escaping each literal
+/// part is the same as TS's escape-then-`replaceAll`: the sentinel is pure
+/// `[A-Z_]`, which escaping never touches. Literal parts are converted with
+/// [`code_unit_string`] like the tags they are matched against. The
 /// compiled-size limit is lifted because JS has none: the pattern is a plain
 /// literal with wildcard gaps, so syntax errors are impossible and only an
 /// absurdly large template could fail.
-pub(crate) fn scope_tag_pattern(rendered: &str) -> Regex {
-    let escaped = regex::escape(rendered);
-    let pattern = format!("^{}$", escaped.replace(SCOPE_SENTINEL, SCOPE_WILDCARD));
-    RegexBuilder::new(&pattern)
+pub(crate) fn scope_tag_pattern(rendered: &str) -> ScopePattern {
+    let parts: Vec<String> = rendered
+        .split(SCOPE_SENTINEL)
+        .map(|part| regex::escape(&code_unit_string(part)))
+        .collect();
+    let pattern = format!("^{}$", parts.join(SCOPE_WILDCARD));
+    let regex = RegexBuilder::new(&pattern)
         .size_limit(usize::MAX)
         .build()
-        .expect("an escaped literal scope pattern always compiles")
+        .expect("an escaped literal scope pattern always compiles");
+    ScopePattern(regex)
 }
 
 /// TS `classifyItemWithMatcher(item, target, matcher)` (02 §4.2). Branches
@@ -306,6 +358,6 @@ fn has_any(tags: &HashSet<&str>, candidates: Option<&HashSet<String>>) -> bool {
 }
 
 /// `hasMatchingTag(tags, pattern)`.
-fn has_matching_tag(tags: &HashSet<&str>, pattern: &Regex) -> bool {
+fn has_matching_tag(tags: &HashSet<&str>, pattern: &ScopePattern) -> bool {
     tags.iter().any(|tag| pattern.is_match(tag))
 }

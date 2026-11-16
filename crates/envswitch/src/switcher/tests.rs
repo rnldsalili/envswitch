@@ -7,8 +7,8 @@
 //! `tests/switcher_*.rs` (merge gate).
 //!
 //! Expected values come from the TS oracle (`src/switcher.ts` at `53de029`,
-//! Bun 1.4.0, `LANG=en_US.UTF-8`), printed by `oracle/scenarios.ts` and
-//! `oracle/collation_golden.ts`.
+//! Bun 1.4.0, `LANG=en_US.UTF-8`), printed by `tests/switcher_oracle/scenarios.ts` and
+//! `tests/switcher_oracle/collation_golden.ts`.
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -519,6 +519,60 @@ fn scope_patterns_match_escaped_literals_around_wildcards() {
 }
 
 #[test]
+fn scope_wildcards_match_utf16_code_units_like_js() {
+    // JS `RegExp` without the `u` flag: `.` takes one UTF-16 unit, so two
+    // adjacent wildcards can split one emoji (U+1F600 = D83D DE00). Expected
+    // values from `tests/switcher_oracle/scenarios.ts` ("utf16-*" cases).
+    let pattern = |template: &str| scope_tag_pattern(&template.replace("{}", SCOPE_SENTINEL));
+
+    let double = pattern("scope/{}{}");
+    assert!(double.is_match("scope/\u{1f600}"));
+    assert!(!double.is_match("scope/a"));
+    assert!(double.is_match("scope/ab"));
+    assert!(double.is_match("scope/\u{1f600}\u{1f600}"));
+    assert!(double.is_match("scope/alphaalpha"));
+
+    // Astral literals around a double wildcard.
+    let literals = pattern("\u{1f600}/{}{}/\u{1f600}");
+    assert!(literals.is_match("\u{1f600}/\u{1f600}/\u{1f600}"));
+    assert!(!literals.is_match("\u{1f600}/x/\u{1f600}"));
+    assert!(literals.is_match("\u{1f600}/xy/\u{1f600}"));
+    assert!(!literals.is_match("\u{1f600}//\u{1f600}"));
+
+    // A single wildcard after an astral literal.
+    let single = pattern("\u{1f600}{}");
+    assert!(single.is_match("\u{1f600}x"));
+    assert!(!single.is_match("\u{1f600}"));
+    assert!(single.is_match("\u{1f600}\u{1f680}"));
+
+    // The private scalars that stand in for surrogate units never collide
+    // with real characters: a literal U+10D83D (itself DBF5 DC3D) must not
+    // match the high surrogate of U+1F600 (D83D, encoded as U+10D83D).
+    let private = pattern("\u{10d83d}{}");
+    assert!(!private.is_match("\u{1f600}x"));
+    assert!(private.is_match("\u{10d83d}x"));
+}
+
+#[test]
+fn utf16_scope_cases_classify_like_the_oracle() {
+    // Oracle "utf16-double": `tags.client: "scope/{client}{client}"`.
+    let mut tags = ts_config_tags("alpha");
+    tags.client_scope = format!("scope/{SCOPE_SENTINEL}{SCOPE_SENTINEL}");
+    tags.current_client_tag = Some("scope/alphaalpha".to_string());
+    let matcher = TagMatcher::from_tags(tags);
+    let classify = |extra: &[&str]| classify_with_matcher(&tagged("x", extra), "api", &matcher);
+    assert_eq!(classify(&["layer:shared", "scope/\u{1f600}"]), None);
+    assert_eq!(
+        classify(&["layer:shared", "scope/a"]),
+        Some(LayerName::Shared)
+    );
+    assert_eq!(
+        classify(&["layer:client", "scope/alphaalpha"]),
+        Some(LayerName::Client)
+    );
+}
+
+#[test]
 fn bare_placeholder_scope_matches_every_tag() {
     // Oracle "bare" cases: `tags.client: "{client}"`.
     let mut tags = ts_config_tags("alpha");
@@ -885,7 +939,7 @@ fn rank_orders_before_title() {
     assert_eq!(result.values["COMMON"], "client");
 }
 
-/// **Known divergence, pending an orchestrator decision (C3 report).**
+/// **Known divergence, approved under DIVERGENCES.md row g1.**
 ///
 /// ICU4C 78 (Bun 1.4.0 and Node 24) orders Han ideographs by radical and
 /// stroke; ICU4X 2.4 `en-US` orders them by code point (UCA implicit
@@ -898,7 +952,6 @@ fn rank_orders_before_title() {
 /// ```
 ///
 /// This test pins the current Rust behavior so the divergence stays visible.
-/// It is not part of DIVERGENCES.md row g1 yet.
 #[test]
 fn known_divergence_han_ideographs_use_code_point_order() {
     let oracle_less = [
@@ -913,4 +966,25 @@ fn known_divergence_han_ideographs_use_code_point_order() {
             "{left} vs {right}"
         );
     }
+}
+
+/// **Known divergence, approved under DIVERGENCES.md row g1** (Unicode 17+
+/// characters follow ICU4X data). U+1AD4 and U+1AD7 are new in Unicode 17:
+/// Bun's ICU 78.1 still orders them as unassigned code points, while ICU4X
+/// data treats both as ignorable combining marks, so the titles tie and API
+/// order decides. Oracle (`bun -e`, `LANG=en_US.UTF-8`):
+///
+/// ```text
+/// "env-a᫔".localeCompare("env-a᫗") === -1   // `R` wins in both orders
+/// ```
+#[test]
+fn known_divergence_unicode_17_marks_tie_in_icu4x() {
+    let left = "env-a\u{1ad4}";
+    let right = "env-a\u{1ad7}";
+    assert_eq!(compare_titles(left, right), Ordering::Equal);
+    let winner =
+        |layers: &[(&str, &str)]| merge_layers(shared_layers(layers)).values["COMMON"].clone();
+    // Oracle: "R" for both API orders. Rust: the later item in API order.
+    assert_eq!(winner(&[("L", left), ("R", right)]), "R");
+    assert_eq!(winner(&[("R", right), ("L", left)]), "L");
 }

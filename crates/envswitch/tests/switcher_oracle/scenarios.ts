@@ -4,7 +4,7 @@
 //
 // Run from a checkout whose src/ matches 53de029:
 //
-//   LANG=en_US.UTF-8 bun crates/envswitch/src/switcher/oracle/scenarios.ts .
+//   LANG=en_US.UTF-8 bun crates/envswitch/tests/switcher_oracle/scenarios.ts .
 import { mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -61,6 +61,18 @@ const cases: Array<[string, Record<string, unknown>, string[][]]> = [
   ]],
   ["project-in-scope", { client: "{project}/{client}" }, [
     ["layer:shared", "demo/beta"], ["layer:shared", "other/beta"], ["layer:client", "demo/alpha"],
+  ]],
+  // JS `.` without the `u` flag takes one UTF-16 unit, i.e. half an emoji.
+  ["utf16-double", { client: "scope/{client}{client}" }, [
+    ["layer:shared", "scope/\u{1f600}"], ["layer:shared", "scope/a"], ["layer:shared", "scope/ab"],
+    ["layer:shared", "scope/\u{1f600}\u{1f600}"], ["layer:client", "scope/alphaalpha"],
+  ]],
+  ["utf16-astral-literals", { client: "\u{1f600}/{client}{client}/\u{1f600}" }, [
+    ["layer:shared", "\u{1f600}/\u{1f600}/\u{1f600}"], ["layer:shared", "\u{1f600}/x/\u{1f600}"],
+    ["layer:shared", "\u{1f600}/xy/\u{1f600}"], ["layer:shared", "\u{1f600}//\u{1f600}"],
+  ]],
+  ["utf16-single", { client: "\u{1f600}{client}" }, [
+    ["layer:shared", "\u{1f600}x"], ["layer:shared", "\u{1f600}"], ["layer:shared", "\u{1f600}\u{1f680}"],
   ]],
 ];
 for (const [name, tags, itemTagSets] of cases) {

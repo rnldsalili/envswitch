@@ -3,7 +3,7 @@
 //!
 //! Expected values come from the TS oracle (`src/switcher.ts` at `53de029`,
 //! Bun 1.4.0) via `classifyItemForTarget` with the same configs and items
-//! (`src/switcher/oracle/scenarios.ts` prints them).
+//! (`tests/switcher_oracle/scenarios.ts` prints them).
 //! These tests need the real config module (C1): they are ignored until C1
 //! merges, then run at the C3 merge gate.
 
@@ -416,6 +416,80 @@ fn custom_template_cases_match_the_oracle() {
             json!(null),
             &["layer:client", "demo/alpha"],
             Some(Client),
+        ),
+        // JS `.` without the `u` flag takes one UTF-16 unit: two adjacent
+        // wildcards split one emoji.
+        (
+            "utf16-double",
+            json!({ "client": "scope/{client}{client}" }),
+            &["layer:shared", "scope/\u{1f600}"],
+            None,
+        ),
+        (
+            "utf16-double",
+            json!(null),
+            &["layer:shared", "scope/a"],
+            Some(Shared),
+        ),
+        (
+            "utf16-double",
+            json!(null),
+            &["layer:shared", "scope/ab"],
+            None,
+        ),
+        (
+            "utf16-double",
+            json!(null),
+            &["layer:shared", "scope/\u{1f600}\u{1f600}"],
+            None,
+        ),
+        (
+            "utf16-double",
+            json!(null),
+            &["layer:client", "scope/alphaalpha"],
+            Some(Client),
+        ),
+        (
+            "utf16-astral-literals",
+            json!({ "client": "\u{1f600}/{client}{client}/\u{1f600}" }),
+            &["layer:shared", "\u{1f600}/\u{1f600}/\u{1f600}"],
+            None,
+        ),
+        (
+            "utf16-astral-literals",
+            json!(null),
+            &["layer:shared", "\u{1f600}/x/\u{1f600}"],
+            Some(Shared),
+        ),
+        (
+            "utf16-astral-literals",
+            json!(null),
+            &["layer:shared", "\u{1f600}/xy/\u{1f600}"],
+            None,
+        ),
+        (
+            "utf16-astral-literals",
+            json!(null),
+            &["layer:shared", "\u{1f600}//\u{1f600}"],
+            Some(Shared),
+        ),
+        (
+            "utf16-single",
+            json!({ "client": "\u{1f600}{client}" }),
+            &["layer:shared", "\u{1f600}x"],
+            None,
+        ),
+        (
+            "utf16-single",
+            json!(null),
+            &["layer:shared", "\u{1f600}"],
+            Some(Shared),
+        ),
+        (
+            "utf16-single",
+            json!(null),
+            &["layer:shared", "\u{1f600}\u{1f680}"],
+            None,
         ),
     ];
 

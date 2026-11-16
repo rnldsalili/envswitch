@@ -3,7 +3,7 @@
 //!
 //! Expected events, files, and results come from the TS oracle
 //! (`src/switcher.ts` at `53de029`, Bun 1.4.0) run with the same config,
-//! items, and values (`src/switcher/oracle/scenarios.ts` prints them);
+//! items, and values (`tests/switcher_oracle/scenarios.ts` prints them);
 //! `{ROOT}` in the oracle output is the temp project root.
 //! These tests need the real config (C1) and dotenv (C2) modules: they are
 //! ignored until both merge, then run at the C3 merge gate.
