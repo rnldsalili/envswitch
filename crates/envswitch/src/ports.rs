@@ -149,10 +149,9 @@ pub trait Prompter {
 }
 
 // ---------------------------------------------------------------------------
-// Update (PROVISIONAL: D2a/D3 finalize these)
+// Update (INSTALLER-PROTOCOL §7.1)
 // ---------------------------------------------------------------------------
 
-/// **Provisional** (D3 will finalize against `INSTALLER-PROTOCOL.md`).
 /// Settings handed to the embedded installer by `envswitch update`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InstallPlan {
@@ -164,21 +163,29 @@ pub struct InstallPlan {
     pub install_dir: Option<PathBuf>,
     /// Release tag to pin; `None` = let the installer resolve latest.
     pub version: Option<String>,
-    /// Compiled version of the running binary (`CARGO_PKG_VERSION`, e1).
+    /// Canonical compiled tag (`v<CARGO_PKG_VERSION>`, e1); empty omits it.
     pub current_version: String,
+    /// Explicit internal request; ordinary update leaves this false.
+    pub verify_attestations: bool,
 }
 
-/// **Provisional.** Resolves the latest release tag (TS
-/// `fetchLatestReleaseTag`). Never fails: any problem is `None`.
+/// Legacy resolution seam retained for shared dependency/fake compatibility.
+/// Native update never calls it: the embedded installer selects latest once.
 pub trait ReleaseSource: Send + Sync {
     fn latest_version(&self) -> Option<String>;
 }
 
-/// **Provisional.** Runs the installer with inherited stdio and returns its
+/// Runs the installer with forwarded stdio and returns its
 /// exit code (`128 + signal` when killed by a signal). Spawn failure is
 /// `Err(Error::Internal)`.
 pub trait InstallerRunner: Send + Sync {
     fn run(&self, plan: &InstallPlan) -> Result<i32>;
+
+    /// Tee stdout to the command's sink and retain it for protocol terminal-line
+    /// validation. Legacy runners supply no outcome and cannot claim success.
+    fn run_with_output(&self, plan: &InstallPlan, _out: &mut dyn Write) -> Result<(i32, String)> {
+        self.run(plan).map(|code| (code, String::new()))
+    }
 }
 
 // ---------------------------------------------------------------------------
