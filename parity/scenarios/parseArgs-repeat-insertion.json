@@ -1,0 +1,10 @@
+{
+  "id": "parseArgs-repeat-insertion",
+  "kind": "parseArgs",
+  "argv": [
+    "switch",
+    "--z",
+    "--a",
+    "--z=2"
+  ]
+}

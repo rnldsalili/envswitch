@@ -1,0 +1,24 @@
+{
+  "id": "tags-prototype",
+  "kind": "tags",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "tags": {
+      "base": [
+        "x:{constructor}",
+        "{__proto__}",
+        "{toString}"
+      ]
+    }
+  },
+  "params": {},
+  "divergence": "a1"
+}

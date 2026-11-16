@@ -1,0 +1,8 @@
+{
+  "id": "path-windows-8",
+  "kind": "path",
+  "output": "nul",
+  "platforms": [
+    "windows"
+  ]
+}

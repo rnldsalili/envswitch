@@ -1,0 +1,46 @@
+{
+  "id": "cli-flag-vault-bom",
+  "kind": "cli",
+  "argv": [
+    "switch",
+    "--config-item",
+    "cfg",
+    "--client",
+    "alpha",
+    "--vault=﻿"
+  ],
+  "config": {
+    "project": {
+      "id": "demo-suite"
+    },
+    "clients": [
+      "alpha",
+      "beta"
+    ],
+    "environments": [
+      "local",
+      "dev"
+    ],
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      },
+      {
+        "name": "web",
+        "output": "apps/web/.env",
+        "groups": [
+          "apps"
+        ]
+      }
+    ],
+    "tags": {
+      "base": [
+        "envswitch"
+      ]
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "id": "cli-version-capital",
+  "kind": "cli",
+  "argv": [
+    "-V"
+  ]
+}

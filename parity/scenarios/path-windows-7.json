@@ -1,0 +1,8 @@
+{
+  "id": "path-windows-7",
+  "kind": "path",
+  "output": "con",
+  "platforms": [
+    "windows"
+  ]
+}

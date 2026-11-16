@@ -1,0 +1,9 @@
+{
+  "id": "cli-unknown-list",
+  "kind": "cli",
+  "argv": [
+    "list",
+    "--client",
+    "alpha"
+  ]
+}

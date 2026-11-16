@@ -1,0 +1,7 @@
+{
+  "id": "blackbox-help",
+  "kind": "blackbox",
+  "argv": [
+    "--help"
+  ]
+}

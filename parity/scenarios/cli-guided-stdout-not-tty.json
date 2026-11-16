@@ -1,0 +1,10 @@
+{
+  "id": "cli-guided-stdout-not-tty",
+  "kind": "cli",
+  "argv": [],
+  "tty": {
+    "stdin": true,
+    "stdout": false,
+    "stderr": true
+  }
+}

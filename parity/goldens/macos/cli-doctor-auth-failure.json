@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "id": "cli-doctor-auth-failure",
+  "kind": "cli",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoIFtpbmZvXSBjaGVja2luZyAxUGFzc3dvcmQgYXV0aGVudGljYXRpb24KZW52c3dpdGNoOiBub3Qgc2lnbmVkIGluCg==",
+  "exitCode": 2,
+  "prompts": [],
+  "progress": [
+    {
+      "status": "info",
+      "message": "checking 1Password authentication"
+    }
+  ],
+  "opCalls": [
+    [
+      "whoami",
+      "--format",
+      "json"
+    ]
+  ],
+  "readCounts": {},
+  "factoryCalls": [
+    "alpha"
+  ],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

@@ -1,0 +1,22 @@
+{
+  "id": "config-marker-package-null",
+  "kind": "config",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "project": {
+      "rootMarkers": [
+        {
+          "packageJsonName": null
+        }
+      ]
+    }
+  }
+}

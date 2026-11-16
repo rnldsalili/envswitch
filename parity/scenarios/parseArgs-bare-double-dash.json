@@ -1,0 +1,8 @@
+{
+  "id": "parseArgs-bare-double-dash",
+  "kind": "parseArgs",
+  "argv": [
+    "switch",
+    "--"
+  ]
+}

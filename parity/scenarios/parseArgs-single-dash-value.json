@@ -1,0 +1,9 @@
+{
+  "id": "parseArgs-single-dash-value",
+  "kind": "parseArgs",
+  "argv": [
+    "switch",
+    "--client",
+    "-x"
+  ]
+}

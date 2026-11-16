@@ -1,0 +1,22 @@
+{
+  "id": "op-item-list-nonarray",
+  "kind": "op",
+  "method": "items",
+  "op": {
+    "responses": [
+      {
+        "argv": [
+          "item",
+          "list",
+          "--vault",
+          "alpha",
+          "--format",
+          "json"
+        ],
+        "stdout": "{}",
+        "stderr": "",
+        "exitCode": 0
+      }
+    ]
+  }
+}

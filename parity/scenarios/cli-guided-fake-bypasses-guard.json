@@ -1,0 +1,26 @@
+{
+  "id": "cli-guided-fake-bypasses-guard",
+  "kind": "cli",
+  "argv": [],
+  "isInteractive": false,
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "clients": [
+      "alpha"
+    ],
+    "environments": [
+      "local"
+    ]
+  },
+  "prompts": [
+    true
+  ]
+}

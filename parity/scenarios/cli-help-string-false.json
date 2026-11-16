@@ -1,0 +1,8 @@
+{
+  "id": "cli-help-string-false",
+  "kind": "cli",
+  "argv": [
+    "switch",
+    "--help=false"
+  ]
+}

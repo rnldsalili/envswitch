@@ -1,0 +1,63 @@
+{
+  "id": "switch-nontransactional-writes",
+  "kind": "switch",
+  "config": {
+    "project": {
+      "id": "demo-suite"
+    },
+    "clients": [
+      "alpha",
+      "beta"
+    ],
+    "environments": [
+      "local",
+      "dev"
+    ],
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      },
+      {
+        "name": "web",
+        "output": "apps/web/.env",
+        "groups": [
+          "apps"
+        ]
+      }
+    ],
+    "tags": {
+      "base": [
+        "envswitch"
+      ]
+    }
+  },
+  "op": {
+    "items": [
+      {
+        "id": "alpha",
+        "title": "alpha",
+        "tags": [
+          "envswitch",
+          "project:demo-suite",
+          "env:local",
+          "layer:shared"
+        ]
+      }
+    ],
+    "values": {
+      "alpha": {
+        "A": "1"
+      }
+    }
+  },
+  "files": [
+    {
+      "path": "apps/web/.env",
+      "type": "dir"
+    }
+  ]
+}

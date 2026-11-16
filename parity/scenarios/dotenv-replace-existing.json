@@ -1,0 +1,16 @@
+{
+  "id": "dotenv-replace-existing",
+  "kind": "dotenv",
+  "values": {
+    "A": "new"
+  },
+  "write": true,
+  "output": ".env",
+  "files": [
+    {
+      "path": ".env",
+      "content": "A=old\n",
+      "mode": 420
+    }
+  ]
+}

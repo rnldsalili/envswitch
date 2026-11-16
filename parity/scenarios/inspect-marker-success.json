@@ -1,0 +1,33 @@
+{
+  "id": "inspect-marker-success",
+  "kind": "inspect",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "project": {
+      "rootMarkers": [
+        {
+          "path": "services",
+          "packageJsonName": "demo-suite"
+        }
+      ]
+    }
+  },
+  "files": [
+    {
+      "path": "services",
+      "type": "dir"
+    },
+    {
+      "path": "package.json",
+      "content": "{\"name\":\"demo-suite\"}"
+    }
+  ]
+}

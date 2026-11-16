@@ -1,0 +1,21 @@
+{
+  "id": "cli-guided-whitespace-input",
+  "kind": "cli",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ]
+  },
+  "argv": [],
+  "prompts": [
+    "  ",
+    "local",
+    true
+  ]
+}

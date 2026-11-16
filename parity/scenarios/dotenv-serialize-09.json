@@ -1,0 +1,7 @@
+{
+  "id": "dotenv-serialize-09",
+  "kind": "dotenv",
+  "values": {
+    "K": "back\\slash"
+  }
+}

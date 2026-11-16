@@ -1,0 +1,20 @@
+{
+  "id": "op-vault-entry-null",
+  "kind": "op",
+  "method": "vaults",
+  "op": {
+    "responses": [
+      {
+        "argv": [
+          "vault",
+          "list",
+          "--format",
+          "json"
+        ],
+        "stdout": "[null]",
+        "stderr": "",
+        "exitCode": 0
+      }
+    ]
+  }
+}

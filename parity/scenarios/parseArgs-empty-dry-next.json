@@ -1,0 +1,9 @@
+{
+  "id": "parseArgs-empty-dry-next",
+  "kind": "parseArgs",
+  "argv": [
+    "switch",
+    "--dry-run",
+    ""
+  ]
+}

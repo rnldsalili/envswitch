@@ -1,0 +1,15 @@
+{
+  "id": "switch-empty-merge",
+  "kind": "switch",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ]
+  }
+}

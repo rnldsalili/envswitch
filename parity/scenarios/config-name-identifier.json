@@ -1,0 +1,12 @@
+{
+  "id": "config-name-identifier",
+  "kind": "config",
+  "config": {
+    "targets": [
+      {
+        "name": "bad name",
+        "output": ".env"
+      }
+    ]
+  }
+}

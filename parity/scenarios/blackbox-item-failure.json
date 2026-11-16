@@ -1,0 +1,30 @@
+{
+  "id": "blackbox-item-failure",
+  "kind": "blackbox",
+  "argv": [
+    "list",
+    "--vault",
+    "alpha",
+    "--config-item",
+    "cfg"
+  ],
+  "op": {
+    "responses": [
+      {
+        "argv": [
+          "item",
+          "get",
+          "cfg",
+          "--vault",
+          "alpha",
+          "--format",
+          "json",
+          "--reveal"
+        ],
+        "stdout": "DEMO_SUITE_PRIVATE",
+        "stderr": "safe item failure\n",
+        "exitCode": 3
+      }
+    ]
+  }
+}

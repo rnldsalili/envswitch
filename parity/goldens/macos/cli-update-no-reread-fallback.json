@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "id": "cli-update-no-reread-fallback",
+  "kind": "cli",
+  "divergence": "e1",
+  "stdoutBase64": "dXBkYXRlZCBlbnZzd2l0Y2ggKHVua25vd24pIC0+IHYwLjAuNQo=",
+  "stderrBase64": "ZW52c3dpdGNoIFtpbmZvXSB1cGRhdGluZyBlbnZzd2l0Y2ggKHVua25vd24gdmVyc2lvbikgLT4gdjAuMC41Cg==",
+  "exitCode": 0,
+  "prompts": [],
+  "progress": [
+    {
+      "status": "info",
+      "message": "updating envswitch (unknown version) -> v0.0.5"
+    }
+  ],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [
+    {
+      "method": "fetchLatestVersion"
+    },
+    {
+      "method": "runInstaller",
+      "scriptPath": "{APP}/scripts/install.sh",
+      "appRoot": "{TMP}/app"
+    }
+  ],
+  "files": [
+    {
+      "path": "{APP}/scripts/install.sh",
+      "kind": "file",
+      "bytesBase64": "Zml4dHVyZSBvbmx5OyBuZXZlciBleGVjdXRlZA==",
+      "mode": 420
+    }
+  ],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{APP}/scripts",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

@@ -1,0 +1,51 @@
+{
+  "id": "switch-symlink-swap-before-write",
+  "kind": "switch",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "apps/api",
+      "type": "dir"
+    }
+  ],
+  "op": {
+    "items": [
+      {
+        "id": "alpha",
+        "title": "alpha",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      }
+    ],
+    "values": {
+      "alpha": {
+        "A": "1"
+      }
+    }
+  },
+  "mutateOnRead": {
+    "item": "alpha",
+    "files": [
+      {
+        "path": "apps/api",
+        "remove": true
+      },
+      {
+        "path": "apps/api",
+        "link": "{OUTSIDE}"
+      }
+    ]
+  }
+}

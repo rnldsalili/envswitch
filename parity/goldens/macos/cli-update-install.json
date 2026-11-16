@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "id": "cli-update-install",
+  "kind": "cli",
+  "divergence": "e3",
+  "stdoutBase64": "dXBkYXRlZCBlbnZzd2l0Y2ggdjAuMC40IC0+IHYwLjAuNQo=",
+  "stderrBase64": "ZW52c3dpdGNoIFtpbmZvXSB1cGRhdGluZyBlbnZzd2l0Y2ggdjAuMC40IC0+IHYwLjAuNQo=",
+  "exitCode": 0,
+  "prompts": [],
+  "progress": [
+    {
+      "status": "info",
+      "message": "updating envswitch v0.0.4 -> v0.0.5"
+    }
+  ],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [
+    {
+      "method": "fetchLatestVersion"
+    },
+    {
+      "method": "runInstaller",
+      "scriptPath": "{APP}/scripts/install.sh",
+      "appRoot": "{TMP}/app"
+    }
+  ],
+  "files": [
+    {
+      "path": "{APP}/.version",
+      "kind": "file",
+      "bytesBase64": "djAuMC41Cg==",
+      "mode": 420
+    },
+    {
+      "path": "{APP}/scripts/install.sh",
+      "kind": "file",
+      "bytesBase64": "Zml4dHVyZSBvbmx5OyBuZXZlciBleGVjdXRlZA==",
+      "mode": 420
+    }
+  ],
+  "writtenFiles": [
+    {
+      "path": "{APP}/.version",
+      "kind": "file",
+      "bytesBase64": "djAuMC41Cg==",
+      "mode": 420
+    }
+  ],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{APP}/scripts",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

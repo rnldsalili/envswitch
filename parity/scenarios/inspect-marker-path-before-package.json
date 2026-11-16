@@ -1,0 +1,24 @@
+{
+  "id": "inspect-marker-path-before-package",
+  "kind": "inspect",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "project": {
+      "rootMarkers": [
+        {
+          "path": "missing",
+          "packageJsonName": "demo-suite"
+        }
+      ]
+    }
+  },
+  "files": []
+}

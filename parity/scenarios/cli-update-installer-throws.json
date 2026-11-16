@@ -1,0 +1,22 @@
+{
+  "id": "cli-update-installer-throws",
+  "kind": "cli",
+  "argv": [
+    "update",
+    "ignored"
+  ],
+  "files": [
+    {
+      "path": "{APP}/scripts/{INSTALLER}",
+      "content": "fixture only; never executed"
+    },
+    {
+      "path": "{APP}/.version",
+      "content": "v0.0.4\n"
+    }
+  ],
+  "update": {
+    "installerError": "demo-suite installer failure"
+  },
+  "divergence": "e2"
+}

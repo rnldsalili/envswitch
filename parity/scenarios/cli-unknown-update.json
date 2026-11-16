@@ -1,0 +1,9 @@
+{
+  "id": "cli-unknown-update",
+  "kind": "cli",
+  "argv": [
+    "update",
+    "--vault",
+    "alpha"
+  ]
+}

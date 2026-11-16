@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "id": "cli-update-same",
+  "kind": "cli",
+  "divergence": "e1",
+  "stdoutBase64": "ZW52c3dpdGNoIGlzIGFscmVhZHkgdXAgdG8gZGF0ZSAodjAuMC40KQo=",
+  "stderrBase64": "",
+  "exitCode": 0,
+  "prompts": [],
+  "progress": [],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [
+    {
+      "method": "fetchLatestVersion"
+    }
+  ],
+  "files": [
+    {
+      "path": "{APP}/.version",
+      "kind": "file",
+      "bytesBase64": "djAuMC40Cg==",
+      "mode": 420
+    },
+    {
+      "path": "{APP}/scripts/install.sh",
+      "kind": "file",
+      "bytesBase64": "Zml4dHVyZSBvbmx5OyBuZXZlciBleGVjdXRlZA==",
+      "mode": 420
+    }
+  ],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{APP}/scripts",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

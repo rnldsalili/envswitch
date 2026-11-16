@@ -1,0 +1,14 @@
+{
+  "id": "blackbox-malformed-list",
+  "kind": "blackbox",
+  "argv": [
+    "list",
+    "--vault",
+    "alpha",
+    "--config-item",
+    "cfg",
+    "clients"
+  ],
+  "configRaw": "{",
+  "divergence": "a5"
+}

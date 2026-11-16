@@ -1,0 +1,190 @@
+{
+  "id": "blackbox-switch",
+  "kind": "blackbox",
+  "argv": [
+    "switch",
+    "--vault",
+    "alpha",
+    "--config-item",
+    "cfg",
+    "--client",
+    "alpha"
+  ],
+  "config": {
+    "project": {
+      "id": "demo-suite"
+    },
+    "clients": [
+      "alpha",
+      "beta"
+    ],
+    "environments": [
+      "local",
+      "dev"
+    ],
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      },
+      {
+        "name": "web",
+        "output": "apps/web/.env",
+        "groups": [
+          "apps"
+        ]
+      }
+    ],
+    "tags": {
+      "base": [
+        "envswitch"
+      ]
+    }
+  },
+  "op": {
+    "items": [
+      {
+        "id": "shared",
+        "title": "shared",
+        "tags": [
+          "envswitch",
+          "project:demo-suite",
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "group-api",
+        "title": "api-group",
+        "tags": [
+          "envswitch",
+          "project:demo-suite",
+          "env:local",
+          "layer:group",
+          "group:apis"
+        ]
+      },
+      {
+        "id": "group-web",
+        "title": "app-group",
+        "tags": [
+          "envswitch",
+          "project:demo-suite",
+          "env:local",
+          "layer:group",
+          "group:apps"
+        ]
+      },
+      {
+        "id": "target-api",
+        "title": "api-target",
+        "tags": [
+          "envswitch",
+          "project:demo-suite",
+          "env:local",
+          "layer:target",
+          "target:api"
+        ]
+      },
+      {
+        "id": "target-web",
+        "title": "web-target",
+        "tags": [
+          "envswitch",
+          "project:demo-suite",
+          "env:local",
+          "layer:target",
+          "target:web"
+        ]
+      },
+      {
+        "id": "client",
+        "title": "alpha",
+        "tags": [
+          "envswitch",
+          "project:demo-suite",
+          "env:local",
+          "layer:client",
+          "client:alpha"
+        ]
+      },
+      {
+        "id": "ct-api",
+        "title": "alpha-api",
+        "tags": [
+          "envswitch",
+          "project:demo-suite",
+          "env:local",
+          "layer:client-target",
+          "client:alpha",
+          "group:apis"
+        ]
+      },
+      {
+        "id": "ct-web",
+        "title": "alpha-web",
+        "tags": [
+          "envswitch",
+          "project:demo-suite",
+          "env:local",
+          "layer:client-target",
+          "client:alpha",
+          "group:apps"
+        ]
+      },
+      {
+        "id": "ignored",
+        "title": "ignored",
+        "tags": [
+          "envswitch",
+          "project:demo-suite",
+          "env:local",
+          "layer:client-target",
+          "client:alpha",
+          "target:web"
+        ]
+      }
+    ],
+    "values": {
+      "shared": {
+        "COMMON": "shared",
+        "SHARED": "1"
+      },
+      "group-api": {
+        "COMMON": "api-group",
+        "GROUP_API": "1"
+      },
+      "group-web": {
+        "COMMON": "app-group",
+        "GROUP_WEB": "1"
+      },
+      "target-api": {
+        "COMMON": "api-target",
+        "TARGET_API": "1"
+      },
+      "target-web": {
+        "COMMON": "web-target",
+        "TARGET_WEB": "1"
+      },
+      "client": {
+        "COMMON": "alpha",
+        "CLIENT": "1"
+      },
+      "ct-api": {
+        "COMMON": "alpha-api",
+        "CT_API": "1"
+      },
+      "ct-web": {
+        "COMMON": "alpha-web",
+        "CT_WEB": "1"
+      },
+      "ignored": {
+        "COMMON": "ignored",
+        "IGNORED": "1"
+      }
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "id": "op-get-malformed",
+  "kind": "op",
+  "method": "config",
+  "divergence": "a5",
+  "op": {
+    "responses": [
+      {
+        "argv": [
+          "item",
+          "get",
+          "cfg",
+          "--vault",
+          "alpha",
+          "--format",
+          "json",
+          "--reveal"
+        ],
+        "stdout": "{",
+        "stderr": "",
+        "exitCode": 0
+      }
+    ]
+  }
+}

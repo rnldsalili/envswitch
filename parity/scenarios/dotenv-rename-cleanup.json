@@ -1,0 +1,15 @@
+{
+  "id": "dotenv-rename-cleanup",
+  "kind": "dotenv",
+  "values": {
+    "A": "1"
+  },
+  "write": true,
+  "output": ".env",
+  "files": [
+    {
+      "path": ".env",
+      "type": "dir"
+    }
+  ]
+}

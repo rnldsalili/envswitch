@@ -1,0 +1,9 @@
+{
+  "id": "parseArgs-unicode",
+  "kind": "parseArgs",
+  "argv": [
+    "switch",
+    "--é",
+    "α"
+  ]
+}

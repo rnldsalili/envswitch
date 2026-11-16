@@ -1,0 +1,11 @@
+{
+  "id": "cli-update-missing-installer",
+  "kind": "cli",
+  "argv": [
+    "update",
+    "ignored"
+  ],
+  "files": [],
+  "update": {},
+  "divergence": "e2"
+}

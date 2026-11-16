@@ -1,0 +1,12 @@
+{
+  "id": "path-symlink-root",
+  "kind": "path",
+  "root": "{TMP}/linked-root",
+  "output": ".env",
+  "files": [
+    {
+      "path": "{TMP}/linked-root",
+      "link": "{ROOT}"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "id": "cli-help-before-validation",
+  "kind": "cli",
+  "argv": [
+    "switch",
+    "--unknown",
+    "--help"
+  ]
+}

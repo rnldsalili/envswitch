@@ -1,0 +1,12 @@
+{
+  "id": "config-output-space",
+  "kind": "config",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": " "
+      }
+    ]
+  }
+}

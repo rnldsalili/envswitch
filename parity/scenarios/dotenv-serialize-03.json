@@ -1,0 +1,7 @@
+{
+  "id": "dotenv-serialize-03",
+  "kind": "dotenv",
+  "values": {
+    "K": "two words"
+  }
+}

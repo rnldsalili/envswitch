@@ -1,0 +1,77 @@
+import { describe, test, expect } from "bun:test";
+import { readFile, readdir, mkdtemp, writeFile, chmod, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { differences } from "./diff/compare.ts";
+import { runBlackbox } from "./blackbox/run.ts";
+import { responsesFor } from "./fixture.ts";
+const os = ({ darwin: "macos", linux: "linux", win32: "windows" } as Record<string, string>)[process.platform];
+const dir = join(import.meta.dir, "goldens", os);
+const golden = async (id: string) => JSON.parse(await readFile(join(dir, `${id}.json`), "utf8"));
+const bytes = (file: any) => Buffer.from(file.bytesBase64, "base64").toString();
+
+describe("parity harness invariants", () => {
+  test("diff preserves array order, empty versus missing, ANSI, CR and trailing LF", () => {
+    expect(differences({ x: ["a", "b"] }, { x: ["b", "a"] })).toHaveLength(2);
+    expect(differences({ x: "" }, {})).toHaveLength(1);
+    for (const value of ["a\r\n", "a\n\n", "\x1b[32ma\x1b[0m\n"]) expect(differences({ stdoutBase64: Buffer.from(value).toString("base64") }, { stdoutBase64: Buffer.from("a\n").toString("base64") })).toHaveLength(1);
+  });
+  test("explicit fake responses override generated defaults", () => {
+    const argv = ["whoami", "--format", "json"];
+    const responses = responsesFor({ op: { responses: [{ argv, stdout: "alpha", exitCode: 7 }] } });
+    expect(responses.filter(r => JSON.stringify(r.argv) === JSON.stringify(argv))).toEqual([{ argv, stdout: "alpha", stderr: "", exitCode: 7 }]);
+  });
+  test("missing native fake aborts before CLI execution", async () => {
+    await expect(runBlackbox({ id: "guard", kind: "blackbox" }, ["must-not-execute"], "/missing-envswitch-native-fake/op")).rejects.toThrow("native fake-op missing");
+  });
+  test.skipIf(process.platform === "win32")("failed handshake aborts before CLI execution", async () => {
+    const temp = await mkdtemp(join(tmpdir(), "envswitch-handshake-check-"));
+    try {
+      const op = join(temp, "op"); await writeFile(op, '#!/bin/sh\nprintf "wrong-token\\n"\n'); await chmod(op, 0o755);
+      await expect(runBlackbox({ id: "guard", kind: "blackbox" }, ["must-not-execute"], op)).rejects.toThrow("fake-op handshake failed");
+    } finally { await rm(temp, { recursive: true, force: true }); }
+  });
+  test("all OS goldens contain required fields, stable paths and no temp leftovers", async () => {
+    const schema = await Bun.file(join(import.meta.dir, "transcript.schema.json")).json();
+    const files = (await readdir(dir)).filter(f => f.endsWith(".json") && !f.startsWith("_"));
+    expect(files.length).toBeGreaterThan(400);
+    for (const file of files) {
+      const t = await Bun.file(join(dir, file)).json();
+      expect(Object.keys(t).sort()).toEqual(schema.required.toSorted());
+      expect(t.schemaVersion).toBe(1); expect(t.leftoverTempFiles).toEqual([]);
+      const decoded = [JSON.stringify(t), Buffer.from(t.stdoutBase64, "base64").toString(), Buffer.from(t.stderrBase64, "base64").toString()].join("\n");
+      expect(decoded).not.toMatch(/envswitch-parity-[A-Za-z0-9]{6}/);
+      expect(t.files.some((f: any) => f.path.includes("/bun/@t@/"))).toBe(false);
+      expect(decoded).not.toMatch(/unconfigured fake-op|missing scripted answer|unused scripted answer|barrier timed out/);
+    }
+  });
+  test("collation goldens assert winning bytes, including stable ties", async () => {
+    for (const [name, winner] of Object.entries({ "accent-winner": "0:z", "canonical-equal": "1:e\u0301", "punctuation-winner": "0:-x", "case-winner": "0:A", "numeric-winner": "0:item2", "equal-title-api-order": "2:same", expanded: "24:中", "non-latin": "0:中" })) {
+      const t = await golden(`switch-collation-${name}`);
+      expect(t.exitCode).toBe(0); expect(bytes(t.writtenFiles[0])).toBe(`WINNER=${winner}\n`);
+    }
+  });
+  test("cache reads once across targets and library stays silent", async () => {
+    const t = await golden("switch-all-cache");
+    expect(Object.values(t.readCounts)).toHaveLength(8);
+    expect(Object.values(t.readCounts).every(v => v === 1)).toBe(true);
+    expect(t.stdoutBase64).toBe(""); expect(t.stderrBase64).toBe("");
+    const silent = await golden("switch-silent-library"); expect(silent.progress).toEqual([]);
+  });
+  test("serialization failure preserves old bytes and write failure removes the temp file", async () => {
+    const invalid = await golden("dotenv-invalid-preserves-existing");
+    expect(invalid.exitCode).toBe(2); expect(bytes(invalid.files[0])).toBe("EXISTING=1\n"); expect(invalid.writtenFiles).toEqual([]);
+    const failed = await golden("dotenv-rename-cleanup"); expect(failed.exitCode).toBe(2); expect(failed.leftoverTempFiles).toEqual([]);
+  });
+  test("black-box failures never disclose command stdout", async () => {
+    const t = await golden("blackbox-failure-stdout-secret");
+    expect(t.exitCode).toBe(2); expect(t.stdoutBase64).toBe("");
+    const error = Buffer.from(t.stderrBase64, "base64").toString();
+    expect(error).toContain("safe failure"); expect(error).not.toContain("DEMO_SUITE_PRIVATE");
+  });
+  test("parser empty-next errata and scope terminators stay covered", async () => {
+    const t = await golden("parseArgs-empty-help-next");
+    expect(t.result.flags.help).toBe(true); expect(t.result.positional).toEqual([""]);
+    for (const term of ["cr", "lf", "ls", "ps"]) for (const scope of ["client", "target", "group"]) expect((await golden(`classify-scope-${scope}-${term}-end`)).result).toBe("shared");
+  });
+});

@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "id": "blackbox-maxbuffer-failure",
+  "kind": "blackbox",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoIFtpbmZvXSBjaGVja2luZyAxUGFzc3dvcmQgYXV0aGVudGljYXRpb24KZW52c3dpdGNoOiBzdGRvdXQgbWF4QnVmZmVyIGxlbmd0aCBleGNlZWRlZAo=",
+  "exitCode": 2,
+  "prompts": [],
+  "progress": [
+    {
+      "status": "info",
+      "message": "checking 1Password authentication"
+    }
+  ],
+  "opCalls": [
+    [
+      "whoami",
+      "--format",
+      "json"
+    ]
+  ],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

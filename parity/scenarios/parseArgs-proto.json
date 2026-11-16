@@ -1,0 +1,10 @@
+{
+  "id": "parseArgs-proto",
+  "kind": "parseArgs",
+  "argv": [
+    "switch",
+    "--__proto__",
+    "x"
+  ],
+  "divergence": "a3"
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "envswitch parity transcript v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "kind", "divergence", "stdoutBase64", "stderrBase64", "exitCode", "prompts", "progress", "opCalls", "readCounts", "factoryCalls", "updateCalls", "files", "writtenFiles", "directories", "leftoverTempFiles", "result"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "type": "string" },
+    "kind": { "enum": ["parseArgs", "formatProgressEvent", "cli", "switch", "inspect", "classify", "blackbox", "config", "tags", "path", "dotenv", "op"] },
+    "divergence": { "type": ["string", "null"] },
+    "stdoutBase64": { "type": "string", "contentEncoding": "base64" },
+    "stderrBase64": { "type": "string", "contentEncoding": "base64" },
+    "exitCode": { "type": "integer" },
+    "prompts": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["kind", "message", "choices", "default", "required"], "properties": {
+      "kind": { "enum": ["select", "input"] }, "message": { "type": "string" },
+      "choices": { "type": ["array", "null"], "items": { "type": "object", "required": ["label", "value"], "properties": { "label": { "type": "string" }, "value": {} } } },
+      "default": {}, "required": { "type": ["boolean", "null"] }
+    } } },
+    "progress": { "type": "array", "items": { "type": "object", "required": ["status", "message"], "properties": { "status": { "enum": ["info", "done", "dry-run"] }, "message": { "type": "string" } } } },
+    "opCalls": { "type": "array", "items": { "type": "array", "items": { "type": "string" } } },
+    "readCounts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 1 } },
+    "factoryCalls": { "type": "array", "items": { "type": "string" } },
+    "updateCalls": { "type": "array", "items": { "type": "object", "required": ["method"], "properties": { "method": { "enum": ["fetchLatestVersion", "runInstaller"] }, "scriptPath": { "type": "string" }, "appRoot": { "type": "string" } } } },
+    "files": { "type": "array", "items": { "$ref": "#/$defs/file" } },
+    "writtenFiles": { "type": "array", "items": { "$ref": "#/$defs/file" } },
+    "directories": { "type": "array", "items": { "type": "object", "required": ["path", "mode"], "properties": { "path": { "type": "string" }, "mode": { "type": ["integer", "null"] } } } },
+    "leftoverTempFiles": { "type": "array", "items": { "type": "string" } },
+    "result": {}
+  },
+  "$defs": { "file": { "type": "object", "required": ["path", "kind", "mode"], "properties": { "path": { "type": "string" }, "kind": { "enum": ["file", "symlink"] }, "bytesBase64": { "type": "string", "contentEncoding": "base64" }, "target": { "type": "string" }, "mode": { "type": ["integer", "null"] } } } }
+}

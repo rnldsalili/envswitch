@@ -1,0 +1,25 @@
+{
+  "id": "blackbox-failure-empty-stderr",
+  "kind": "blackbox",
+  "argv": [
+    "doctor",
+    "--vault",
+    "alpha",
+    "--config-item",
+    "cfg"
+  ],
+  "op": {
+    "responses": [
+      {
+        "argv": [
+          "whoami",
+          "--format",
+          "json"
+        ],
+        "stdout": "DEMO_SUITE_PRIVATE",
+        "stderr": "",
+        "exitCode": 7
+      }
+    ]
+  }
+}

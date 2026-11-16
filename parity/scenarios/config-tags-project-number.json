@@ -1,0 +1,18 @@
+{
+  "id": "config-tags-project-number",
+  "kind": "config",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "tags": {
+      "project": 3
+    }
+  }
+}

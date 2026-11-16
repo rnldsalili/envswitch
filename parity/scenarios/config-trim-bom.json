@@ -1,0 +1,12 @@
+{
+  "id": "config-trim-bom",
+  "kind": "config",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "﻿"
+      }
+    ]
+  }
+}

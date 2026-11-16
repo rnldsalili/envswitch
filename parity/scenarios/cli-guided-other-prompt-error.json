@@ -1,0 +1,59 @@
+{
+  "id": "cli-guided-other-prompt-error",
+  "kind": "cli",
+  "config": {
+    "project": {
+      "id": "demo-suite"
+    },
+    "clients": [
+      "alpha",
+      "beta"
+    ],
+    "environments": [
+      "local",
+      "dev"
+    ],
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      },
+      {
+        "name": "web",
+        "output": "apps/web/.env",
+        "groups": [
+          "apps"
+        ]
+      }
+    ],
+    "tags": {
+      "base": [
+        "envswitch"
+      ]
+    }
+  },
+  "argv": [],
+  "op": {
+    "vaults": [
+      {
+        "id": "alpha",
+        "name": "alpha vault"
+      },
+      {
+        "id": "beta",
+        "name": "beta vault"
+      }
+    ]
+  },
+  "prompts": [
+    {
+      "error": {
+        "name": "Error",
+        "message": "demo-suite prompt failure"
+      }
+    }
+  ]
+}

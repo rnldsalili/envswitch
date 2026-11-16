@@ -1,0 +1,20 @@
+{
+  "id": "op-vault-fallback",
+  "kind": "op",
+  "method": "vaults",
+  "op": {
+    "responses": [
+      {
+        "argv": [
+          "vault",
+          "list",
+          "--format",
+          "json"
+        ],
+        "stdout": "[{\"id\":\"alpha\"},{\"name\":\"beta\"}]",
+        "stderr": "",
+        "exitCode": 0
+      }
+    ]
+  }
+}

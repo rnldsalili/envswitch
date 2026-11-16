@@ -1,0 +1,22 @@
+{
+  "id": "op-item-list-null-entry",
+  "kind": "op",
+  "method": "items",
+  "op": {
+    "responses": [
+      {
+        "argv": [
+          "item",
+          "list",
+          "--vault",
+          "alpha",
+          "--format",
+          "json"
+        ],
+        "stdout": "[null]",
+        "stderr": "",
+        "exitCode": 0
+      }
+    ]
+  }
+}

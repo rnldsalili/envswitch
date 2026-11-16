@@ -1,0 +1,8 @@
+{
+  "id": "cli-required-order",
+  "kind": "cli",
+  "argv": [
+    "switch",
+    "--env"
+  ]
+}

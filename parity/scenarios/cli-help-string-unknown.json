@@ -1,0 +1,8 @@
+{
+  "id": "cli-help-string-unknown",
+  "kind": "cli",
+  "argv": [
+    "foo",
+    "--help=1"
+  ]
+}

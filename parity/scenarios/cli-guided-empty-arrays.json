@@ -1,0 +1,23 @@
+{
+  "id": "cli-guided-empty-arrays",
+  "kind": "cli",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "clients": [],
+    "environments": []
+  },
+  "argv": [],
+  "prompts": [
+    "alpha",
+    "local",
+    true
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "id": "config-groups-null",
+  "kind": "config",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": null
+      }
+    ]
+  }
+}

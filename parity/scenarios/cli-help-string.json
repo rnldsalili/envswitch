@@ -1,0 +1,9 @@
+{
+  "id": "cli-help-string",
+  "kind": "cli",
+  "argv": [
+    "switch",
+    "--help",
+    "me"
+  ]
+}

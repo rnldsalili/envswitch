@@ -1,0 +1,10 @@
+{
+  "id": "dotenv-write-mode-0",
+  "kind": "dotenv",
+  "values": {
+    "TOKEN": "alpha",
+    "NAME": "demo-suite"
+  },
+  "write": true,
+  "umask": 0
+}

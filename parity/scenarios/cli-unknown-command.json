@@ -1,0 +1,7 @@
+{
+  "id": "cli-unknown-command",
+  "kind": "cli",
+  "argv": [
+    "foo"
+  ]
+}

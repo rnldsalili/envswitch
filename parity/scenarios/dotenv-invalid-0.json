@@ -1,0 +1,7 @@
+{
+  "id": "dotenv-invalid-0",
+  "kind": "dotenv",
+  "values": {
+    "BAD-KEY": "alpha"
+  }
+}

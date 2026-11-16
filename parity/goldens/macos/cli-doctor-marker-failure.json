@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "id": "cli-doctor-marker-failure",
+  "kind": "cli",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoIFtpbmZvXSBjaGVja2luZyAxUGFzc3dvcmQgYXV0aGVudGljYXRpb24KZW52c3dpdGNoIFtkb25lXSAxUGFzc3dvcmQgYXV0aGVudGljYXRpb24gb2sKZW52c3dpdGNoIFtpbmZvXSByZWFkaW5nIGNvbmZpZyBpdGVtIGNmZwplbnZzd2l0Y2ggW2RvbmVdIGxvYWRlZCBjb25maWcgaXRlbSBjZmcKZW52c3dpdGNoIFtpbmZvXSBpbnNwZWN0aW5nIHByb2plY3Qgcm9vdCB7Uk9PVH0KZW52c3dpdGNoOiBwcm9qZWN0IHJvb3QgbWFya2VyIHBhdGggZG9lcyBub3QgZXhpc3Q6IG1pc3NpbmcK",
+  "exitCode": 1,
+  "prompts": [],
+  "progress": [
+    {
+      "status": "info",
+      "message": "checking 1Password authentication"
+    },
+    {
+      "status": "done",
+      "message": "1Password authentication ok"
+    },
+    {
+      "status": "info",
+      "message": "reading config item cfg"
+    },
+    {
+      "status": "done",
+      "message": "loaded config item cfg"
+    },
+    {
+      "status": "info",
+      "message": "inspecting project root {ROOT}"
+    }
+  ],
+  "opCalls": [
+    [
+      "whoami",
+      "--format",
+      "json"
+    ],
+    [
+      "item",
+      "get",
+      "cfg",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ]
+  ],
+  "readCounts": {
+    "alpha/cfg": 1
+  },
+  "factoryCalls": [
+    "alpha"
+  ],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

@@ -1,0 +1,17 @@
+{
+  "id": "op-config-untrimmed-label",
+  "kind": "op",
+  "method": "config",
+  "op": {
+    "details": {
+      "cfg": {
+        "fields": [
+          {
+            "label": " config",
+            "value": "{}"
+          }
+        ]
+      }
+    }
+  }
+}

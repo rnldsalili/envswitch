@@ -1,0 +1,29 @@
+{
+  "id": "cli-doctor-marker-failure",
+  "kind": "cli",
+  "argv": [
+    "doctor",
+    "--vault",
+    "alpha",
+    "--config-item",
+    "cfg"
+  ],
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "project": {
+      "rootMarkers": [
+        {
+          "path": "missing"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "id": "config-name-empty",
+  "kind": "config",
+  "config": {
+    "targets": [
+      {
+        "name": "",
+        "output": ".env"
+      }
+    ]
+  }
+}

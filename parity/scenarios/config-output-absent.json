@@ -1,0 +1,11 @@
+{
+  "id": "config-output-absent",
+  "kind": "config",
+  "config": {
+    "targets": [
+      {
+        "name": "api"
+      }
+    ]
+  }
+}

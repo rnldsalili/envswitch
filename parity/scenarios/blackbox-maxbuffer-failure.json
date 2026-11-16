@@ -1,0 +1,28 @@
+{
+  "id": "blackbox-maxbuffer-failure",
+  "kind": "blackbox",
+  "argv": [
+    "doctor",
+    "--vault",
+    "alpha",
+    "--config-item",
+    "cfg"
+  ],
+  "op": {
+    "responses": [
+      {
+        "argv": [
+          "whoami",
+          "--format",
+          "json"
+        ],
+        "stdoutRepeat": {
+          "value": "x",
+          "count": 52428801
+        },
+        "stderr": "",
+        "exitCode": 0
+      }
+    ]
+  }
+}

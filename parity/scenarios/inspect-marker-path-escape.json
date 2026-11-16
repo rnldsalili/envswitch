@@ -1,0 +1,23 @@
+{
+  "id": "inspect-marker-path-escape",
+  "kind": "inspect",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "project": {
+      "rootMarkers": [
+        {
+          "path": "..env"
+        }
+      ]
+    }
+  },
+  "files": []
+}

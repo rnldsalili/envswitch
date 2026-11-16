@@ -1,0 +1,8 @@
+{
+  "id": "cli-bare-double-dash",
+  "kind": "cli",
+  "argv": [
+    "switch",
+    "--"
+  ]
+}

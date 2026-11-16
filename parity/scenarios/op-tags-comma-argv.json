@@ -1,0 +1,12 @@
+{
+  "id": "op-tags-comma-argv",
+  "kind": "op",
+  "method": "items",
+  "tags": [
+    "a,b",
+    "c"
+  ],
+  "candidateTags": [
+    "a,b,c"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "switch-empty-lists-allow",
+  "kind": "switch",
+  "candidateTags": [
+    "env:other"
+  ],
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "clients": [],
+    "environments": []
+  },
+  "options": {
+    "env": "other",
+    "client": "other"
+  }
+}

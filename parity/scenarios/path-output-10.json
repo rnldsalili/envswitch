@@ -1,0 +1,5 @@
+{
+  "id": "path-output-10",
+  "kind": "path",
+  "output": "..foo/.env"
+}

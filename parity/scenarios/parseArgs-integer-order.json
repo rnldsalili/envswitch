@@ -1,0 +1,11 @@
+{
+  "id": "parseArgs-integer-order",
+  "kind": "parseArgs",
+  "argv": [
+    "switch",
+    "--z",
+    "--1",
+    "a"
+  ],
+  "divergence": "a4"
+}

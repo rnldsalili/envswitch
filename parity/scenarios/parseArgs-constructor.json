@@ -1,0 +1,9 @@
+{
+  "id": "parseArgs-constructor",
+  "kind": "parseArgs",
+  "argv": [
+    "switch",
+    "--constructor",
+    "x"
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "id": "cli-guided-skip-unreadable",
+  "kind": "cli",
+  "config": {
+    "project": {
+      "id": "demo-suite"
+    },
+    "clients": [
+      "alpha",
+      "beta"
+    ],
+    "environments": [
+      "local",
+      "dev"
+    ],
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      },
+      {
+        "name": "web",
+        "output": "apps/web/.env",
+        "groups": [
+          "apps"
+        ]
+      }
+    ],
+    "tags": {
+      "base": [
+        "envswitch"
+      ]
+    }
+  },
+  "argv": [],
+  "parallelScans": 2,
+  "op": {
+    "vaults": [
+      {
+        "id": "alpha",
+        "name": "alpha vault"
+      },
+      {
+        "id": "beta",
+        "name": "beta vault"
+      }
+    ],
+    "responses": [
+      {
+        "argv": [
+          "item",
+          "list",
+          "--vault",
+          "beta",
+          "--format",
+          "json",
+          "--tags",
+          "envswitch-config"
+        ],
+        "stdout": "",
+        "stderr": "unreadable",
+        "exitCode": 1
+      }
+    ]
+  },
+  "prompts": [
+    "alpha",
+    "local",
+    "all",
+    true
+  ]
+}

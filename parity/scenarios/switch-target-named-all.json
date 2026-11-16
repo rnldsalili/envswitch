@@ -1,0 +1,22 @@
+{
+  "id": "switch-target-named-all",
+  "kind": "switch",
+  "config": {
+    "targets": [
+      {
+        "name": "all",
+        "output": "all/.env"
+      },
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ]
+  },
+  "options": {
+    "targetName": "all"
+  }
+}

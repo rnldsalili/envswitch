@@ -1,0 +1,9 @@
+{
+  "id": "formatProgressEvent-done-color",
+  "kind": "formatProgressEvent",
+  "event": {
+    "status": "done",
+    "message": "demo-suite\r\nalpha"
+  },
+  "color": true
+}

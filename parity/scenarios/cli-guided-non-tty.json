@@ -1,0 +1,6 @@
+{
+  "id": "cli-guided-non-tty",
+  "kind": "cli",
+  "argv": [],
+  "isInteractive": false
+}

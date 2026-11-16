@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "id": "dotenv-rename-cleanup",
+  "kind": "dotenv",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoOiBFSVNESVI6IGlsbGVnYWwgb3BlcmF0aW9uIG9uIGEgZGlyZWN0b3J5LCByZW5hbWUgJ3tST09UfS8uLmVudi57UElEfS57VVVJRH0udG1wJyAtPiAne1JPT1R9Ly5lbnYnCg==",
+  "exitCode": 2,
+  "prompts": [],
+  "progress": [],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}/.env",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

@@ -1,0 +1,25 @@
+{
+  "id": "cli-guided-auto-single",
+  "kind": "cli",
+  "argv": [],
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "clients": [
+      "alpha"
+    ],
+    "environments": [
+      "local"
+    ]
+  },
+  "prompts": [
+    true
+  ]
+}

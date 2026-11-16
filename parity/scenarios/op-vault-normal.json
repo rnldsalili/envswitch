@@ -1,0 +1,20 @@
+{
+  "id": "op-vault-normal",
+  "kind": "op",
+  "method": "vaults",
+  "op": {
+    "responses": [
+      {
+        "argv": [
+          "vault",
+          "list",
+          "--format",
+          "json"
+        ],
+        "stdout": "[{\"id\":\"alpha\",\"name\":\"alpha\"}]",
+        "stderr": "",
+        "exitCode": 0
+      }
+    ]
+  }
+}

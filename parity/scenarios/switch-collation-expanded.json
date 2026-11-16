@@ -1,0 +1,308 @@
+{
+  "id": "switch-collation-expanded",
+  "kind": "switch",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ]
+  },
+  "divergence": "g1",
+  "op": {
+    "items": [
+      {
+        "id": "alpha-0",
+        "title": "_x",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha-1",
+        "title": "-x",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha-2",
+        "title": "~t",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha-3",
+        "title": "1abc",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha-4",
+        "title": "a",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha-5",
+        "title": "A",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha-6",
+        "title": "a b",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha-7",
+        "title": "a.b",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha-8",
+        "title": "ab",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha-9",
+        "title": "alpha",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha-10",
+        "title": "b",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha-11",
+        "title": "B",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha-12",
+        "title": "éclair",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha-13",
+        "title": "ezra",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha-14",
+        "title": "item10",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha-15",
+        "title": "item2",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha-16",
+        "title": "x_1",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha-17",
+        "title": "x-1",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha-18",
+        "title": "Zeta",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha-19",
+        "title": "ä",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha-20",
+        "title": "z",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha-21",
+        "title": "é",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha-22",
+        "title": "é",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha-23",
+        "title": "Ω",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha-24",
+        "title": "中",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "alpha-25",
+        "title": "あ",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      }
+    ],
+    "values": {
+      "alpha-0": {
+        "WINNER": "0:_x"
+      },
+      "alpha-1": {
+        "WINNER": "1:-x"
+      },
+      "alpha-2": {
+        "WINNER": "2:~t"
+      },
+      "alpha-3": {
+        "WINNER": "3:1abc"
+      },
+      "alpha-4": {
+        "WINNER": "4:a"
+      },
+      "alpha-5": {
+        "WINNER": "5:A"
+      },
+      "alpha-6": {
+        "WINNER": "6:a b"
+      },
+      "alpha-7": {
+        "WINNER": "7:a.b"
+      },
+      "alpha-8": {
+        "WINNER": "8:ab"
+      },
+      "alpha-9": {
+        "WINNER": "9:alpha"
+      },
+      "alpha-10": {
+        "WINNER": "10:b"
+      },
+      "alpha-11": {
+        "WINNER": "11:B"
+      },
+      "alpha-12": {
+        "WINNER": "12:éclair"
+      },
+      "alpha-13": {
+        "WINNER": "13:ezra"
+      },
+      "alpha-14": {
+        "WINNER": "14:item10"
+      },
+      "alpha-15": {
+        "WINNER": "15:item2"
+      },
+      "alpha-16": {
+        "WINNER": "16:x_1"
+      },
+      "alpha-17": {
+        "WINNER": "17:x-1"
+      },
+      "alpha-18": {
+        "WINNER": "18:Zeta"
+      },
+      "alpha-19": {
+        "WINNER": "19:ä"
+      },
+      "alpha-20": {
+        "WINNER": "20:z"
+      },
+      "alpha-21": {
+        "WINNER": "21:é"
+      },
+      "alpha-22": {
+        "WINNER": "22:é"
+      },
+      "alpha-23": {
+        "WINNER": "23:Ω"
+      },
+      "alpha-24": {
+        "WINNER": "24:中"
+      },
+      "alpha-25": {
+        "WINNER": "25:あ"
+      }
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "id": "cli-flag-command",
+  "kind": "cli",
+  "argv": [
+    "--vault",
+    "alpha",
+    "switch"
+  ]
+}

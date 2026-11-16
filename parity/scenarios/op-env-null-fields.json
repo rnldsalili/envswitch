@@ -1,0 +1,18 @@
+{
+  "id": "op-env-null-fields",
+  "kind": "op",
+  "method": "env",
+  "item": {
+    "id": "alpha",
+    "title": "alpha"
+  },
+  "op": {
+    "details": {
+      "alpha": {
+        "fields": [
+          null
+        ]
+      }
+    }
+  }
+}

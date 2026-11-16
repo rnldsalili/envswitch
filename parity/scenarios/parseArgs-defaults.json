@@ -1,0 +1,13 @@
+{
+  "id": "parseArgs-defaults",
+  "kind": "parseArgs",
+  "argv": [
+    "switch",
+    "--vault",
+    "alpha",
+    "--config-item",
+    "cfg",
+    "--client",
+    "alpha"
+  ]
+}

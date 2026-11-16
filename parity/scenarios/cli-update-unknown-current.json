@@ -1,0 +1,19 @@
+{
+  "id": "cli-update-unknown-current",
+  "kind": "cli",
+  "argv": [
+    "update",
+    "ignored"
+  ],
+  "files": [
+    {
+      "path": "{APP}/scripts/{INSTALLER}",
+      "content": "fixture only; never executed"
+    }
+  ],
+  "update": {
+    "latest": "v0.0.5",
+    "updatedVersion": "v0.0.5\n"
+  },
+  "divergence": "e1"
+}

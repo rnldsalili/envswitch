@@ -1,0 +1,20 @@
+{
+  "id": "config-validation-order",
+  "kind": "config",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      },
+      {
+        "name": "a b",
+        "output": "x"
+      }
+    ],
+    "project": 3
+  }
+}

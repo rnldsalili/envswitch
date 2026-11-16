@@ -1,0 +1,23 @@
+{
+  "id": "cli-guided-input-fallback",
+  "kind": "cli",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ]
+  },
+  "argv": [],
+  "prompts": [
+    "alpha",
+    {
+      "default": true
+    },
+    true
+  ]
+}

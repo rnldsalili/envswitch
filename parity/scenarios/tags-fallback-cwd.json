@@ -1,0 +1,23 @@
+{
+  "id": "tags-fallback-cwd",
+  "kind": "tags",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "tags": {
+      "base": [
+        "p:{project}"
+      ]
+    }
+  },
+  "params": {
+    "env": "local"
+  }
+}

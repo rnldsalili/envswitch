@@ -1,0 +1,9 @@
+{
+  "id": "formatProgressEvent-dry-run-color",
+  "kind": "formatProgressEvent",
+  "event": {
+    "status": "dry-run",
+    "message": "demo-suite\r\nalpha"
+  },
+  "color": true
+}

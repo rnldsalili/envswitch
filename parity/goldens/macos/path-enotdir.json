@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "id": "path-enotdir",
+  "kind": "path",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoOiBFTk9URElSOiBub3QgYSBkaXJlY3RvcnksIGxzdGF0ICd7Uk9PVH0vYWZpbGUvc3ViJwo=",
+  "exitCode": 2,
+  "prompts": [],
+  "progress": [],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [
+    {
+      "path": "{ROOT}/afile",
+      "kind": "file",
+      "bytesBase64": "YWxwaGE=",
+      "mode": 420
+    }
+  ],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}/app",
+      "mode": 493
+    },
+    {
+      "path": "{APP}",
+      "mode": 493
+    },
+    {
+      "path": "{ROOT}",
+      "mode": 493
+    },
+    {
+      "path": "{HOME}",
+      "mode": 493
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": 493
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

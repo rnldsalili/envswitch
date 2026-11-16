@@ -1,0 +1,27 @@
+{
+  "id": "tags-cwd-differs-root",
+  "kind": "tags",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "tags": {
+      "base": [
+        "p:{project}"
+      ]
+    }
+  },
+  "cwd": "{TMP}/alpha",
+  "files": [
+    {
+      "path": "{TMP}/alpha",
+      "type": "dir"
+    }
+  ]
+}

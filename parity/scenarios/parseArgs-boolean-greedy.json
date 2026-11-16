@@ -1,0 +1,9 @@
+{
+  "id": "parseArgs-boolean-greedy",
+  "kind": "parseArgs",
+  "argv": [
+    "switch",
+    "--dry-run",
+    "foo"
+  ]
+}

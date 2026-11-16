@@ -1,0 +1,8 @@
+{
+  "id": "dotenv-invalid-sorted-first",
+  "kind": "dotenv",
+  "values": {
+    "B-1": "alpha",
+    "A-1": "beta"
+  }
+}

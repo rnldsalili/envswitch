@@ -1,0 +1,20 @@
+{
+  "id": "op-vault-entry-number",
+  "kind": "op",
+  "method": "vaults",
+  "op": {
+    "responses": [
+      {
+        "argv": [
+          "vault",
+          "list",
+          "--format",
+          "json"
+        ],
+        "stdout": "[{\"id\":1,\"name\":false}]",
+        "stderr": "",
+        "exitCode": 0
+      }
+    ]
+  }
+}

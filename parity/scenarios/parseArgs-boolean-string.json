@@ -1,0 +1,8 @@
+{
+  "id": "parseArgs-boolean-string",
+  "kind": "parseArgs",
+  "argv": [
+    "switch",
+    "--dry-run=false"
+  ]
+}

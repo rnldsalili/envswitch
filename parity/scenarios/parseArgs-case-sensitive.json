@@ -1,0 +1,9 @@
+{
+  "id": "parseArgs-case-sensitive",
+  "kind": "parseArgs",
+  "argv": [
+    "switch",
+    "--VAULT",
+    "alpha"
+  ]
+}

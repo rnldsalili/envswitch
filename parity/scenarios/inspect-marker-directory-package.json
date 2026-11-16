@@ -1,0 +1,28 @@
+{
+  "id": "inspect-marker-directory-package",
+  "kind": "inspect",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "project": {
+      "rootMarkers": [
+        {
+          "packageJsonName": "demo-suite"
+        }
+      ]
+    }
+  },
+  "files": [
+    {
+      "path": "package.json",
+      "type": "dir"
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "id": "switch-overwrite-identical-and-reverted",
+  "kind": "switch",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ]
+  },
+  "op": {
+    "items": [
+      {
+        "id": "a",
+        "title": "a",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "b",
+        "title": "b",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      },
+      {
+        "id": "c",
+        "title": "c",
+        "tags": [
+          "env:local",
+          "layer:shared"
+        ]
+      }
+    ],
+    "values": {
+      "a": {
+        "Z": "1",
+        "A": "x",
+        "SAME": "same"
+      },
+      "b": {
+        "Z": "2",
+        "A": "y",
+        "SAME": "same"
+      },
+      "c": {
+        "Z": "1",
+        "A": "x",
+        "SAME": "same"
+      }
+    }
+  }
+}

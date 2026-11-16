@@ -1,0 +1,8 @@
+{
+  "id": "path-windows-6",
+  "kind": "path",
+  "output": "{DRIVE}",
+  "platforms": [
+    "windows"
+  ]
+}

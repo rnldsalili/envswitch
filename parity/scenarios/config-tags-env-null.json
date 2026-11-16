@@ -1,0 +1,18 @@
+{
+  "id": "config-tags-env-null",
+  "kind": "config",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "tags": {
+      "env": null
+    }
+  }
+}

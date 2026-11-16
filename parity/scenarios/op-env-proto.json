@@ -1,0 +1,26 @@
+{
+  "id": "op-env-proto",
+  "kind": "op",
+  "method": "env",
+  "item": {
+    "id": "alpha",
+    "title": "alpha"
+  },
+  "divergence": "a2",
+  "op": {
+    "details": {
+      "alpha": {
+        "fields": [
+          {
+            "label": "__proto__",
+            "value": "alpha"
+          },
+          {
+            "label": "A",
+            "value": "1"
+          }
+        ]
+      }
+    }
+  }
+}

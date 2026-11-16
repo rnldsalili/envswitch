@@ -1,0 +1,9 @@
+{
+  "id": "parseArgs-empty-help-next",
+  "kind": "parseArgs",
+  "argv": [
+    "switch",
+    "--help",
+    ""
+  ]
+}

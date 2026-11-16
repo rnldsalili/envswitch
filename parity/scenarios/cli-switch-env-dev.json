@@ -1,0 +1,52 @@
+{
+  "id": "cli-switch-env-dev",
+  "kind": "cli",
+  "argv": [
+    "switch",
+    "--vault",
+    "alpha",
+    "--config-item",
+    "cfg",
+    "--client",
+    "alpha",
+    "--env",
+    "dev",
+    "--target",
+    "web",
+    "--dry-run"
+  ],
+  "config": {
+    "project": {
+      "id": "demo-suite"
+    },
+    "clients": [
+      "alpha",
+      "beta"
+    ],
+    "environments": [
+      "local",
+      "dev"
+    ],
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      },
+      {
+        "name": "web",
+        "output": "apps/web/.env",
+        "groups": [
+          "apps"
+        ]
+      }
+    ],
+    "tags": {
+      "base": [
+        "envswitch"
+      ]
+    }
+  }
+}

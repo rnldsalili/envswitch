@@ -1,0 +1,6 @@
+{
+  "id": "path-relative-root",
+  "kind": "path",
+  "root": "relative-root",
+  "output": "apps/api/.env"
+}

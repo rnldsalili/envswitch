@@ -1,0 +1,18 @@
+{
+  "id": "config-clients-4",
+  "kind": "config",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "clients": [
+      "  "
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "id": "inspect-marker-wrong-name",
+  "kind": "inspect",
+  "config": {
+    "targets": [
+      {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      }
+    ],
+    "project": {
+      "rootMarkers": [
+        {
+          "packageJsonName": "demo-suite"
+        }
+      ]
+    }
+  },
+  "files": [
+    {
+      "path": "package.json",
+      "content": "{\"name\":\"alpha\"}"
+    }
+  ]
+}

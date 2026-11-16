@@ -1,0 +1,10 @@
+{
+  "id": "parseArgs-short-positionals",
+  "kind": "parseArgs",
+  "argv": [
+    "switch",
+    "-h",
+    "-x",
+    "-"
+  ]
+}

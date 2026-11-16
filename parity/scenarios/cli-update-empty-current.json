@@ -1,0 +1,20 @@
+{
+  "id": "cli-update-empty-current",
+  "kind": "cli",
+  "argv": [
+    "update",
+    "ignored"
+  ],
+  "files": [
+    {
+      "path": "{APP}/scripts/{INSTALLER}",
+      "content": "fixture only; never executed"
+    },
+    {
+      "path": "{APP}/.version",
+      "content": " \n"
+    }
+  ],
+  "update": {},
+  "divergence": "e1"
+}
