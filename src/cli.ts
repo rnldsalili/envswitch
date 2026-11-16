@@ -926,11 +926,13 @@ export async function fetchLatestReleaseTag(
   const doFetch = options.fetch ?? ((url: string, init: RequestInit) => fetch(url, init));
   const sleep = options.sleep ?? ((ms: number) => Bun.sleep(ms));
   const base = githubApiBase(env);
-  const headers: Record<string, string> = { Accept: "application/vnd.github+json" };
   const token = nonEmpty(env.GITHUB_TOKEN);
-  if (token !== undefined) {
-    headers.Authorization = `Bearer ${token}`;
-  }
+  // The token is sent only on the initial request, and only to the real
+  // GitHub API origin: never to the loopback test origin, never on a redirect.
+  const headersFor = (url: string, redirected: boolean): Record<string, string> =>
+    token !== undefined && !redirected && new URL(url).origin === GITHUB_API
+      ? { Accept: "application/vnd.github+json", Authorization: `Bearer ${token}` }
+      : { Accept: "application/vnd.github+json" };
 
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     let url = `${base}/repos/${repo}/releases/latest`;
@@ -938,11 +940,11 @@ export async function fetchLatestReleaseTag(
     try {
       const signal = AbortSignal.timeout(60_000);
       for (let redirects = 0; ; redirects += 1) {
-        const response = await doFetch(url, { headers, redirect: "manual", signal });
+        const response = await doFetch(url, { headers: headersFor(url, redirects > 0), redirect: "manual", signal });
         const location = response.headers.get("location");
         if ([301, 302, 307, 308].includes(response.status) && location !== null && redirects < 5) {
-          // Follow only same-origin API redirects (renamed repositories); the
-          // token is never sent to another origin.
+          // Follow only same-origin API redirects (renamed repositories), and
+          // without credentials; a cross-origin redirect is not followed.
           const next = new URL(location, url);
           if (next.origin !== new URL(base).origin) {
             return undefined;
@@ -1201,7 +1203,10 @@ function restrictWindowsDirectory(dir: string, env: UpdateEnv): void {
     }
   }
   childEnv.ENVSWITCH_INSTALLER_TEMP = dir;
-  const result = Bun.spawnSync(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script], {
+  // The system Windows PowerShell by absolute path: no PATH lookup for this step.
+  const systemRoot = Object.entries(env).find(([name]) => name.toUpperCase() === "SYSTEMROOT")?.[1] ?? "C:\\Windows";
+  const powershell = win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+  const result = Bun.spawnSync([powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script], {
     env: childEnv,
     stdout: "ignore",
     stderr: "ignore",

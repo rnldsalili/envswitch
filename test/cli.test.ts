@@ -342,17 +342,22 @@ const POSTCONDITION_ERROR =
 const tempRoots: string[] = [];
 afterAll(() => {
   for (const root of tempRoots.splice(0)) {
-    removeTree(root);
+    try {
+      removeTree(root);
+    } catch (error) {
+      console.error(`warning: could not remove test directory ${root}: ${String(error)}`);
+    }
   }
 });
 
 function realTempDir(prefix: string): string {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
+  // The native form expands Windows 8.3 short names (RUNNER~1) into the long path.
+  const dir = realpathSync.native(mkdtempSync(join(tmpdir(), prefix)));
   tempRoots.push(dir);
   return dir;
 }
 
-/** Remove a suite-owned tree without ever following a symbolic link. */
+/** Remove a suite-owned tree without ever following a symbolic link or junction. */
 function removeTree(path: string): void {
   let stat;
   try {
@@ -360,7 +365,13 @@ function removeTree(path: string): void {
   } catch {
     return;
   }
-  if (stat.isDirectory()) {
+  if (stat.isSymbolicLink()) {
+    try {
+      unlinkSync(path);
+    } catch {
+      rmdirSync(path); // Windows directory links and junctions
+    }
+  } else if (stat.isDirectory()) {
     for (const name of readdirSync(path)) {
       removeTree(join(path, name));
     }
@@ -1327,24 +1338,36 @@ describe("update helpers", () => {
       expect(offline.sleeps).toEqual([1000, 2000]);
     });
 
-    test("follows only same-origin redirects", async () => {
+    test("follows only same-origin redirects, never with the token", async () => {
       const renamed = fakeFetch([
         release("", 301, { location: "/repositories/1/releases/latest" }),
         release({ tag_name: "v0.0.8" }),
       ]);
       expect(await fetchLatestReleaseTag("acme/tools", { env: { GITHUB_TOKEN: "t" }, ...renamed.options })).toBe("v0.0.8");
-      expect(renamed.calls[1]?.url).toBe("https://api.github.com/repositories/1/releases/latest");
+      expect(renamed.calls.map((call) => [call.url, call.init.headers])).toEqual([
+        ["https://api.github.com/repos/acme/tools/releases/latest", { Accept: "application/vnd.github+json", Authorization: "Bearer t" }],
+        ["https://api.github.com/repositories/1/releases/latest", { Accept: "application/vnd.github+json" }],
+      ]);
 
-      const elsewhere = fakeFetch([release("", 302, { location: "https://example.com/latest" })]);
-      expect(await fetchLatestReleaseTag("acme/tools", { env: { GITHUB_TOKEN: "t" }, ...elsewhere.options })).toBeUndefined();
-      expect(elsewhere.calls).toHaveLength(1);
+      for (const location of ["https://example.com/latest", "http://api.github.com/latest", "https://api.github.com:8443/latest"]) {
+        const elsewhere = fakeFetch([release("", 302, { location }), release({ tag_name: "v0.0.9" })]);
+        expect(await fetchLatestReleaseTag("acme/tools", { env: { GITHUB_TOKEN: "t" }, ...elsewhere.options })).toBeUndefined();
+        expect(elsewhere.calls.map((call) => call.url)).toEqual(["https://api.github.com/repos/acme/tools/releases/latest"]);
+      }
     });
 
-    test("honors only the gated loopback test hook", async () => {
-      const hooked = fakeFetch([release({ tag_name: "v0.0.1" })]);
-      const env = { ENVSWITCH_INSTALL_TEST_MODE: "install", ENVSWITCH_INSTALL_TEST_API_BASE_URL: "http://127.0.0.1:8123" };
+    test("honors only the gated loopback test hook, never sending the token there", async () => {
+      const hooked = fakeFetch([release("", 307, { location: "/repositories/2/releases/latest" }), release({ tag_name: "v0.0.1" })]);
+      const env = {
+        ENVSWITCH_INSTALL_TEST_MODE: "install",
+        ENVSWITCH_INSTALL_TEST_API_BASE_URL: "http://127.0.0.1:8123",
+        GITHUB_TOKEN: "synthetic",
+      };
       expect(await fetchLatestReleaseTag("demo/suite", { env, ...hooked.options })).toBe("v0.0.1");
-      expect(hooked.calls[0]?.url).toBe("http://127.0.0.1:8123/repos/demo/suite/releases/latest");
+      expect(hooked.calls.map((call) => [call.url, call.init.headers])).toEqual([
+        ["http://127.0.0.1:8123/repos/demo/suite/releases/latest", { Accept: "application/vnd.github+json" }],
+        ["http://127.0.0.1:8123/repositories/2/releases/latest", { Accept: "application/vnd.github+json" }],
+      ]);
 
       const ignored = fakeFetch([release({ tag_name: "v0.0.1" })]);
       await fetchLatestReleaseTag("demo/suite", { env: { ENVSWITCH_INSTALL_TEST_API_BASE_URL: "http://127.0.0.1:1" }, ...ignored.options });
@@ -1497,6 +1520,149 @@ exit 0
   });
 });
 
+const SYSTEM_ROOT = processEnv("SYSTEMROOT") ?? "C:\\Windows";
+const WINDOWS_POWERSHELL = join(SYSTEM_ROOT, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+
+/** Case-insensitive lookup of this test process's environment (Windows names vary in case). */
+function processEnv(name: string): string | undefined {
+  return Object.entries(process.env).find(([key]) => key.toUpperCase() === name)?.[1];
+}
+
+/**
+ * Windows child environment: inherited system settings only. Credentials,
+ * envswitch settings, profile/data/temp locations, and PATH are dropped so
+ * each test supplies isolated ones. Path holds suite-owned tools, Bun's own
+ * directory, and the read-only system directories (never written).
+ */
+function windowsBaseEnv(): Record<string, string> {
+  const dropped = new Set([
+    "PATH", "GITHUB_TOKEN", "GH_TOKEN", "REPO", "APP_ROOT", "INSTALL_DIR", "HOME", "USERPROFILE", "LOCALAPPDATA",
+    "APPDATA", "TEMP", "TMP", "TMPDIR", "BUN_INSTALL", "GH_CONFIG_DIR", "XDG_DATA_HOME", "XDG_CONFIG_HOME",
+    "XDG_CACHE_HOME", "XDG_STATE_HOME",
+  ]);
+  const env: Record<string, string> = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    const upper = name.toUpperCase();
+    if (value !== undefined && !dropped.has(upper) && !upper.startsWith("ENVSWITCH_")) {
+      env[name] = value;
+    }
+  }
+  return env;
+}
+
+function windowsSystemPath(): string[] {
+  return [join(SYSTEM_ROOT, "System32"), SYSTEM_ROOT, join(SYSTEM_ROOT, "System32", "WindowsPowerShell", "v1.0")];
+}
+
+describe.skipIf(!WINDOWS)("update installer runner (Windows)", () => {
+  const FAKE_INSTALLER = [
+    "param([string]$AppRoot,[string]$InstallDir,[string]$Repo,[string]$Version,[string]$CurrentVersion)",
+    "$dir = Split-Path -Parent $PSCommandPath",
+    "$acl = Get-Acl -LiteralPath $dir",
+    "$sids = @($acl.Access | ForEach-Object { $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value } | Sort-Object -Unique)",
+    "$current = if ($PSBoundParameters.ContainsKey('CurrentVersion')) { $CurrentVersion } else { '<unset>' }",
+    "$lines = @(\"script=$PSCommandPath\", \"cwd=$((Get-Location).ProviderPath)\", \"AppRoot=$AppRoot\", \"InstallDir=$InstallDir\", \"Repo=$Repo\", \"Version=$Version\", \"CurrentVersion=$current\", \"protected=$($acl.AreAccessRulesProtected)\", \"sids=$($sids -join ',')\")",
+    "foreach ($name in @('ENVSWITCH_CURRENT_VERSION','ENVSWITCH_VERIFY_ATTESTATIONS','GITHUB_TOKEN','ENVSWITCH_INSTALL_TEST_MODE')) {",
+    "  $value = [Environment]::GetEnvironmentVariable($name)",
+    "  if ($null -eq $value) { $lines += \"$name unset\" } else { $lines += \"$name=$value\" }",
+    "}",
+    "[IO.File]::WriteAllLines($env:FAKE_LOG, [string[]]$lines)",
+    "[Console]::Out.WriteLine('info: from fake installer')",
+    "if ($env:FAKE_MODE -eq 'status') { exit 7 }",
+    "exit 0",
+    "",
+  ].join("\r\n");
+
+  function arrange() {
+    const root = realTempDir("envswitch-winrunner-");
+    const appRoot = join(root, "app");
+    const installer = join(appRoot, "current", "scripts", "install.ps1");
+    mkdirSync(dirname(installer), { recursive: true });
+    writeFileSync(installer, FAKE_INSTALLER, { flag: "wx" });
+    const tempRoot = join(root, "tmp");
+    mkdirSync(tempRoot);
+    mkdirSync(join(root, "home"));
+    const log = join(root, "installer.log");
+    const plan: InstallPlan = {
+      installer,
+      repo: "acme/tools",
+      appRoot,
+      installDir: join(root, "bin"),
+      version: "v0.0.5",
+      currentVersion: "v0.0.4",
+    };
+    const env: UpdateEnv = {
+      ...windowsBaseEnv(),
+      PATH: windowsSystemPath().join(";"),
+      USERPROFILE: join(root, "home"),
+      LOCALAPPDATA: join(root, "home"),
+      APPDATA: join(root, "home"),
+      TEMP: tempRoot,
+      TMP: tempRoot,
+      FAKE_LOG: log,
+      GITHUB_TOKEN: "synthetic",
+      ENVSWITCH_VERIFY_ATTESTATIONS: "1",
+      ENVSWITCH_CURRENT_VERSION: "v0.0.1",
+      ENVSWITCH_INSTALL_TEST_MODE: "install",
+    };
+    const readLog = () =>
+      Object.fromEntries(
+        readFileSync(log, "utf8")
+          .trimEnd()
+          .split(/\r?\n/)
+          .map((line) => (line.endsWith(" unset") ? [line.slice(0, -6), undefined] : [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)])),
+      ) as Record<string, string | undefined>;
+    return { plan, env, tempRoot, readLog };
+  }
+
+  test("copies the installer outside current, restricts its directory, passes exact parameters, and cleans up", async () => {
+    const { plan, env, tempRoot, readLog } = arrange();
+    const chunks: Uint8Array[] = [];
+
+    const run = await runInstallScript(plan, { env, windows: true, tempRoot, stdout: { write: (c) => chunks.push(c) } });
+
+    expect(run).toEqual({ code: 0, stdout: "info: from fake installer\r\n" });
+    expect(Buffer.concat(chunks).toString()).toBe("info: from fake installer\r\n");
+    const log = readLog();
+    expect(log.script?.toLowerCase().startsWith(`${tempRoot}\\envswitch-update-`.toLowerCase())).toBe(true);
+    expect(log.script?.toLowerCase().endsWith("\\install.ps1")).toBe(true);
+    expect(log.cwd?.toLowerCase()).toBe(dirname(log.script!).toLowerCase());
+    // Owner-only ACL plus SYSTEM and Administrators, with inheritance removed.
+    expect(log.protected).toBe("True");
+    const sids = log.sids?.split(",") ?? [];
+    expect(sids).toHaveLength(3);
+    expect(sids).toContain("S-1-5-18");
+    expect(sids).toContain("S-1-5-32-544");
+    expect(log).toMatchObject({
+      AppRoot: plan.appRoot,
+      InstallDir: plan.installDir,
+      Repo: "acme/tools",
+      Version: "v0.0.5",
+      CurrentVersion: "v0.0.4",
+      ENVSWITCH_VERIFY_ATTESTATIONS: undefined,
+      GITHUB_TOKEN: "synthetic",
+      ENVSWITCH_INSTALL_TEST_MODE: "install",
+    });
+    expect(readdirSync(tempRoot)).toEqual([]);
+    expect(readFileSync(plan.installer, "utf8")).toBe(FAKE_INSTALLER);
+
+    await runInstallScript({ ...plan, currentVersion: undefined }, { env, windows: true, tempRoot, stdout: { write: () => {} } });
+    expect(readLog()).toMatchObject({ CurrentVersion: "<unset>", ENVSWITCH_CURRENT_VERSION: undefined });
+  }, 60_000);
+
+  test("forwards a nonzero status and reports launch failures as controlled errors", async () => {
+    const { plan, env, tempRoot } = arrange();
+
+    expect((await runInstallScript(plan, { env: { ...env, FAKE_MODE: "status" }, windows: true, tempRoot, stdout: { write: () => {} } })).code).toBe(7);
+
+    const missing = await runInstallScript({ ...plan, installer: `${plan.installer}.missing` }, { env, windows: true, tempRoot }).catch((e: unknown) => e);
+    expect(missing).toBeInstanceOf(EnvswitchError);
+    const inside = await runInstallScript(plan, { env, windows: true, tempRoot: join(plan.appRoot, "current") }).catch((e: unknown) => e);
+    expect((inside as Error).message).toBe("update failed: could not run installer: temporary directory is inside current");
+    expect(readdirSync(tempRoot)).toEqual([]);
+  }, 60_000);
+});
+
 // ---------------------------------------------------------------------------
 // End-to-end migration rows (protocol §7.3, §8, §9): an untouched pre-bridge
 // installer (oracle), the TS bridge, and D2b's dual-mode installer served a
@@ -1555,6 +1721,8 @@ function oracleInstaller(): Uint8Array {
   return bytes;
 }
 
+const E2E_TOKEN = "synthetic-bridge-token";
+
 const E2E_TOOLS = [
   "bash", "curl", "tar", "gzip", "awk", "sed", "mktemp", "find", "uname", "sysctl", "shasum", "sha256sum", "od",
   "tr", "cat", "cp", "mv", "rm", "rmdir", "mkdir", "chmod", "cmp", "sort", "grep", "cut", "tail", "head", "date",
@@ -1567,7 +1735,11 @@ import json, sys
 sys.path.insert(0, sys.argv[1])
 from fixtures import Server, release
 config = json.loads(sys.argv[2])
-server = Server(release(kind='native', ver=config['ver'], fault=config.get('fault')), tag='v' + config['ver'], fault=config.get('fault'))
+binary = None
+if config.get('windowsBinary'):
+    with open(config['windowsBinary'], 'rb') as handle:
+        binary = handle.read()
+server = Server(release(kind='native', ver=config['ver'], fault=config.get('fault'), windows_binary=binary), tag='v' + config['ver'], fault=config.get('fault'))
 server.repo = config['repo']
 server.statuses = list(config.get('statuses', []))
 server.change_latest = bool(config.get('changeLatest'))
@@ -1590,16 +1762,17 @@ class MockReleaseServer {
   ) {}
 
   static async start(
-    sandbox: BridgeSandbox,
-    config: { ver?: string; repo: string; fault?: string; statuses?: number[]; changeLatest?: boolean },
+    sandbox: { serverEnv(): Record<string, string> },
+    config: { ver?: string; repo: string; fault?: string; statuses?: number[]; changeLatest?: boolean; windowsBinary?: string },
   ): Promise<MockReleaseServer> {
-    const python = process.env.INSTALL_TEST_PYTHON || Bun.which("python3");
+    const python =
+      processEnv("INSTALL_TEST_PYTHON") || Bun.which(WINDOWS ? "python" : "python3", { PATH: processEnv("PATH") ?? "" });
     if (!python) {
-      throw new Error("python3 is required for the installer fixture server (set INSTALL_TEST_PYTHON)");
+      throw new Error("Python 3 is required for the installer fixture server (set INSTALL_TEST_PYTHON)");
     }
     const proc = Bun.spawn(
       [python, "-I", "-B", "-c", MOCK_SERVER_DRIVER, join(REPO_ROOT, "test", "install"), JSON.stringify({ ver: "0.0.42", ...config })],
-      { env: { HOME: sandbox.root, PATH: sandbox.tools }, stdin: "pipe", stdout: "pipe", stderr: "pipe" },
+      { env: sandbox.serverEnv(), stdin: "pipe", stdout: "pipe", stderr: "pipe" },
     );
     const reader: ChunkReader = proc.stdout.getReader();
     let buffer = "";
@@ -1611,7 +1784,7 @@ class MockReleaseServer {
       buffer += Buffer.from(value).toString();
     }
     const newline = buffer.indexOf("\n");
-    return new MockReleaseServer(buffer.slice(0, newline), proc, reader, buffer.slice(newline + 1));
+    return new MockReleaseServer(buffer.slice(0, newline).trim(), proc, reader, buffer.slice(newline + 1));
   }
 
   hooks(): Record<string, string> {
@@ -1729,6 +1902,11 @@ class BridgeSandbox {
     };
   }
 
+  /** Environment for D2b's loopback fixture server process. */
+  serverEnv(): Record<string, string> {
+    return { HOME: this.root, PATH: this.tools };
+  }
+
   /** Create a suite-owned fake tool; exclusive create never writes through a link. */
   fake(name: string, body: string): void {
     writeFileSync(join(this.tools, name), `#!/bin/bash\n${body}\n`, { flag: "wx", mode: 0o755 });
@@ -1840,7 +2018,7 @@ describe.skipIf(WINDOWS)("bridge migration end-to-end", () => {
     try {
       // Stale caller pins/labels/attestation requests must not reach the installer.
       const stale = { ENVSWITCH_VERSION: "v0.0.1", ENVSWITCH_CURRENT_VERSION: "v0.0.7", ENVSWITCH_VERIFY_ATTESTATIONS: "1" };
-      const update = sandbox.run([sandbox.launcher, "update"], { ...server.hooks(), ...stale });
+      const update = sandbox.run([sandbox.launcher, "update"], { ...server.hooks(), ...stale, GITHUB_TOKEN: E2E_TOKEN });
       expectSuccess(update);
       expect(update.stderr).toBe("envswitch [info] updating envswitch v0.0.41 -> v0.0.42\n");
       expect(update.stdout).toContain("info: resolved envswitch v0.0.42 (native)\n");
@@ -1896,7 +2074,10 @@ describe.skipIf(WINDOWS)("bridge migration end-to-end", () => {
     expect(paths.filter((path) => path.includes("/releases/tags/"))).toEqual(
       Array(3).fill(`/repos/${DEFAULT_REPO}/releases/tags/v0.0.42`),
     );
-    expect(requests.every(([, auth]) => auth === null)).toBe(true);
+    // The bridge never sends GITHUB_TOKEN to the loopback override; the first
+    // run's installer requests show the token was present in its environment.
+    expect(requests.filter(([path]) => path.endsWith("/releases/latest")).map(([, auth]) => auth)).toEqual([null, null, null]);
+    expect(requests.find(([path]) => path.includes("/releases/tags/"))?.[1]).toBe(`Bearer ${E2E_TOKEN}`);
     expect(existsSync(join(sandbox.home, "op.log"))).toBe(false);
     expect(readFileSync(join(sandbox.project, ".env"), "utf8")).toBe("SECRET=keep\n");
   }, 240_000);
@@ -1976,6 +2157,311 @@ describe.skipIf(WINDOWS)("bridge migration end-to-end", () => {
     expect(lstatSync(join(sandbox.tools, "bun")).isFile()).toBe(true);
     expect(readFileSync(join(sandbox.project, ".env"), "utf8")).toBe("SECRET=keep\n");
   }, 240_000);
+});
+
+/** Exactly what the pre-bridge PowerShell installer's Set-Content -Encoding ASCII wrote. */
+function windowsLegacyLauncher(appDir: string): string {
+  const cli = `${appDir}\\src\\cli.ts`;
+  return [
+    "@echo off",
+    "setlocal",
+    "where bun >NUL 2>NUL",
+    "if %ERRORLEVEL% EQU 0 (",
+    `  bun "${cli}" %*`,
+    "  exit /b %ERRORLEVEL%",
+    ")",
+    'if exist "%USERPROFILE%\\.bun\\bin\\bun.exe" (',
+    `  "%USERPROFILE%\\.bun\\bin\\bun.exe" "${cli}" %*`,
+    "  exit /b %ERRORLEVEL%",
+    ")",
+    "echo envswitch: bun is not installed or not on PATH 1>&2",
+    "exit /b 127",
+    "",
+  ].join("\r\n");
+}
+
+let windowsPayloadPath: string | undefined;
+
+/** A real .NET Framework console EXE (as D2b's Windows suite builds), compiled once. */
+function windowsPayload(): string {
+  if (windowsPayloadPath !== undefined) {
+    return windowsPayloadPath;
+  }
+  const root = realTempDir("envswitch-winpayload-");
+  const out = join(root, "payload-0.0.42.exe");
+  const code =
+    'public class Payload { public static int Main(string[] args) { if (args.Length > 0 && args[0] == "--version") { System.Console.Write("envswitch 0.0.42 x86_64-pc-windows-msvc\\n"); return 0; } if (args.Length > 0 && args[0] == "--help") { return 0; } foreach (var arg in args) { System.Console.Write(arg + "\\n"); } return 23; } }';
+  const script = join(root, "build.ps1");
+  writeFileSync(
+    script,
+    `Add-Type -TypeDefinition '${code}' -OutputAssembly '${out.replace(/'/g, "''")}' -OutputType ConsoleApplication\r\n`,
+    { flag: "wx" },
+  );
+  const result = Bun.spawnSync([WINDOWS_POWERSHELL, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script], {
+    env: { ...windowsBaseEnv(), PATH: windowsSystemPath().join(";"), USERPROFILE: root, LOCALAPPDATA: root, APPDATA: root, TEMP: root, TMP: root },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (result.exitCode !== 0) {
+    throw new Error(`payload compile failed: ${result.stdout.toString()}${result.stderr.toString()}`);
+  }
+  windowsPayloadPath = out;
+  return out;
+}
+
+function lf(text: string): string {
+  return text.replace(/\r\n/g, "\n");
+}
+
+/**
+ * Isolated Windows profile: USERPROFILE/LOCALAPPDATA/APPDATA/TEMP are suite
+ * paths, and every installer run uses the mocked persistent User PATH file.
+ */
+class WindowsBridgeSandbox {
+  readonly root = realTempDir("envswitch-winbridge-");
+  readonly home = join(this.root, "home");
+  readonly localAppData = join(this.root, "localappdata");
+  readonly tools = join(this.root, "tools");
+  readonly temp = join(this.root, "temp");
+  readonly project = join(this.root, "project");
+  readonly appRoot = join(this.localAppData, "Programs", "envswitch");
+  readonly appDir = join(this.appRoot, "current");
+  readonly binDir = join(this.appRoot, "bin");
+  readonly launcher = join(this.binDir, "envswitch.cmd");
+  readonly userPathFile = join(this.home, "user-path.txt");
+  readonly env: Record<string, string>;
+
+  constructor() {
+    for (const dir of [this.home, this.localAppData, this.tools, this.temp, join(this.project, ".git"), this.appDir, this.binDir]) {
+      mkdirSync(dir, { recursive: true });
+    }
+    writeFileSync(join(this.project, ".env"), "SECRET=keep\r\n");
+    writeFileSync(join(this.tools, "gh.cmd"), "@echo off\r\nexit /b 1\r\n", { flag: "wx" });
+    writeFileSync(join(this.tools, "op.cmd"), '@echo off\r\necho forbidden>>"%USERPROFILE%\\op.log"\r\nexit /b 99\r\n', { flag: "wx" });
+    this.env = {
+      ...windowsBaseEnv(),
+      HOME: this.home,
+      USERPROFILE: this.home,
+      LOCALAPPDATA: this.localAppData,
+      APPDATA: join(this.root, "appdata"),
+      TEMP: this.temp,
+      TMP: this.temp,
+      TMPDIR: this.temp,
+      BUN_INSTALL: join(this.root, "bun-install"),
+      GH_CONFIG_DIR: join(this.root, "gh-config"),
+      XDG_DATA_HOME: join(this.root, "xdg-data"),
+      XDG_CONFIG_HOME: join(this.root, "xdg-config"),
+      XDG_CACHE_HOME: join(this.root, "xdg-cache"),
+      XDG_STATE_HOME: join(this.root, "xdg-state"),
+      PATH: [this.tools, dirname(process.execPath), ...windowsSystemPath()].join(";"),
+      HTTPS_PROXY: "http://127.0.0.1:9",
+      NO_PROXY: "127.0.0.1,localhost,::1",
+      NO_COLOR: "1",
+      ENVSWITCH_INSTALL_TEST_MODE: "install",
+      ENVSWITCH_INSTALL_TEST_USER_PATH_FILE: this.userPathFile,
+    };
+  }
+
+  serverEnv(): Record<string, string> {
+    return {
+      ...windowsBaseEnv(),
+      PATH: windowsSystemPath().join(";"),
+      HOME: this.home,
+      USERPROFILE: this.home,
+      LOCALAPPDATA: this.localAppData,
+      APPDATA: join(this.root, "appdata"),
+      TEMP: this.temp,
+      TMP: this.temp,
+    };
+  }
+
+  run(argv: string[], extra: Record<string, string> = {}): ProcessResult {
+    const result = Bun.spawnSync(argv, {
+      cwd: this.project,
+      env: { ...this.env, ...extra },
+      stdout: "pipe",
+      stderr: "pipe",
+      timeout: 180_000,
+    });
+    return { code: result.exitCode ?? -1, stdout: result.stdout.toString(), stderr: result.stderr.toString() };
+  }
+
+  /** The user's path: cmd runs the managed launcher. (The pre-bridge launcher masks exit codes.) */
+  runLauncher(args: string[], extra: Record<string, string> = {}): ProcessResult {
+    return this.run([join(SYSTEM_ROOT, "System32", "cmd.exe"), "/d", "/c", this.launcher, ...args], extra);
+  }
+
+  /** The installed TS entry point run directly, for exact exit statuses. */
+  bridge(args: string[], extra: Record<string, string> = {}): ProcessResult {
+    return this.run([process.execPath, join(this.appDir, "src", "cli.ts"), ...args], extra);
+  }
+
+  /** A pre-receipt install laid out as the old PowerShell installer left it. */
+  installCopy(kind: "pre-bridge" | "bridge", tag: string): void {
+    const files: Record<string, Uint8Array | string> =
+      kind === "bridge"
+        ? Object.fromEntries(
+            ["package.json", "bun.lock", "README.md", "tsconfig.json", "scripts/install.sh", "scripts/install.ps1"]
+              .map((name) => [name, readFileSync(join(REPO_ROOT, name))] as const)
+              .concat(readdirSync(join(REPO_ROOT, "src")).map((name) => [`src/${name}`, readFileSync(join(REPO_ROOT, "src", name))] as const)),
+          )
+        : {
+            "package.json": '{"name":"envswitch"}\n',
+            "bun.lock": "",
+            "src/cli.ts": "// pre-bridge envswitch fixture\n",
+            "scripts/install.ps1": "# pre-bridge fixture\r\n",
+          };
+    for (const [name, bytes] of Object.entries(files)) {
+      mkdirSync(dirname(join(this.appDir, name)), { recursive: true });
+      writeFileSync(join(this.appDir, name), bytes);
+    }
+    if (kind === "bridge") {
+      // Read-only dependency tree from the checkout (a junction needs no privilege).
+      symlinkSync(join(REPO_ROOT, "node_modules"), join(this.appDir, "node_modules"), "junction");
+    }
+    writeFileSync(join(this.appDir, ".version"), `${tag}\r\n`);
+    writeFileSync(this.launcher, windowsLegacyLauncher(this.appDir), { flag: "wx" });
+  }
+
+  /** Read-only check that the real persistent User PATH is never written. */
+  realUserPath(): string {
+    const result = Bun.spawnSync(
+      [WINDOWS_POWERSHELL, "-NoProfile", "-Command", "[Console]::Out.Write([Environment]::GetEnvironmentVariable('Path','User'))"],
+      { env: this.serverEnv(), stdout: "pipe", stderr: "pipe" },
+    );
+    expect(result.exitCode).toBe(0);
+    return result.stdout.toString();
+  }
+
+  snapshot() {
+    return {
+      launcher: readFileSync(this.launcher, "utf8"),
+      version: readFileSync(join(this.appDir, ".version"), "utf8"),
+      cli: readFileSync(join(this.appDir, "src", "cli.ts"), "utf8"),
+      receipt: existsSync(join(this.appDir, "install.json")),
+      userPathFile: existsSync(this.userPathFile),
+    };
+  }
+
+  leftovers(): string[] {
+    return [
+      ...readdirSync(this.temp).filter((name) => name.startsWith("envswitch-update-")),
+      ...readdirSync(this.appRoot).filter((name) => name.startsWith(".install")),
+    ];
+  }
+}
+
+describe.skipIf(!WINDOWS)("bridge migration end-to-end (Windows)", () => {
+  test("bridge launcher -> native launcher, receipt, and mocked User PATH; equality and repair still run the installer", async () => {
+    const sandbox = new WindowsBridgeSandbox();
+    sandbox.installCopy("bridge", "v0.0.41");
+    const realUserPath = sandbox.realUserPath();
+    const server = await MockReleaseServer.start(sandbox, { repo: DEFAULT_REPO, windowsBinary: windowsPayload() });
+    let requests: Array<[string, string | null]>;
+    try {
+      const stale = { ENVSWITCH_VERSION: "v0.0.1", ENVSWITCH_CURRENT_VERSION: "v0.0.7", ENVSWITCH_VERIFY_ATTESTATIONS: "1" };
+      const update = sandbox.runLauncher(["update"], { ...server.hooks(), ...stale, GITHUB_TOKEN: E2E_TOKEN });
+      expectSuccess(update);
+      expect(lf(update.stderr)).toContain("envswitch [info] updating envswitch v0.0.41 -> v0.0.42\n");
+      expect(update.stderr).not.toContain("error:");
+      expect(lf(update.stdout)).toContain("info: resolved envswitch v0.0.42 (native)\n");
+      expect(lf(update.stdout)).toContain("success: installed envswitch v0.0.42\n");
+      expect(lf(update.stdout).endsWith("updated envswitch v0.0.41 -> v0.0.42\n")).toBe(true);
+
+      const receipt = JSON.parse(readFileSync(join(sandbox.appDir, "install.json"), "utf8"));
+      expect(receipt).toMatchObject({ schemaVersion: 1, kind: "native", repo: DEFAULT_REPO, target: "x86_64-pc-windows-msvc", tag: "v0.0.42" });
+      expect(receipt.appRoot.toLowerCase()).toBe(sandbox.appRoot.toLowerCase());
+      expect(receipt.installDir.toLowerCase()).toBe(sandbox.binDir.toLowerCase());
+      expect(receipt.launcherPath.toLowerCase()).toBe(sandbox.launcher.toLowerCase());
+      const launcher = readFileSync(sandbox.launcher);
+      expect(isManagedLauncher(launcher, sandbox.appRoot, true)).toBe(true);
+      expect(launcher.toString()).toContain(`"${receipt.payloadPath.replace(/%/g, "%%")}" %*`);
+      expect(readFileSync(join(sandbox.appDir, ".version"), "utf8")).toBe("v0.0.42\n");
+      expect(sandbox.runLauncher(["--version"]).stdout.trim()).toBe("envswitch 0.0.42 x86_64-pc-windows-msvc");
+      expect(readFileSync(sandbox.userPathFile, "utf8").toLowerCase()).toContain(sandbox.binDir.toLowerCase());
+      expect(existsSync(join(sandbox.appDir, "src", "cli.ts"))).toBe(true);
+      expect(sandbox.leftovers()).toEqual([]);
+
+      const unchanged = sandbox.bridge(["update"], server.hooks());
+      expectSuccess(unchanged);
+      expect(lf(unchanged.stderr)).toContain("envswitch [info] updating envswitch v0.0.42 -> v0.0.42\n");
+      expect(lf(unchanged.stdout).endsWith(
+        "success: envswitch is already up to date (v0.0.42)\nenvswitch is already up to date (v0.0.42)\n",
+      )).toBe(true);
+
+      unlinkSync(join(sandbox.appDir, "install.json"));
+      const repaired = sandbox.bridge(["update"], server.hooks());
+      expectSuccess(repaired);
+      expect(lf(repaired.stdout)).toContain("success: repaired envswitch v0.0.42\n");
+      expect(lf(repaired.stdout).endsWith("repaired envswitch v0.0.42\n")).toBe(true);
+    } finally {
+      requests = await server.close();
+    }
+
+    const latest = requests.filter(([path]) => path.endsWith("/releases/latest"));
+    expect(latest).toEqual(Array(3).fill([`/repos/${DEFAULT_REPO}/releases/latest`, null]));
+    expect(requests.filter(([path]) => path.includes("/releases/tags/")).map(([path]) => path)).toEqual(
+      Array(3).fill(`/repos/${DEFAULT_REPO}/releases/tags/v0.0.42`),
+    );
+    expect(sandbox.realUserPath()).toBe(realUserPath);
+    expect(existsSync(join(sandbox.home, "op.log"))).toBe(false);
+    expect(readFileSync(join(sandbox.project, ".env"), "utf8")).toBe("SECRET=keep\r\n");
+  }, 300_000);
+
+  test("bridge failures leave the bridge install usable", async () => {
+    const sandbox = new WindowsBridgeSandbox();
+    sandbox.installCopy("bridge", "v0.0.41");
+    const realUserPath = sandbox.realUserPath();
+    const before = sandbox.snapshot();
+
+    const noLatest = await MockReleaseServer.start(sandbox, { repo: DEFAULT_REPO, statuses: [404], windowsBinary: windowsPayload() });
+    const unresolved = sandbox.bridge(["update"], noLatest.hooks());
+    expect((await noLatest.close()).map(([path]) => path)).toEqual([`/repos/${DEFAULT_REPO}/releases/latest`]);
+    expect(unresolved.code).toBe(1);
+    expect(lf(unresolved.stderr)).toBe(`envswitch: no GitHub Release found for ${DEFAULT_REPO}, or access is denied\n`);
+
+    const corrupt = await MockReleaseServer.start(sandbox, { repo: DEFAULT_REPO, fault: "mismatch", windowsBinary: windowsPayload() });
+    const rejected = sandbox.bridge(["update"], corrupt.hooks());
+    await corrupt.close();
+    expect(rejected.code).toBe(1);
+    expect(lf(rejected.stderr)).toContain("error: SHA-256 mismatch for envswitch_0.0.42_x86_64-pc-windows-msvc.zip\n");
+    expect(lf(rejected.stderr).endsWith("envswitch: update failed: installer exited with code 1\n")).toBe(true);
+    expect(rejected.stdout).not.toContain("success:");
+
+    expect(sandbox.snapshot()).toEqual(before);
+    expect(sandbox.leftovers()).toEqual([]);
+    expect(sandbox.realUserPath()).toBe(realUserPath);
+    expect(sandbox.runLauncher(["--help"]).stdout).toContain("envswitch update");
+  }, 300_000);
+
+  test("README reinstall (irm | iex form) recovers a skipped-bridge install from the test host shell", async () => {
+    const sandbox = new WindowsBridgeSandbox();
+    sandbox.installCopy("pre-bridge", "v0.0.40");
+    const realUserPath = sandbox.realUserPath();
+    // bridge.yml runs this from pwsh and from Windows PowerShell 5.1.
+    const host = processEnv("ENVSWITCH_TEST_POWERSHELL") || WINDOWS_POWERSHELL;
+    const script = join(REPO_ROOT, "scripts", "install.ps1").replace(/'/g, "''");
+    const server = await MockReleaseServer.start(sandbox, { repo: DEFAULT_REPO, windowsBinary: windowsPayload() });
+    let reinstall: ProcessResult;
+    try {
+      reinstall = sandbox.run(
+        [host, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", `Get-Content -LiteralPath '${script}' -Raw | Invoke-Expression`],
+        server.hooks(),
+      );
+    } finally {
+      await server.close();
+    }
+    expectSuccess(reinstall);
+    expect(lf(reinstall.stdout)).toContain("success: installed envswitch v0.0.42\n");
+    const receipt = JSON.parse(readFileSync(join(sandbox.appDir, "install.json"), "utf8"));
+    expect(receipt).toMatchObject({ kind: "native", repo: DEFAULT_REPO, tag: "v0.0.42" });
+    expect(receipt.installDir.toLowerCase()).toBe(sandbox.binDir.toLowerCase());
+    expect(isManagedLauncher(readFileSync(sandbox.launcher), sandbox.appRoot, true)).toBe(true);
+    expect(sandbox.runLauncher(["--version"]).stdout.trim()).toBe("envswitch 0.0.42 x86_64-pc-windows-msvc");
+    expect(readFileSync(sandbox.userPathFile, "utf8").toLowerCase()).toContain(sandbox.binDir.toLowerCase());
+    expect(sandbox.realUserPath()).toBe(realUserPath);
+    expect(readFileSync(join(sandbox.project, ".env"), "utf8")).toBe("SECRET=keep\r\n");
+  }, 300_000);
 });
 
 async function runCli(

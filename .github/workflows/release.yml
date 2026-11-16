@@ -139,6 +139,12 @@ jobs:
     needs: plan
     uses: ./.github/workflows/installers.yml
 
+  bridge:
+    name: Required TS bridge Windows suites (source releases)
+    needs: plan
+    if: needs.plan.outputs.kind == 'source'
+    uses: ./.github/workflows/bridge.yml
+
   parity:
     name: Required parity if present (F1 handoff stub)
     needs: plan
@@ -195,13 +201,14 @@ jobs:
     concurrency:
       group: envswitch-publish
       cancel-in-progress: false
-    needs: [plan, verify, native, package, installers, parity, assemble]
+    needs: [plan, verify, native, package, installers, bridge, parity, assemble]
     if: >-
       always() && !cancelled() && needs.plan.outputs.publish == 'true' &&
       github.ref == 'refs/heads/main' && needs.verify.result == 'success' &&
       needs.package.result == 'success' && needs.installers.result == 'success' &&
       needs.parity.result == 'success' && needs.assemble.result == 'success' &&
-      (needs.native.result == 'success' || needs.native.result == 'skipped')
+      (needs.native.result == 'success' || needs.native.result == 'skipped') &&
+      (needs.bridge.result == 'success' || (needs.bridge.result == 'skipped' && needs.plan.outputs.kind != 'source'))
     runs-on: ubuntu-24.04
     permissions:
       contents: write
