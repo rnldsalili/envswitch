@@ -132,7 +132,7 @@ fn one(bridge: &Bridge, scenario: &Path, golden: &Path, kind: &str) -> Result<()
         let s = J::decode(&bundle["scenario"]);
         let mut expected = J::decode(&bundle["expected"]);
         bridge.cleanup(&path);
-        divergences::apply(&s, &mut expected, &actual, bridge)?;
+        apply_divergences(&s, &mut expected, &actual, bridge)?;
         return compare(&expected, &actual);
     }
     let prepared = bridge.run(
@@ -206,7 +206,7 @@ fn one(bridge: &Bridge, scenario: &Path, golden: &Path, kind: &str) -> Result<()
         ],
         Some(&serde_json::json!({"extraStdout":stdout,"extraStderr":output.stderr}).to_string()),
     )?);
-    divergences::apply(&s, &mut expected, &actual, bridge)?;
+    apply_divergences(&s, &mut expected, &actual, bridge)?;
     compare(&expected, &actual)
 }
 fn isolated_binaries(
@@ -245,9 +245,25 @@ fn worker(path: &Path) -> ! {
             &Bridge::new(repo),
         )
     }));
-    let text=match result{Ok(Ok(partial))=>partial.json(),Ok(Err(e))=>serde_json::json!({"harnessPanic":e.to_string()}).to_string(),Err(p)=>serde_json::json!({"harnessPanic":p.downcast_ref::<String>().map(String::as_str).or_else(||p.downcast_ref::<&str>().copied()).unwrap_or("non-string panic")}).to_string()};
+    let text = serialize_worker_result(result);
     fs::write(path.with_file_name("partial.json"), text).expect("worker result");
     std::process::exit(0)
+}
+
+fn serialize_worker_result(result: std::thread::Result<envswitch::Result<J>>) -> String {
+    match result {
+        Ok(Ok(partial)) => partial.encode().to_string(),
+        Ok(Err(error)) => serde_json::json!({"harnessPanic": error.to_string()}).to_string(),
+        Err(panic) => serde_json::json!({"harnessPanic": panic.downcast_ref::<String>().map(String::as_str).or_else(|| panic.downcast_ref::<&str>().copied()).unwrap_or("non-string panic")}).to_string(),
+    }
+}
+
+fn apply_divergences(s: &J, expected: &mut J, actual: &J, bridge: &Bridge) -> Result<(), String> {
+    divergences::apply(s, expected, actual, bridge).map_err(|error| {
+        let stdout = bridge.decode_base64(actual.get("stdoutBase64").text());
+        let stderr = bridge.decode_base64(actual.get("stderrBase64").text());
+        format!("{error}\nactual.exitCode: {}\nactual.stdout: {:?}\nactual.stderr: {:?}\nactual.result: {}", actual.get("exitCode").int(), String::from_utf8_lossy(&stdout), String::from_utf8_lossy(&stderr), actual.get("result").json())
+    })
 }
 
 fn compare(expected: &J, actual: &J) -> Result<(), String> {
@@ -256,7 +272,7 @@ fn compare(expected: &J, actual: &J) -> Result<(), String> {
     if diff.is_empty() {
         Ok(())
     } else {
-        Err(diff.into_iter().take(12).collect::<Vec<_>>().join("\n"))
+        Err(diff.join("\n"))
     }
 }
 /// Exercise a real implemented S1 export through the entire transcript transport,
@@ -381,6 +397,20 @@ mod checks {
                 status
             );
         }
+    }
+    #[test]
+    fn successful_worker_result_uses_ordered_transport() {
+        let partial = J::object([
+            (
+                "result",
+                J::object([("z", J::number(1)), ("1", J::number(2))]),
+            ),
+            ("stdout", J::array([J::number(255), J::number(0)])),
+        ]);
+        let encoded: serde_json::Value =
+            serde_json::from_str(&serialize_worker_result(Ok(Ok(partial.clone())))).unwrap();
+        assert_eq!(encoded[0], "object");
+        assert_eq!(J::decode(&encoded), partial);
     }
     #[test]
     fn object_order_is_observable() {
