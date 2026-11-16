@@ -2,6 +2,8 @@ import { afterAll, describe, expect, test } from "bun:test";
 import type { Subprocess } from "bun";
 import { createHash } from "node:crypto";
 import {
+  constants as fsConstants,
+  copyFileSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -21,11 +23,14 @@ import {
   fetchLatestReleaseTag,
   formatProgressEvent,
   isManagedLauncher,
+  kernel32ConsoleApi,
   main,
+  openConsoleEncoding,
   parseArgs,
   parseInstallerOutcome,
   parseInstallReceipt,
   runInstallScript,
+  type ConsoleCodePageApi,
   type InstallerOutcome,
   type InstallerRun,
   type InstallPlan,
@@ -1388,6 +1393,110 @@ describe("update helpers", () => {
   });
 });
 
+/** A scripted console code-page API recording every call. */
+function fakeConsoleApi(options: { initial: number; oem?: number; refuseSwitch?: boolean; refuseRestore?: boolean }) {
+  const events: string[] = [];
+  let current = options.initial;
+  const api: ConsoleCodePageApi = {
+    getOutputCodePage: () => {
+      events.push("get");
+      return current;
+    },
+    setOutputCodePage: (codePage) => {
+      events.push(`set:${codePage}`);
+      const refused = codePage === 65001 ? options.refuseSwitch : options.refuseRestore;
+      if (refused || current === 0) {
+        return false;
+      }
+      current = codePage;
+      return true;
+    },
+    getOemCodePage: () => {
+      events.push("oem");
+      return options.oem ?? 437;
+    },
+    decode: (bytes, codePage) => {
+      events.push(`decode:${codePage}`);
+      return `decoded:${codePage}:${bytes.length}`;
+    },
+    close: () => {
+      events.push("close");
+    },
+  };
+  return { api, events, current: () => current };
+}
+
+describe("console code page handling", () => {
+  test("an attached console is switched to UTF-8 and restored exactly once", () => {
+    const fake = fakeConsoleApi({ initial: 850 });
+    const encoding = openConsoleEncoding(fake.api);
+    expect(encoding.codePage).toBe(65001);
+    expect(fake.current()).toBe(65001);
+    expect(encoding.decode(Buffer.from("info: binary: C:\\José-雪\r\n"))).toBe("info: binary: C:\\José-雪\r\n");
+    encoding.restore();
+    encoding.restore();
+    encoding.close();
+    expect(fake.current()).toBe(850);
+    expect(fake.events).toEqual(["get", "set:65001", "set:850", "close"]);
+  });
+
+  test("a refused restore is reported without failing", () => {
+    const fake = fakeConsoleApi({ initial: 850, refuseRestore: true });
+    const warnings: string[] = [];
+    const encoding = openConsoleEncoding(fake.api, (message) => warnings.push(message));
+    expect(() => encoding.restore()).not.toThrow();
+    expect(warnings).toEqual(["envswitch: warning: could not restore the console code page to 850"]);
+  });
+
+  test("without a console (or if the switch is refused) output is decoded with the child's code page", () => {
+    const headless = fakeConsoleApi({ initial: 0, oem: 932 });
+    const encoding = openConsoleEncoding(headless.api);
+    expect(encoding.codePage).toBe(932);
+    expect(encoding.decode(Buffer.from([0x90, 0xe1]))).toBe("decoded:932:2");
+    encoding.restore();
+    encoding.close();
+    expect(encoding.decode(Buffer.from("after close"))).toBe("after close");
+    expect(headless.events).toEqual(["get", "oem", "decode:932", "close"]);
+
+    const refused = fakeConsoleApi({ initial: 850, refuseSwitch: true });
+    const kept = openConsoleEncoding(refused.api);
+    expect(kept.codePage).toBe(850);
+    expect(kept.decode(Buffer.from([0x82]))).toBe("decoded:850:1");
+    kept.restore();
+    expect(refused.events).toEqual(["get", "set:65001", "decode:850"]);
+  });
+
+  test("no console API decodes UTF-8", () => {
+    const encoding = openConsoleEncoding(undefined);
+    expect(encoding.decode(Buffer.from("雪"))).toBe("雪");
+  });
+
+  test.skipIf(!WINDOWS)("kernel32 decodes multibyte OEM code pages (932, 936) and 850", async () => {
+    const api = await kernel32ConsoleApi();
+    expect(api).toBeDefined();
+    try {
+      expect(api!.decode(Buffer.from([0x90, 0xe1]), 932)).toBe("雪");
+      expect(api!.decode(Buffer.from([0xd1, 0xa9]), 936)).toBe("雪");
+      expect(api!.decode(Buffer.from([0x4a, 0x6f, 0x73, 0x82]), 850)).toBe("José");
+      // Headless fallback with an injected multibyte OEM code page uses the real decoder.
+      for (const [oem, snow] of [[932, [0x90, 0xe1]], [936, [0xd1, 0xa9]]] as const) {
+        const headless: ConsoleCodePageApi = {
+          getOutputCodePage: () => 0,
+          setOutputCodePage: () => false,
+          getOemCodePage: () => oem,
+          decode: (bytes, codePage) => api!.decode(bytes, codePage),
+          close: () => {},
+        };
+        const encoding = openConsoleEncoding(headless);
+        const bytes = Buffer.concat([Buffer.from("info: binary: C:\\"), Buffer.from(snow), Buffer.from("\\bin\r\n")]);
+        expect(encoding.decode(bytes)).toBe("info: binary: C:\\雪\\bin\r\n");
+      }
+    } finally {
+      api!.close();
+    }
+  });
+});
+
 /** A sandbox whose PATH holds only symlinks to the named host tools. */
 function makeToolSandbox(tools: string[]): { root: string; bin: string } {
   const root = realTempDir("envswitch-tools-");
@@ -1408,6 +1517,7 @@ describe.skipIf(WINDOWS)("update installer runner", () => {
   printf 'script=%s\\n' "$0"
   printf 'cwd=%s\\n' "$PWD"
   printf 'args=%s\\n' "$#"
+  printf 'pid=%s\\n' "$$"
   mode=$(ls -ld "\${0%/*}"); printf 'dirmode=%s\\n' "\${mode:0:10}"
   mode=$(ls -l "$0"); printf 'filemode=%s\\n' "\${mode:0:10}"
   for name in REPO APP_ROOT INSTALL_DIR ENVSWITCH_VERSION ENVSWITCH_CURRENT_VERSION ENVSWITCH_VERIFY_ATTESTATIONS GITHUB_TOKEN ENVSWITCH_INSTALL_TEST_MODE; do
@@ -1418,12 +1528,13 @@ printf 'info: from fake installer\\n'
 case "\${FAKE_MODE:-}" in
   status) exit 7;;
   term) kill -TERM $$;;
+  wait) printf started > "$FAKE_LOG.started"; exec sleep 30;;
 esac
 exit 0
 `;
 
   function arrange() {
-    const sandbox = makeToolSandbox(["bash", "ls"]);
+    const sandbox = makeToolSandbox(["bash", "ls", "sleep"]);
     const appRoot = join(sandbox.root, "app");
     const installer = join(appRoot, "current", "scripts", "install.sh");
     writeExecutable(installer, FAKE_INSTALLER);
@@ -1491,6 +1602,78 @@ exit 0
     expect(readLog().ENVSWITCH_CURRENT_VERSION).toBeUndefined();
   });
 
+  test("console code page: handlers precede the switch; restore follows installer exit on success, failure, and interruption", async () => {
+    for (const mode of ["success", "failure", "interrupted"] as const) {
+      const { plan, env, tempRoot, readLog } = arrange();
+      const baseline = [process.listenerCount("SIGINT"), process.listenerCount("SIGTERM")];
+      const fake = fakeConsoleApi({ initial: 850 });
+      const observed: { listenersAtSwitch?: number[]; installerGoneAtRestore?: boolean } = {};
+      const api: ConsoleCodePageApi = {
+        ...fake.api,
+        setOutputCodePage: (codePage) => {
+          if (codePage === 65001) {
+            observed.listenersAtSwitch = [process.listenerCount("SIGINT"), process.listenerCount("SIGTERM")];
+          } else {
+            const pid = Number(readLog().pid);
+            try {
+              process.kill(pid, 0);
+              observed.installerGoneAtRestore = false;
+            } catch {
+              observed.installerGoneAtRestore = true;
+            }
+          }
+          return fake.api.setOutputCodePage(codePage);
+        },
+      };
+      const fakeMode = { success: "", failure: "status", interrupted: "wait" }[mode];
+
+      const pending = runInstallScript(plan, {
+        env: { ...env, FAKE_MODE: fakeMode },
+        windows: false,
+        tempRoot,
+        stdout: { write: () => {} },
+        consoleApi: async () => api,
+      });
+      if (mode === "interrupted") {
+        while (!existsSync(`${env.FAKE_LOG}.started`)) {
+          await Bun.sleep(20);
+        }
+        process.emit("SIGTERM");
+      }
+      const run = await pending;
+
+      expect({ mode, code: run.code }).toEqual({ mode, code: { success: 0, failure: 7, interrupted: 143 }[mode] });
+      expect(observed).toEqual({ listenersAtSwitch: [baseline[0]! + 1, baseline[1]! + 1], installerGoneAtRestore: true });
+      expect(fake.events).toEqual(["get", "set:65001", "set:850", "close"]);
+      expect(fake.current()).toBe(850);
+      expect([process.listenerCount("SIGINT"), process.listenerCount("SIGTERM")]).toEqual(baseline);
+      expect(readdirSync(tempRoot)).toEqual([]);
+    }
+  }, 60_000);
+
+  test("console code page: decodes before closing the library, and reports a refused restore", async () => {
+    const { plan, env, tempRoot } = arrange();
+    const refused = fakeConsoleApi({ initial: 850, refuseSwitch: true });
+    const run = await runInstallScript(plan, { env, windows: false, tempRoot, stdout: { write: () => {} }, consoleApi: async () => refused.api });
+    expect(run).toEqual({ code: 0, stdout: `decoded:850:${"info: from fake installer\n".length}` });
+    expect(refused.events).toEqual(["get", "set:65001", "decode:850", "close"]);
+
+    const stubborn = fakeConsoleApi({ initial: 850, refuseRestore: true });
+    const warnings: string[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => {
+      warnings.push(args.map(String).join(" "));
+    };
+    try {
+      const restored = await runInstallScript(plan, { env, windows: false, tempRoot, stdout: { write: () => {} }, consoleApi: async () => stubborn.api });
+      expect(restored.code).toBe(0);
+    } finally {
+      console.error = originalError;
+    }
+    expect(warnings).toEqual(["envswitch: warning: could not restore the console code page to 850"]);
+    expect(stubborn.events).toEqual(["get", "set:65001", "set:850", "close"]);
+  }, 60_000);
+
   test("forwards nonzero and signal statuses", async () => {
     const { plan, env, tempRoot } = arrange();
     const quiet = { write: () => {} };
@@ -1550,9 +1733,77 @@ function windowsBaseEnv(): Record<string, string> {
   return env;
 }
 
-function windowsSystemPath(): string[] {
-  return [join(SYSTEM_ROOT, "System32"), SYSTEM_ROOT, join(SYSTEM_ROOT, "System32", "WindowsPowerShell", "v1.0")];
+/**
+ * A fresh PATH directory holding only the tools the Windows rows invoke by
+ * name: Bun, Windows PowerShell (the bridge's `powershell`), and chcp/where
+ * (used by launchers). Each is a symlink, or else an exclusively created copy;
+ * nothing is ever written through them.
+ */
+function makeWindowsTools(dir: string): string {
+  mkdirSync(dir, { recursive: true });
+  const tools = [
+    ["bun.exe", process.execPath],
+    ["powershell.exe", WINDOWS_POWERSHELL],
+    ["chcp.com", join(SYSTEM_ROOT, "System32", "chcp.com")],
+    ["where.exe", join(SYSTEM_ROOT, "System32", "where.exe")],
+  ] as const;
+  for (const [name, target] of tools) {
+    const path = join(dir, name);
+    try {
+      symlinkSync(target, path, "file");
+    } catch {
+      copyFileSync(target, path, fsConstants.COPYFILE_EXCL);
+    }
+  }
+  return dir;
 }
+
+/**
+ * Runs `runInstallScript` in a fresh Bun process whose console is controlled:
+ * set to code page 850 (restored afterwards), or detached with FreeConsole.
+ * Records the console code page before and after the handoff.
+ */
+const CONSOLE_DRIVER = [
+  'import { dlopen, FFIType } from "bun:ffi";',
+  'import { existsSync, readFileSync, writeFileSync } from "node:fs";',
+  `import { runInstallScript } from ${JSON.stringify(join(REPO_ROOT, "src", "cli.ts"))};`,
+  'const input = JSON.parse(readFileSync(process.argv[2], "utf8"));',
+  'const k = dlopen("kernel32.dll", {',
+  "  GetConsoleOutputCP: { args: [], returns: FFIType.u32 },",
+  "  SetConsoleOutputCP: { args: [FFIType.u32], returns: FFIType.i32 },",
+  "  GetOEMCP: { args: [], returns: FFIType.u32 },",
+  "  FreeConsole: { args: [], returns: FFIType.i32 },",
+  "}).symbols;",
+  "let saved = 0;",
+  "if (input.headless) { k.FreeConsole(); } else { saved = k.GetConsoleOutputCP(); k.SetConsoleOutputCP(850); }",
+  "const before = k.GetConsoleOutputCP();",
+  "const pending = runInstallScript(input.plan, { windows: true, tempRoot: input.tempRoot, stdout: { write: () => {} } });",
+  "if (input.marker) { while (!existsSync(input.marker)) { await Bun.sleep(50); } process.emit(\"SIGTERM\"); }",
+  "const run = await pending;",
+  "const after = k.GetConsoleOutputCP();",
+  "const oem = k.GetOEMCP();",
+  "if (saved !== 0) { k.SetConsoleOutputCP(saved); }",
+  "writeFileSync(process.argv[3], JSON.stringify({ before, after, oem, run }));",
+  "",
+].join("\n");
+
+/** Runs argv as a child of a fresh Bun process whose console is set to code page 850 (then restored). */
+const CP850_DRIVER = [
+  'import { dlopen, FFIType } from "bun:ffi";',
+  'import { writeFileSync } from "node:fs";',
+  'const k = dlopen("kernel32.dll", {',
+  "  GetConsoleOutputCP: { args: [], returns: FFIType.u32 },",
+  "  SetConsoleOutputCP: { args: [FFIType.u32], returns: FFIType.i32 },",
+  "}).symbols;",
+  "const saved = k.GetConsoleOutputCP();",
+  "k.SetConsoleOutputCP(850);",
+  "const before = k.GetConsoleOutputCP();",
+  'const child = Bun.spawnSync(JSON.parse(process.env.CP850_ARGV), { stdout: "pipe", stderr: "pipe" });',
+  "const after = k.GetConsoleOutputCP();",
+  "if (saved !== 0) { k.SetConsoleOutputCP(saved); }",
+  'writeFileSync(process.argv[2], JSON.stringify({ before, after, code: child.exitCode, stdout: child.stdout.toString("utf8"), stderr: child.stderr.toString("utf8") }));',
+  "",
+].join("\n");
 
 describe.skipIf(!WINDOWS)("update installer runner (Windows)", () => {
   const FAKE_INSTALLER = [
@@ -1561,13 +1812,14 @@ describe.skipIf(!WINDOWS)("update installer runner (Windows)", () => {
     "$acl = Get-Acl -LiteralPath $dir",
     "$sids = @($acl.Access | ForEach-Object { $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value } | Sort-Object -Unique)",
     "$current = if ($PSBoundParameters.ContainsKey('CurrentVersion')) { $CurrentVersion } else { '<unset>' }",
-    "$lines = @(\"script=$PSCommandPath\", \"cwd=$((Get-Location).ProviderPath)\", \"AppRoot=$AppRoot\", \"InstallDir=$InstallDir\", \"Repo=$Repo\", \"Version=$Version\", \"CurrentVersion=$current\", \"protected=$($acl.AreAccessRulesProtected)\", \"sids=$($sids -join ',')\")",
+    "$lines = @(\"script=$PSCommandPath\", \"cwd=$((Get-Location).ProviderPath)\", \"AppRoot=$AppRoot\", \"InstallDir=$InstallDir\", \"Repo=$Repo\", \"Version=$Version\", \"CurrentVersion=$current\", \"protected=$($acl.AreAccessRulesProtected)\", \"sids=$($sids -join ',')\", \"outputcp=$([Console]::OutputEncoding.CodePage)\")",
     "foreach ($name in @('ENVSWITCH_CURRENT_VERSION','ENVSWITCH_VERIFY_ATTESTATIONS','GITHUB_TOKEN','ENVSWITCH_INSTALL_TEST_MODE')) {",
     "  $value = [Environment]::GetEnvironmentVariable($name)",
     "  if ($null -eq $value) { $lines += \"$name unset\" } else { $lines += \"$name=$value\" }",
     "}",
     "[IO.File]::WriteAllLines($env:FAKE_LOG, [string[]]$lines)",
     "if ($env:FAKE_MODE -eq 'echo') { [Console]::Out.WriteLine(\"info: binary: $AppRoot\\current\\bin\\envswitch.exe\") }",
+    "if ($env:FAKE_MODE -eq 'wait') { [IO.File]::WriteAllText($env:FAKE_LOG + '.started', 'started'); Start-Sleep -Seconds 30 }",
     "[Console]::Out.WriteLine('info: from fake installer')",
     "if ($env:FAKE_MODE -eq 'status') { exit 7 }",
     "exit 0",
@@ -1596,7 +1848,7 @@ describe.skipIf(!WINDOWS)("update installer runner (Windows)", () => {
     };
     const env: UpdateEnv = {
       ...windowsBaseEnv(),
-      PATH: windowsSystemPath().join(";"),
+      PATH: makeWindowsTools(join(base, "tools")),
       USERPROFILE: join(root, "home"),
       LOCALAPPDATA: join(root, "home"),
       APPDATA: join(root, "home"),
@@ -1618,41 +1870,64 @@ describe.skipIf(!WINDOWS)("update installer runner (Windows)", () => {
     return { base, plan, env, tempRoot, readLog };
   }
 
-  test("non-ASCII profile, app root, install dir, and temp: the real Bun -> Windows PowerShell 5.1 handoff decodes output", () => {
-    const { base, plan, env, tempRoot, readLog } = arrange("José-雪");
-    // A fresh Bun process runs the handoff exactly as `envswitch update` would.
-    const driver = join(base, "run-handoff.ts");
-    const input = join(base, "handoff-input.json");
-    const output = join(base, "handoff-output.json");
-    writeFileSync(
-      driver,
-      [
-        `import { readFileSync, writeFileSync } from "node:fs";`,
-        `import { runInstallScript } from ${JSON.stringify(join(REPO_ROOT, "src", "cli.ts"))};`,
-        `const input = JSON.parse(readFileSync(process.argv[2], "utf8"));`,
-        `const run = await runInstallScript(input.plan, { windows: true, tempRoot: input.tempRoot, stdout: { write: () => {} } });`,
-        `writeFileSync(process.argv[3], JSON.stringify(run));`,
-        "",
-      ].join("\n"),
-      { flag: "wx" },
-    );
-    writeFileSync(input, JSON.stringify({ plan, tempRoot }), { flag: "wx" });
+  /** Run the real Bun -> Windows PowerShell 5.1 handoff in a fresh Bun process with a controlled console. */
+  function drive(
+    arranged: ReturnType<typeof arrange>,
+    options: { mode: "echo" | "status" | "wait"; headless?: boolean },
+  ): { before: number; after: number; oem: number; run: InstallerRun } {
+    const { base, plan, env, tempRoot } = arranged;
+    const driver = join(base, "console-driver.ts");
+    const input = join(base, "driver-input.json");
+    const output = join(base, "driver-output.json");
+    writeFileSync(driver, CONSOLE_DRIVER, { flag: "wx" });
+    const marker = options.mode === "wait" ? `${env.FAKE_LOG}.started` : undefined;
+    writeFileSync(input, JSON.stringify({ plan, tempRoot, headless: options.headless === true, marker }), { flag: "wx" });
     const result = Bun.spawnSync([process.execPath, driver, input, output], {
-      env: { ...env, FAKE_MODE: "echo" } as Record<string, string>,
+      env: { ...env, FAKE_MODE: options.mode } as Record<string, string>,
       stdout: "pipe",
       stderr: "pipe",
       timeout: 120_000,
     });
     expect({ code: result.exitCode, stderr: result.stderr.toString() }).toEqual({ code: 0, stderr: "" });
+    return JSON.parse(readFileSync(output, "utf8"));
+  }
 
-    const run = JSON.parse(readFileSync(output, "utf8"));
-    expect(plan.appRoot).toContain("José-雪");
-    expect(run).toEqual({
+  test("attached console at 850: switched to UTF-8 for the installer and restored after success (non-ASCII decodes), failure, and interruption", () => {
+    for (const mode of ["echo", "status", "wait"] as const) {
+      const arranged = arrange("José-雪");
+      const { plan, tempRoot, readLog } = arranged;
+      expect(plan.appRoot).toContain("José-雪");
+
+      const result = drive(arranged, { mode });
+
+      expect({ mode, before: result.before, after: result.after }).toEqual({ mode, before: 850, after: 850 });
+      expect(readLog()).toMatchObject({ outputcp: "65001", AppRoot: plan.appRoot, InstallDir: plan.installDir });
+      if (mode === "echo") {
+        expect(result.run).toEqual({
+          code: 0,
+          stdout: `info: binary: ${plan.appRoot}\\current\\bin\\envswitch.exe\r\ninfo: from fake installer\r\n`,
+        });
+      } else if (mode === "status") {
+        expect(result.run.code).toBe(7);
+      } else {
+        expect(result.run.code).not.toBe(0);
+      }
+      expect(readdirSync(tempRoot)).toEqual([]);
+    }
+  }, 300_000);
+
+  test("headless (no console): installer output decodes with the OEM code page it was written in", () => {
+    const arranged = arrange("José");
+    const { plan, readLog } = arranged;
+
+    const result = drive(arranged, { mode: "echo", headless: true });
+
+    expect({ before: result.before, after: result.after }).toEqual({ before: 0, after: 0 });
+    expect(readLog().outputcp).toBe(String(result.oem));
+    expect(result.run).toEqual({
       code: 0,
       stdout: `info: binary: ${plan.appRoot}\\current\\bin\\envswitch.exe\r\ninfo: from fake installer\r\n`,
     });
-    expect(readLog()).toMatchObject({ AppRoot: plan.appRoot, InstallDir: plan.installDir, Version: "v0.0.5" });
-    expect(readdirSync(tempRoot)).toEqual([]);
   }, 120_000);
 
   test("copies the installer outside current, restricts its directory, passes exact parameters, and cleans up", async () => {
@@ -2266,7 +2541,7 @@ function windowsPayload(): string {
     { flag: "wx" },
   );
   const result = Bun.spawnSync([WINDOWS_POWERSHELL, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script], {
-    env: { ...windowsBaseEnv(), PATH: windowsSystemPath().join(";"), USERPROFILE: root, LOCALAPPDATA: root, APPDATA: root, TEMP: root, TMP: root },
+    env: { ...windowsBaseEnv(), PATH: makeWindowsTools(join(root, "tools")), USERPROFILE: root, LOCALAPPDATA: root, APPDATA: root, TEMP: root, TMP: root },
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -2286,6 +2561,7 @@ function lf(text: string): string {
  * paths, and every installer run uses the mocked persistent User PATH file.
  */
 class WindowsBridgeSandbox {
+  readonly base: string;
   readonly root: string;
   readonly home: string;
   readonly localAppData: string;
@@ -2301,11 +2577,12 @@ class WindowsBridgeSandbox {
 
   /** `label` (e.g. non-ASCII) becomes part of every profile, temp, and install path. */
   constructor(label = "") {
-    const base = realTempDir("envswitch-winbridge-");
-    this.root = label === "" ? base : join(base, label);
+    this.base = realTempDir("envswitch-winbridge-");
+    this.root = label === "" ? this.base : join(this.base, label);
     this.home = join(this.root, "home");
     this.localAppData = join(this.root, "localappdata");
-    this.tools = join(this.root, "tools");
+    // Only the tools under test resolve by name: Bun, PowerShell, chcp, where, and fakes.
+    this.tools = makeWindowsTools(join(this.base, "tools"));
     this.temp = join(this.root, "temp");
     this.project = join(this.root, "project");
     this.appRoot = join(this.localAppData, "Programs", "envswitch");
@@ -2334,7 +2611,7 @@ class WindowsBridgeSandbox {
       XDG_CONFIG_HOME: join(this.root, "xdg-config"),
       XDG_CACHE_HOME: join(this.root, "xdg-cache"),
       XDG_STATE_HOME: join(this.root, "xdg-state"),
-      PATH: [this.tools, dirname(process.execPath), ...windowsSystemPath()].join(";"),
+      PATH: this.tools,
       HTTPS_PROXY: "http://127.0.0.1:9",
       NO_PROXY: "127.0.0.1,localhost,::1",
       NO_COLOR: "1",
@@ -2346,7 +2623,7 @@ class WindowsBridgeSandbox {
   serverEnv(): Record<string, string> {
     return {
       ...windowsBaseEnv(),
-      PATH: windowsSystemPath().join(";"),
+      PATH: this.tools,
       HOME: this.home,
       USERPROFILE: this.home,
       LOCALAPPDATA: this.localAppData,
@@ -2375,6 +2652,23 @@ class WindowsBridgeSandbox {
   /** The installed TS entry point run directly, for exact exit statuses. */
   bridge(args: string[], extra: Record<string, string> = {}): ProcessResult {
     return this.run([process.execPath, join(this.appDir, "src", "cli.ts"), ...args], extra);
+  }
+
+  /**
+   * The installed TS entry point run under a console set to code page 850
+   * (no launcher `chcp`), reporting the console code page before and after.
+   */
+  bridgeAtCodePage850(args: string[], extra: Record<string, string> = {}): ProcessResult & { before: number; after: number } {
+    const driver = join(this.base, "cp850-driver.ts");
+    if (!existsSync(driver)) {
+      writeFileSync(driver, CP850_DRIVER, { flag: "wx" });
+    }
+    const output = join(this.base, `cp850-${readdirSync(this.base).length}.json`);
+    const argv = [process.execPath, join(this.appDir, "src", "cli.ts"), ...args];
+    const driven = this.run([process.execPath, driver, output], { ...extra, CP850_ARGV: JSON.stringify(argv) });
+    expect({ code: driven.code, stderr: driven.stderr }).toEqual({ code: 0, stderr: "" });
+    const result = JSON.parse(readFileSync(output, "utf8"));
+    return { code: result.code ?? -1, stdout: result.stdout, stderr: result.stderr, before: result.before, after: result.after };
   }
 
   /**
@@ -2519,13 +2813,15 @@ describe.skipIf(!WINDOWS)("bridge migration end-to-end (Windows)", () => {
     expect(sandbox.appRoot).toContain("José-雪");
     const realUserPath = sandbox.realUserPath();
     const server = await MockReleaseServer.start(sandbox, { repo: DEFAULT_REPO, windowsBinary: windowsPayload() });
-    let update: ProcessResult;
+    let update: ProcessResult & { before: number; after: number };
     try {
-      update = sandbox.runLauncher(["update"], server.hooks());
+      // Console at 850 and no launcher chcp: only the bridge's own switch makes this lossless.
+      update = sandbox.bridgeAtCodePage850(["update"], server.hooks());
     } finally {
       await server.close();
     }
     expectSuccess(update);
+    expect({ before: update.before, after: update.after }).toEqual({ before: 850, after: 850 });
     expect(update.stderr).not.toContain("warning");
 
     const receipt = JSON.parse(readFileSync(join(sandbox.appDir, "install.json"), "utf8"));

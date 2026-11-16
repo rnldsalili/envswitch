@@ -1083,6 +1083,8 @@ export interface RunInstallScriptOptions {
   tempRoot?: string;
   /** Receives the installer's stdout bytes as they arrive. */
   stdout?: { write(chunk: Uint8Array): unknown };
+  /** Console code-page operations; defaults to kernel32 on Windows, none elsewhere. */
+  consoleApi?: () => Promise<ConsoleCodePageApi | undefined>;
 }
 
 /**
@@ -1130,50 +1132,67 @@ export async function runInstallScript(plan: InstallPlan, options: RunInstallScr
     }
 
     const invocation = buildInstallerInvocation(plan, script, env, windows);
-    // Windows PowerShell 5.1 writes redirected stdout in the console code page.
-    const encoding = windows && IS_WINDOWS ? await windowsConsoleEncoding() : undefined;
-    let child: ReturnType<typeof spawnInstaller>;
-    try {
-      child = spawnInstaller(invocation, dir);
-    } catch (error) {
-      encoding?.restore();
-      // Like the TypeScript oracle, a spawn failure is not a controlled error.
-      throw new Error(`update failed: could not run installer: ${error instanceof Error ? error.message : String(error)}`);
-    }
 
-    // The terminal delivers Ctrl-C to the installer too; wait for its rollback
-    // instead of exiting first, and forward a TERM sent to this process.
+    // Handlers first, before any console state changes: the terminal delivers
+    // Ctrl-C to the installer too, so wait for its rollback instead of exiting,
+    // and forward a TERM sent to this process (even one arriving before spawn).
+    let child: ReturnType<typeof spawnInstaller> | undefined;
+    let terminated = false;
     const ignore = () => {};
     const forward = () => {
-      child.kill("SIGTERM");
+      terminated = true;
+      child?.kill("SIGTERM");
     };
     process.on("SIGINT", ignore);
     process.on("SIGTERM", forward);
-    const chunks: Uint8Array[] = [];
+    let encoding: ConsoleEncoding | undefined;
     try {
-      for await (const chunk of child.stdout) {
-        chunks.push(chunk);
+      // Windows PowerShell 5.1 writes redirected stdout in the console code page.
+      const api = options.consoleApi ? await options.consoleApi() : windows && IS_WINDOWS ? await kernel32ConsoleApi() : undefined;
+      encoding = openConsoleEncoding(api);
+      let output: Buffer;
+      try {
         try {
-          out.write(chunk);
-        } catch {
-          // Keep capturing for the result even if forwarding fails.
+          child = spawnInstaller(invocation, dir);
+        } catch (error) {
+          // Like the TypeScript oracle, a spawn failure is not a controlled error.
+          throw new Error(`update failed: could not run installer: ${error instanceof Error ? error.message : String(error)}`);
         }
+        if (terminated) {
+          child.kill("SIGTERM");
+        }
+        const chunks: Uint8Array[] = [];
+        try {
+          for await (const chunk of child.stdout) {
+            chunks.push(chunk);
+            try {
+              out.write(chunk);
+            } catch {
+              // Keep capturing for the result even if forwarding fails.
+            }
+          }
+        } catch {
+          // An unreadable stdout leaves an unaccepted result; still wait below.
+        } finally {
+          // Never remove the private script while the installer is running.
+          await child.exited;
+        }
+        const signal = child.signalCode;
+        code = signal
+          ? 128 + (osConstants.signals[signal as keyof typeof osConstants.signals] ?? 0)
+          : (child.exitCode ?? 1);
+        output = Buffer.concat(chunks);
+      } finally {
+        // Always put the caller's console code page back, whatever happened.
+        encoding.restore();
       }
-    } catch {
-      // An unreadable stdout leaves an unaccepted result; still wait below.
+      // The code-page library stays open until decoding is finished.
+      return { code, stdout: encoding.decode(output) };
     } finally {
-      // Never remove the private script while the installer is running.
-      await child.exited;
-      encoding?.restore();
+      encoding?.close();
       process.off("SIGINT", ignore);
       process.off("SIGTERM", forward);
     }
-    const signal = child.signalCode;
-    code = signal
-      ? 128 + (osConstants.signals[signal as keyof typeof osConstants.signals] ?? 0)
-      : (child.exitCode ?? 1);
-    const output = Buffer.concat(chunks);
-    return { code, stdout: encoding ? encoding.decode(output) : output.toString("utf8") };
   } finally {
     try {
       rmSync(dir, { recursive: true, force: true });
@@ -1197,21 +1216,34 @@ function spawnInstaller(invocation: { argv: string[]; env: Record<string, string
   });
 }
 
-interface ConsoleEncoding {
-  decode(bytes: Uint8Array): string;
-  restore(): void;
+/** Win32 console code-page operations; kernel32 in production, injectable in tests. */
+export interface ConsoleCodePageApi {
+  /** 0 when no console is attached. */
+  getOutputCodePage(): number;
+  setOutputCodePage(codePage: number): boolean;
+  getOemCodePage(): number;
+  /** MultiByteToWideChar for the given code page; undefined when it fails. */
+  decode(bytes: Uint8Array, codePage: number): string | undefined;
+  /** Release the native library; no other method is called afterwards. */
+  close(): void;
 }
 
-/**
- * D3 parity (install/console.rs): with a console attached, switch its output
- * code page to UTF-8 (65001) for the handoff and restore it afterwards, so
- * Windows PowerShell 5.1 writes non-ASCII paths losslessly; without one,
- * decode with the OEM code page the child will use.
- */
-async function windowsConsoleEncoding(): Promise<ConsoleEncoding> {
-  const utf8: ConsoleEncoding = { decode: (bytes) => Buffer.from(bytes).toString("utf8"), restore: () => {} };
+export interface ConsoleEncoding {
+  readonly codePage: number;
+  decode(bytes: Uint8Array): string;
+  /** Put the caller's code page back (idempotent); a refusal is reported, not fatal. */
+  restore(): void;
+  close(): void;
+}
+
+function utf8Text(bytes: Uint8Array): string {
+  return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString("utf8");
+}
+
+/** kernel32 through bun:ffi; undefined when unavailable. */
+export async function kernel32ConsoleApi(): Promise<ConsoleCodePageApi | undefined> {
+  let ffi: typeof import("bun:ffi");
   let kernel32;
-  let ffi;
   try {
     ffi = await import("bun:ffi");
     kernel32 = ffi.dlopen("kernel32.dll", {
@@ -1224,31 +1256,72 @@ async function windowsConsoleEncoding(): Promise<ConsoleEncoding> {
       },
     });
   } catch {
-    return utf8;
+    return undefined;
   }
   const api = kernel32.symbols;
-  const previous = api.GetConsoleOutputCP();
-  const changed = previous !== 0 && api.SetConsoleOutputCP(65001) !== 0;
-  const codePage = changed ? 65001 : previous !== 0 ? previous : api.GetOEMCP();
   return {
-    decode(bytes) {
-      if (codePage !== 65001 && bytes.length > 0) {
-        const source = Buffer.from(bytes);
-        const size = api.MultiByteToWideChar(codePage, 0, ffi.ptr(source), source.length, null, 0);
-        if (size > 0) {
-          const wide = new Uint16Array(size);
-          if (api.MultiByteToWideChar(codePage, 0, ffi.ptr(source), source.length, ffi.ptr(wide), size) === size) {
-            return Buffer.from(wide.buffer, wide.byteOffset, wide.byteLength).toString("utf16le");
-          }
-        }
+    getOutputCodePage: () => api.GetConsoleOutputCP(),
+    setOutputCodePage: (codePage) => api.SetConsoleOutputCP(codePage) !== 0,
+    getOemCodePage: () => api.GetOEMCP(),
+    decode(bytes, codePage) {
+      if (bytes.length === 0) {
+        return "";
       }
-      return utf8.decode(bytes);
+      const source = Buffer.from(bytes); // a private, stable copy for the native call
+      const size = api.MultiByteToWideChar(codePage, 0, ffi.ptr(source), source.length, null, 0);
+      if (size <= 0) {
+        return undefined;
+      }
+      const wide = new Uint16Array(size);
+      if (api.MultiByteToWideChar(codePage, 0, ffi.ptr(source), source.length, ffi.ptr(wide), size) !== size) {
+        return undefined;
+      }
+      return Buffer.from(wide.buffer, wide.byteOffset, wide.byteLength).toString("utf16le");
+    },
+    close: () => kernel32.close(),
+  };
+}
+
+/**
+ * D3 parity (install/console.rs): with a console attached, switch its output
+ * code page to UTF-8 (65001) for the handoff so Windows PowerShell 5.1 writes
+ * non-ASCII paths losslessly; without one (or if the switch is refused),
+ * decode with the code page the child will use (console, else OEM).
+ */
+export function openConsoleEncoding(
+  api: ConsoleCodePageApi | undefined,
+  warn: (message: string) => void = (message) => console.error(message),
+): ConsoleEncoding {
+  if (api === undefined) {
+    return { codePage: 65001, decode: utf8Text, restore: () => {}, close: () => {} };
+  }
+  const previous = api.getOutputCodePage();
+  const changed = previous !== 0 && api.setOutputCodePage(65001);
+  const codePage = changed ? 65001 : previous !== 0 ? previous : api.getOemCodePage();
+  let pendingRestore = changed;
+  let closed = false;
+  return {
+    codePage,
+    decode(bytes) {
+      if (codePage === 65001 || closed) {
+        return utf8Text(bytes);
+      }
+      return api.decode(bytes, codePage) ?? utf8Text(bytes);
     },
     restore() {
-      if (changed) {
-        api.SetConsoleOutputCP(previous);
+      if (!pendingRestore || closed) {
+        return;
       }
-      kernel32.close();
+      pendingRestore = false;
+      if (!api.setOutputCodePage(previous)) {
+        warn(`envswitch: warning: could not restore the console code page to ${previous}`);
+      }
+    },
+    close() {
+      if (!closed) {
+        closed = true;
+        api.close();
+      }
     },
   };
 }
