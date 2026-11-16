@@ -1,11 +1,11 @@
 //! `OnePasswordClient` (contract 02 §5.2–5.4). Owner: C2.
 
-// Stub file: remove when implemented.
-#![allow(unused_variables, dead_code, clippy::todo)]
-
 use std::sync::Arc;
 
-use crate::error::Result;
+use super::OP_PROGRAM;
+use super::parse::{RawField, parse_item_fields, parse_item_list, parse_vault_list};
+use crate::error::{Error, Result};
+use crate::jsutil::{is_env_key, js_trim};
 use crate::model::{EnvMap, ItemSummary, Vault};
 use crate::ports::{CommandRunner, OnePassword, OpFactory, VaultLister};
 
@@ -26,6 +26,23 @@ impl OnePasswordClient {
         }
     }
 
+    fn get_raw_item(&self, item: &str) -> Result<Vec<RawField>> {
+        let raw = run_op(
+            self.runner.as_ref(),
+            &[
+                "item",
+                "get",
+                item,
+                "--vault",
+                &self.vault,
+                "--format",
+                "json",
+                "--reveal",
+            ],
+        )?;
+        parse_item_fields(&raw, item)
+    }
+
     /// The vault passed to `--vault`.
     pub fn vault(&self) -> &str {
         &self.vault
@@ -34,26 +51,50 @@ impl OnePasswordClient {
 
 impl OnePassword for OnePasswordClient {
     fn assert_authenticated(&self) -> Result<()> {
-        todo!("C2: 02 §5.2")
+        run_op(self.runner.as_ref(), &["whoami", "--format", "json"])?;
+        Ok(())
     }
 
     fn list_items_by_tags(&self, tags: &[String]) -> Result<Vec<ItemSummary>> {
-        todo!("C2: 02 §5.2-5.3")
+        let joined = tags.join(",");
+        let mut args = vec!["item", "list", "--vault", &self.vault, "--format", "json"];
+        if !tags.is_empty() {
+            args.extend(["--tags", &joined]);
+        }
+        parse_item_list(&run_op(self.runner.as_ref(), &args)?)
     }
 
     fn read_config_item(&self, item: &str) -> Result<String> {
-        todo!("C2: 02 §5.4")
+        let fields = self.get_raw_item(item)?;
+        fields
+            .into_iter()
+            .find(|field| field.label == "config")
+            .filter(|field| !js_trim(&field.value).is_empty())
+            .map(|field| field.value)
+            .ok_or_else(|| {
+                Error::user(format!(
+                    "1Password config item {item} must contain a non-empty field named config"
+                ))
+            })
     }
 
     fn read_env_item(&self, item: &ItemSummary) -> Result<EnvMap> {
-        todo!("C2: 02 §5.4")
+        let mut values = EnvMap::new();
+        for field in self.get_raw_item(item.key())? {
+            let label = js_trim(&field.label);
+            if label.is_empty() || label == "notesPlain" || !is_env_key(label) {
+                continue;
+            }
+            values.insert(label.to_owned(), field.value);
+        }
+        Ok(values)
     }
 }
 
 /// TS static `OnePasswordClient.listVaults(runner)`:
 /// `op vault list --format json` (02 §5.2–5.3).
 pub fn list_vaults(runner: &dyn CommandRunner) -> Result<Vec<Vault>> {
-    todo!("C2: 02 §5.2-5.3")
+    parse_vault_list(&run_op(runner, &["vault", "list", "--format", "json"])?)
 }
 
 /// Real [`OpFactory`]: one [`OnePasswordClient`] per call, sharing a runner.
@@ -88,4 +129,20 @@ impl VaultLister for OpVaultLister {
     fn list_vaults(&self) -> Result<Vec<Vault>> {
         list_vaults(self.runner.as_ref())
     }
+}
+
+// Only stderr can become an error message: stdout may contain revealed secrets.
+fn run_op(runner: &dyn CommandRunner, args: &[&str]) -> Result<String> {
+    let args: Vec<String> = args.iter().map(|arg| (*arg).to_owned()).collect();
+    let output = runner.run(OP_PROGRAM, &args)?;
+    if !output.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let message = js_trim(&stderr);
+        return Err(Error::internal(if message.is_empty() {
+            format!("Command failed: {OP_PROGRAM} {}", args.join(" "))
+        } else {
+            message.to_owned()
+        }));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
