@@ -1,0 +1,58 @@
+valid	@{}@
+valid	@[]@
+valid	@null@
+valid	@true@
+valid	@false@
+valid	@0@
+valid	@-0@
+valid	@1.25e+30@
+valid	@-12.5E-3@
+valid	@""@
+valid	@"escape \" \\ \/ \b \f \n \r \t"@
+valid	@"\u0000\u001f"@
+valid	@"\ud83d\ude00"@
+valid	@"雪"@
+valid	@"\u96ea"@
+valid	@{"assets":[{"url":"https:\/\/api.github.com\/repos\/demo\/suite\/releases\/assets\/1","id":1,"name":"install.sh"}],"draft":false,"id":42,"tag_name":"v0.0.42","prerelease":false}@
+valid	@{"a":{"a":1},"b":{"a":2}}@
+valid	@{"a/b":1,"a":{"b":2}}@
+valid	@{"":0,"0":1}@
+valid	@[1, [2, 3], {"x": [true,false,null]}]@
+valid	@  {"a": 1}  @
+invalid	@@
+invalid	@{@
+invalid	@[@
+invalid	@tru@
+invalid	@True@
+invalid	@undefined@
+invalid	@NaN@
+invalid	@Infinity@
+invalid	@01@
+invalid	@-01@
+invalid	@+1@
+invalid	@.5@
+invalid	@1.@
+invalid	@1e@
+invalid	@1e+@
+invalid	@1 2@
+invalid	@{}[]@
+invalid	@[1,]@
+invalid	@{"a":1,}@
+invalid	@{"a" 1}@
+invalid	@{"a":}@
+invalid	@{1:2}@
+invalid	@{"a":1,"a":2}@
+invalid	@{"a":1,"\u0061":2}@
+invalid	@{"雪":1,"\u96ea":2}@
+invalid	@{"a":{"x":1,"x":2}}@
+invalid	@"\x00"@
+invalid	@"\u123"@
+invalid	@"\uZZZZ"@
+invalid	@"\ud800"@
+invalid	@"\udc00"@
+invalid	@"\ud800\u0041"@
+invalid	@"unterminated@
+invalid	@"rawcontrol"@
+invalid	@[1,,2]@
+invalid	@{"a":1}garbage@
+invalid	@﻿{}@

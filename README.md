@@ -30,7 +30,7 @@ If `envswitch` is not found right after installing, restart your terminal (or ru
 
 ## Installation Details
 
-The installer installs Bun if it is missing, downloads the source release, installs it under your data directory, and creates an `envswitch` launcher on your `PATH`.
+The installer resolves the latest GitHub release, verifies the release's `SHA256SUMS` before extracting anything, installs Bun if it is missing, installs envswitch under your data directory, records an install receipt (`current/install.json`), and creates an `envswitch` launcher on your `PATH`. A release without `SHA256SUMS`, or with a mismatching checksum, is refused.
 
 - macOS, Linux, WSL: source in `${XDG_DATA_HOME:-$HOME/.local/share}/envswitch/current`, launcher at `$HOME/.local/bin/envswitch`.
 - Windows: source in `$env:LOCALAPPDATA\Programs\envswitch\current`, launcher at `$env:LOCALAPPDATA\Programs\envswitch\bin\envswitch.cmd`.
@@ -58,12 +58,54 @@ curl -fsSL https://raw.githubusercontent.com/rnldsalili/envswitch/main/scripts/i
 .\scripts\install.ps1 -InstallDir "$env:USERPROFILE\bin" -AppRoot "$env:LOCALAPPDATA\envswitch"
 ```
 
-### Manual Installation
+The install receipt records these locations and the repository, so `envswitch update` keeps using them.
 
-Download the source release archive, extract it, install dependencies with Bun, and create a small launcher on your `PATH`.
+### Updating and Recovery
+
+Upgrading from the Bun version: run `envswitch update` during the bridge release to prepare for native updates. If you skipped the bridge and update fails with `release asset not found or unavailable` or `matching asset not found`, rerun the install command below. Updates preserve your install paths when they are recorded in an install receipt. When reinstalling, supply any custom install paths explicitly. Your project `.env` files and Bun installation are not removed.
+
+macOS, Linux, or WSL:
 
 ```bash
-gh release download --repo rnldsalili/envswitch --pattern 'envswitch_*_source.tar.gz'
+curl -fsSL https://raw.githubusercontent.com/rnldsalili/envswitch/main/scripts/install.sh | bash
+```
+
+Windows PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/rnldsalili/envswitch/main/scripts/install.ps1 | iex
+```
+
+For an older custom installation, use the same app root, launcher directory, and repository you originally selected. The installer cannot discover every old custom launcher. Restart your terminal after reinstalling, then run `envswitch --version`; a native installation prints `envswitch <version> <target-triple>`. Reinstalling at the default location does not repair a different launcher that appears earlier on PATH.
+
+Custom Unix example (replace these locations/repo with the actual old values; set variables on **bash**, not curl):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rnldsalili/envswitch/main/scripts/install.sh |
+  REPO=rnldsalili/envswitch APP_ROOT="$HOME/.local/share/envswitch" INSTALL_DIR="$HOME/.local/bin" bash
+```
+
+Custom Windows example (download the script, then pass parameters; do not imply that variables configure `iex`):
+
+```powershell
+$installer = Join-Path $env:TEMP ("envswitch-install-" + [guid]::NewGuid() + ".ps1")
+try {
+    Invoke-WebRequest https://raw.githubusercontent.com/rnldsalili/envswitch/main/scripts/install.ps1 -OutFile $installer
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $installer -Repo rnldsalili/envswitch -AppRoot "$env:LOCALAPPDATA\Programs\envswitch" -InstallDir "$env:LOCALAPPDATA\Programs\envswitch\bin"
+} finally {
+    Remove-Item -LiteralPath $installer -ErrorAction SilentlyContinue
+}
+```
+
+The public one-liners are a mutable bootstrap trust choice; checksums protect subsequent payload downloads, not the script that has already been executed.
+
+### Manual Installation
+
+Download the source release archive and its checksums, verify the archive, extract it, install dependencies with Bun, and create a small launcher on your `PATH`. A manual installation has no install receipt or managed launcher, so `envswitch update` cannot manage it; reinstall with the install script to enable updates.
+
+```bash
+gh release download --repo rnldsalili/envswitch --pattern 'envswitch_*_source.tar.gz' --pattern SHA256SUMS
+shasum -a 256 --check --ignore-missing SHA256SUMS
 mkdir -p "$HOME/.local/share/envswitch"
 tar -xzf envswitch_*_source.tar.gz -C "$HOME/.local/share/envswitch"
 mv "$HOME/.local/share/envswitch/envswitch" "$HOME/.local/share/envswitch/current"
@@ -73,10 +115,13 @@ printf '#!/usr/bin/env bash\nexec bun "%s/src/cli.ts" "$@"\n' "$HOME/.local/shar
 chmod +x "$HOME/.local/bin/envswitch"
 ```
 
-Release assets use this naming format:
+Source releases publish these assets:
 
 ```text
-envswitch_0.1.0_source.tar.gz
+envswitch_0.0.42_source.tar.gz
+SHA256SUMS
+install.sh
+install.ps1
 ```
 
 ## Commands
@@ -94,7 +139,9 @@ Run `envswitch` with no arguments for guided switch prompts. Guided mode uses ar
 
 Use `envswitch switch ...` for scripts and non-interactive terminals. `--env` defaults to `local`, and `--target` defaults to `all`.
 
-Use `envswitch update` to update an installed copy to the latest GitHub release. It re-runs the bundled install script in place, skips the reinstall when you are already on the latest version, and reports the old and new versions. It does not work from a git checkout; use `git pull` there instead.
+Use `envswitch update` to update an installed copy to the latest GitHub release. It resolves the latest release once, pins that version, and runs a private copy of the bundled install script with the install paths and repository recorded in the install receipt. The installer verifies checksums and checks the installation's health, so `update` always runs it, even when you are already on the latest version: it then reports `envswitch is already up to date (<version>)`, or repairs missing files and reports `repaired envswitch <version>`. After an update it reports the old and new versions, but only once the installer's result matches the installed receipt and version marker. If the installer fails, your previous installation is kept and `update` exits with an error. It does not work from a git checkout; use `git pull` there instead.
+
+For an installation made before install receipts existed, `update` uses the install location and finds your existing `envswitch` launcher in `$HOME/.local/bin` or on your `PATH` (Windows: `<app root>\bin` or `PATH`). On macOS, Linux, and WSL it also honors `REPO` and `INSTALL_DIR` if you set them. If no single matching launcher can be found, it stops and asks you to reinstall with explicit locations (see [Updating and Recovery](#updating-and-recovery)).
 
 ## Prerequisites
 
@@ -500,4 +547,4 @@ bun test
 bun run build
 ```
 
-The build command runs the TypeScript check. Release packaging is handled by the GitHub Actions workflow.
+The build command runs the TypeScript check. `bun run test` also runs the installer protocol suites (`bash test/install-sh.test.sh`; see `test/install/README.md` for the PowerShell and Docker suites). Release packaging is handled by the GitHub Actions workflow.
