@@ -84,7 +84,12 @@ impl Sandbox {
         }
         c
     }
+    #[cfg(windows)]
     fn resolve(&self, name: &str) -> PathBuf {
+        self.try_resolve(name)
+            .unwrap_or_else(|| panic!("required fixture tool unavailable: {name}"))
+    }
+    fn try_resolve(&self, name: &str) -> Option<PathBuf> {
         let names = if cfg!(windows) {
             vec![
                 format!("{name}.exe"),
@@ -99,11 +104,11 @@ impl Sandbox {
                 if let Ok(path) = dir.join(name).canonicalize()
                     && path.is_file()
                 {
-                    return path;
+                    return Some(path);
                 }
             }
         }
-        panic!("required fixture tool unavailable: {name}");
+        None
     }
     fn link(&self, name: &str, target: &Path) {
         let target = target.canonicalize().unwrap();
@@ -343,21 +348,48 @@ fn hermetic_release() {
     let s = Sandbox::new();
     #[cfg(unix)]
     {
-        for name in ["bash", "uname"] {
-            s.link(name, &s.resolve(name));
-        }
-        let hasher = if cfg!(target_os = "macos") {
-            "shasum"
-        } else {
-            "sha256sum"
-        };
-        s.link(hasher, &s.resolve(hasher));
-        #[cfg(target_os = "macos")]
-        s.link("sysctl", &s.resolve("sysctl"));
-        // Transitional compatibility: no Python on installer PATH after D2b's
-        // shell rewrite. Python above is only the existing fixture-server driver.
-        if include_str!("../../../scripts/install.sh").contains("exec python3") {
-            s.link("python3", &s.python());
+        // Same allowlist the D2b installer suite uses (test/install/harness.py
+        // UNIX_TOOLS); the installer needs no python3. Tools absent on this
+        // host (e.g. sha256sum on macOS, sysctl on Linux) are skipped.
+        for name in [
+            "bash",
+            "curl",
+            "tar",
+            "awk",
+            "sed",
+            "mktemp",
+            "find",
+            "uname",
+            "sysctl",
+            "shasum",
+            "sha256sum",
+            "od",
+            "tr",
+            "cat",
+            "cp",
+            "mv",
+            "rm",
+            "rmdir",
+            "mkdir",
+            "chmod",
+            "cmp",
+            "sort",
+            "grep",
+            "cut",
+            "tail",
+            "date",
+            "sleep",
+            "readlink",
+            "wc",
+            "head",
+            "gzip",
+            "kill",
+            "basename",
+            "dirname",
+        ] {
+            if let Some(target) = s.try_resolve(name) {
+                s.link(name, &target);
+            }
         }
     }
     #[cfg(windows)]
