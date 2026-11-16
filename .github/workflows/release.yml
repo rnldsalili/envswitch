@@ -1,70 +1,254 @@
 name: Release
 
+# Single publisher/version authority: keep this workflow's run-number sequence.
+# D5 transition: pushes build/verify only; publishing requires a main dispatch
+# with publish=true and an explicit kind. Native is the explicit push build kind.
+# M1a on main uses the source packaging/checksum path with installers unchanged.
+# After the first native release AND live migration checks, restore push publishing
+# by allowing event_name == 'push' in the plan's publish expression below; keep
+# the main-ref restriction, suite dependencies, concurrency, and latest guard.
+# TODO D2b: replace the installers stub job with:
+#   needs: plan
+#   uses: ./.github/workflows/installers.yml  # on: workflow_call (same SHA)
+# TODO F1: if parity.yml lands, replace the parity stub with its workflow_call.
+# Publication fails closed until these required suite seams are wired.
+
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      kind:
+        description: Explicit release asset kind
+        type: choice
+        required: true
+        default: native
+        options: [source, native]
+      publish:
+        description: Publish/promote after all checks (main only)
+        type: boolean
+        required: true
+        default: false
+      installer_workflow:
+        description: 'TODO D2b input stub: wire this reusable workflow before publication'
+        type: string
+        default: .github/workflows/installers.yml
 
 permissions:
   contents: read
 
+# Concurrency is not FIFO; publish.py also rejects a newer published version.
+concurrency:
+  group: envswitch-release
+  cancel-in-progress: false
+
+env:
+  PUSH_RELEASE_KIND: native
+  PYTHONDONTWRITEBYTECODE: "1"
+
 jobs:
-  verify:
-    name: Verify release
-    runs-on: ubuntu-latest
-
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
+      sha: ${{ steps.plan.outputs.sha }}
+      kind: ${{ steps.plan.outputs.kind }}
+      publish: ${{ steps.plan.outputs.publish }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Plan one release identity
+        id: plan
+        env:
+          DISPATCH_KIND: ${{ inputs.kind }}
+          PUBLISH_REQUESTED: ${{ inputs.publish }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          version = '0.0.' + os.environ['GITHUB_RUN_NUMBER']
+          assert re.fullmatch(r'0\.0\.[1-9][0-9]*', version), version
+          sha = os.environ['GITHUB_SHA']
+          assert re.fullmatch(r'[0-9a-f]{40}', sha), sha
+          dispatch = os.environ['GITHUB_EVENT_NAME'] == 'workflow_dispatch'
+          kind = os.environ['DISPATCH_KIND'] if dispatch else os.environ['PUSH_RELEASE_KIND']
+          assert kind in ('source', 'native'), kind
+          publish = dispatch and os.environ['PUBLISH_REQUESTED'] == 'true'
+          if publish and os.environ['GITHUB_REF'] != 'refs/heads/main':
+              raise SystemExit('Publication is restricted to refs/heads/main')
+          values = dict(version=version, tag='v' + version, sha=sha, kind=kind, publish=str(publish).lower())
+          with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
+              output.writelines(f'{key}={value}\n' for key, value in values.items())
+          print(values)
+          PY
+
+  verify:
+    name: Verify helpers and source tests
+    needs: plan
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
-
-      - name: Setup Bun
+      - name: Release helper tests
+        run: python3 -m unittest discover -s test/release -v
+      - name: Setup Bun for source kind
+        if: needs.plan.outputs.kind == 'source'
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.0
+      - name: Source tests and typecheck
+        if: needs.plan.outputs.kind == 'source'
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile
+          bun run test
+          bun run typecheck
 
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+  native:
+    needs: plan
+    if: needs.plan.outputs.kind == 'native'
+    # Permission ceiling passed to the reusable workflow's producing jobs only.
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/build-native.yml
+    with:
+      version: ${{ needs.plan.outputs.version }}
+      tag: ${{ needs.plan.outputs.tag }}
+      sha: ${{ needs.plan.outputs.sha }}
 
-      - name: Test
-        run: bun run test
+  package:
+    name: Package standalone installers and optional source
+    needs: plan
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - name: Copy standalone scripts byte for byte
+        run: |
+          set -euo pipefail
+          mkdir -p dist/common
+          cp scripts/install.sh scripts/install.ps1 dist/common/
+      - name: Package source (M1a and bridge)
+        if: needs.plan.outputs.kind == 'source'
+        run: python3 scripts/release/release.py package "$VERSION" source --output dist/common
+      - name: Attest source in producing job
+        if: needs.plan.outputs.kind == 'source'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/common/*_source.tar.gz
+          create-storage-record: false
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-common
+          path: dist/common/*
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
 
-      - name: Typecheck
-        run: bun run typecheck
+  installers:
+    name: Required installer suites (D2b handoff stub)
+    needs: plan
+    runs-on: ubuntu-24.04
+    steps:
+      - name: TODO wire installers.yml via workflow_call
+        env:
+          PUBLISH: ${{ needs.plan.outputs.publish }}
+          INSTALLER_WORKFLOW: ${{ inputs.installer_workflow || '.github/workflows/installers.yml' }}
+        run: |
+          echo "::notice::TODO D2b: replace this job with uses: ./$INSTALLER_WORKFLOW (workflow_call)."
+          if [[ "$PUBLISH" == true ]]; then
+            echo '::error::Publication blocked: required reusable installer suites are not wired.'
+            exit 1
+          fi
 
-  release:
-    name: Build and publish release
-    needs: verify
-    runs-on: ubuntu-latest
+  parity:
+    name: Required parity if present (F1 handoff stub)
+    needs: plan
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - name: Check parity integration
+        run: |
+          if [[ -f .github/workflows/parity.yml ]]; then
+            echo '::error::TODO F1: parity.yml exists; replace this job with its workflow_call before releasing.'
+            exit 1
+          fi
+          echo '::notice::Parity workflow is not present in this base.'
+
+  assemble:
+    name: Assemble and verify complete asset set (also on pushes)
+    needs: [plan, verify, native, package]
+    if: >-
+      always() && needs.plan.result == 'success' && needs.verify.result == 'success' &&
+      needs.package.result == 'success' &&
+      (needs.native.result == 'success' || needs.native.result == 'skipped')
+    runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      KIND: ${{ needs.plan.outputs.kind }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          path: dist/artifacts
+          merge-multiple: false
+      - name: Validate exact artifact containers and assets and generate SHA256SUMS
+        run: python3 scripts/release/release.py collect dist/artifacts dist/verified "$KIND" "$VERSION"
+      - name: Preserve verified assets for the publisher
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: verified-release
+          path: dist/verified/*
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
+  publish:
+    name: Draft, verify, then promote
+    needs: [plan, verify, native, package, installers, parity, assemble]
+    if: >-
+      always() && !cancelled() && needs.plan.outputs.publish == 'true' &&
+      github.ref == 'refs/heads/main' && needs.verify.result == 'success' &&
+      needs.package.result == 'success' && needs.installers.result == 'success' &&
+      needs.parity.result == 'success' && needs.assemble.result == 'success' &&
+      (needs.native.result == 'success' || needs.native.result == 'skipped')
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
-
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      TAG: ${{ needs.plan.outputs.tag }}
+      SOURCE_SHA: ${{ needs.plan.outputs.sha }}
+      KIND: ${{ needs.plan.outputs.kind }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
-
-      - name: Build release assets
-        run: |
-          set -euo pipefail
-
-          VERSION="0.0.${GITHUB_RUN_NUMBER}"
-          PACKAGE_DIR="dist/release/envswitch"
-
-          rm -rf release dist/release
-          mkdir -p release "$PACKAGE_DIR"
-
-          cp package.json bun.lock README.md tsconfig.json "$PACKAGE_DIR/"
-          cp -R src scripts "$PACKAGE_DIR/"
-
-          tar -C dist/release -czf "release/envswitch_${VERSION}_source.tar.gz" envswitch
-
-      - name: Publish release
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: verified-release
+          path: dist/publish
+      - name: Verify downloaded assets and publish idempotently
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-
-          TAG="v0.0.${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" release/* --target "$GITHUB_SHA" --generate-notes --latest
+        run: python3 scripts/release/publish.py "$GITHUB_REPOSITORY" dist/publish "$KIND" "$VERSION" "$TAG" "$SOURCE_SHA"

@@ -1,0 +1,145 @@
+name: Build native release
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      tag:
+        required: true
+        type: string
+      sha:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Native (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-15
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-24.04
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
+          - target: x86_64-pc-windows-msvc
+            os: windows-2025
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ inputs.version }}
+      TAG: ${{ inputs.tag }}
+      SOURCE_SHA: ${{ inputs.sha }}
+      TARGET: ${{ matrix.target }}
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: "0"
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: -C target-feature=+crt-static
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHON: ${{ matrix.os == 'windows-2025' && 'python' || 'python3' }}
+
+    steps:
+      - name: Checkout planned commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.sha }}
+          persist-credentials: false
+
+      - name: Keep bundled installers byte-identical across runners
+        # Windows autocrlf must not change the scripts compared with Linux's standalone assets.
+        run: git -c core.autocrlf=false -c core.eol=lf checkout-index --all --force
+
+      - name: Validate planned identity
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$TAG" = "v$VERSION"
+          "$PYTHON" -c 'import os, sys; sys.path.insert(0, "scripts/release"); from release import version_number; version_number(os.environ["VERSION"])'
+
+      - name: Install native musl tools
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes musl-tools binutils file
+          command -v musl-gcc
+          musl-gcc -dumpmachine
+
+      - name: Install pinned toolchain and target
+        run: |
+          set -euo pipefail
+          toolchain=$("$PYTHON" -c 'import tomllib; print(tomllib.load(open("rust-toolchain.toml", "rb"))["toolchain"]["channel"])')
+          rustup toolchain install "$toolchain" --profile minimal
+          rustup target add "$TARGET"
+          rustc --version
+
+      - name: Stamp package and reconcile lockfile without dependency changes
+        run: |
+          set -euo pipefail
+          "$PYTHON" scripts/release/release.py stamp . "$VERSION"
+          "$PYTHON" - <<'PY'
+          import json, os, subprocess
+          metadata = json.loads(subprocess.check_output(['cargo', 'metadata', '--locked', '--no-deps', '--format-version', '1']))
+          package, = [p for p in metadata['packages'] if p['name'] == 'envswitch']
+          assert package['version'] == os.environ['VERSION'], package['version']
+          PY
+
+      - name: Test target with locked dependencies
+        run: cargo test --workspace --locked --target "$TARGET"
+
+      - name: Build release with locked dependencies
+        run: cargo build --locked --release --package envswitch --bin envswitch --target "$TARGET"
+
+      - name: Verify exact version and package payload
+        run: |
+          set -euo pipefail
+          binary="target/$TARGET/release/envswitch"
+          if [[ "$TARGET" == *-windows-msvc ]]; then binary="$binary.exe"; fi
+          "$PYTHON" scripts/release/release.py check-version "$VERSION" "$TARGET" --binary "$binary"
+          "$PYTHON" scripts/release/release.py package "$VERSION" "$TARGET" --binary "$binary" --output dist/native
+
+      - name: Verify Linux binary is static
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          binary="target/$TARGET/release/envswitch"
+          file "$binary"
+          readelf --program-headers --wide "$binary" > "$RUNNER_TEMP/program-headers"
+          readelf --dynamic --wide "$binary" > "$RUNNER_TEMP/dynamic"
+          if grep -q 'INTERP' "$RUNNER_TEMP/program-headers" || grep -q '(NEEDED)' "$RUNNER_TEMP/dynamic"; then
+            echo '::error::Linux release binary has a dynamic interpreter or shared dependency'
+            exit 1
+          fi
+
+      - name: Attest archive in producing job
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/native/*
+          create-storage-record: false
+
+      - name: Upload this target only
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-native-${{ matrix.target }}
+          path: dist/native/*
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
