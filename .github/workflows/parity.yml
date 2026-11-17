@@ -93,4 +93,8 @@ jobs:
           echo "PARITY_TARGET=$target" >> "$GITHUB_ENV"
       - name: Rust parity against the oracle goldens
         if: steps.goldens.outputs.windows_missing != 'true'
-        run: cargo test --locked --test parity ${PARITY_TARGET:+--target "$PARITY_TARGET"} -- --ignored --nocapture
+        run: |
+          # Build fake-op beside the CLI with the job's toolchain environment; the
+          # harness's env-cleared fallback builder is for local clean checkouts.
+          cargo build --locked --workspace --bins ${PARITY_TARGET:+--target "$PARITY_TARGET"}
+          cargo test --locked --test parity ${PARITY_TARGET:+--target "$PARITY_TARGET"} -- --ignored --nocapture
