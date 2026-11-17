@@ -20,12 +20,15 @@ class WindowsInstall(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix='.suite-windows-',dir=REPO/'test/install')
         self.home = Path(self.temp.name).resolve()
         set_root(self.home)
-        self.env = {k:v for k,v in os.environ.items() if k not in ('GITHUB_TOKEN','GH_TOKEN') and not k.startswith('ENVSWITCH_')}
+        # Windows names are case-insensitive, but a dict copy is not: key everything by its upper-case name.
+        # PSModulePath is dropped so each PowerShell computes its own; pwsh's value breaks 5.1 module autoloading.
+        self.env = {k.upper():v for k,v in os.environ.items() if k.upper() not in ('GITHUB_TOKEN','GH_TOKEN','PSMODULEPATH') and not k.upper().startswith('ENVSWITCH_')}
         for key in ('HOME','USERPROFILE','LOCALAPPDATA','APPDATA','XDG_DATA_HOME','XDG_CONFIG_HOME','XDG_CACHE_HOME','XDG_STATE_HOME','TMPDIR','TEMP','TMP','BUN_INSTALL','GH_CONFIG_DIR'):
             p=self.home/key; p.mkdir(); self.env[key]=str(p)
         self.tools=Path(self.env['USERPROFILE'])/'tools'; self.tools.mkdir()
         self.env.update(HTTPS_PROXY='http://127.0.0.1:9',NO_PROXY='127.0.0.1,localhost,::1', ENVSWITCH_INSTALL_TEST_MODE='install', ENVSWITCH_INSTALL_TEST_USER_PATH_FILE=str(Path(self.env['USERPROFILE'])/'user-path.txt'), SHELL='powershell')
-        self.env['PATH']=str(self.tools)+';'+str(Path(self.env['SystemRoot'])/'System32')+';'+str(Path(self.env['SystemRoot'])/'System32/WindowsPowerShell/v1.0')
+        system=Path(self.env['SYSTEMROOT'])/'System32'
+        self.env['PATH']=str(self.tools)+';'+str(system)+';'+str(system/'WindowsPowerShell/v1.0')
         (self.tools/'gh.cmd').write_text('@echo off\nexit /b 1\n')
         (self.tools/'bun.cmd').write_text('@echo off\necho %*>>"%USERPROFILE%\\bun.log"\nif "%1"=="install" goto installing\nexit /b 0\n:installing\ncd >"%USERPROFILE%\\bun-cwd.log"\nexit /b 0\n')
         self.root=self.home/'app'; self.dest=self.home/'launchers'; self.server=None
@@ -94,8 +97,9 @@ class WindowsInstall(unittest.TestCase):
         self.root=self.home/'app 雪 %!&'; self.dest=self.home/'bin 雪 %!&'
         self.serve(); self.invoke()
         # Invoke through cmd exactly as installer does; this also checks nonzero forwarding.
-        command='""'+str(self.dest/'envswitch.cmd')+'" "hello world" "雪""'
-        r=subprocess.run([self.env['ComSpec'],'/d','/s','/c',command],env=self.env,capture_output=True)
+        # A string is the literal command line; an argv list would backslash-escape the quotes cmd /s /c needs.
+        command='"'+self.env['COMSPEC']+'" /d /s /c ""'+str(self.dest/'envswitch.cmd')+'" "hello world" "雪""'
+        r=subprocess.run(command,env=self.env,capture_output=True)
         self.assertEqual(r.returncode,23)
     def test_running_old_exe_is_preserved(self):
         self.serve(); self.invoke()
