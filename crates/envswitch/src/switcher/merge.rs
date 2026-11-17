@@ -1,7 +1,6 @@
 //! Layer merge and title collation (contract 02 §4.3; D8). Owner: C3.
 //! Everything here is `pub(crate)`.
 
-use std::any::Any;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
@@ -56,149 +55,229 @@ pub(crate) fn compare_titles(left: &str, right: &str) -> Ordering {
     collator().compare(left, right)
 }
 
-/// Most `op item get` reads in flight at once (DIVERGENCES l1). Small enough
-/// to stay clear of 1Password rate limits, large enough for typical configs.
-pub(crate) const READ_CONCURRENCY: usize = 6;
+/// Most `op item get` reads in flight at once (DIVERGENCES l1). Each `op`
+/// call can take seconds, and a switch often reads one or two items per
+/// target, so reads overlap across targets; the cap keeps the number of
+/// concurrent `op` processes modest.
+pub(crate) const READ_CONCURRENCY: usize = 8;
 
 /// A worker's read: its result, or the panic payload of a panicking read.
 type Outcome = std::thread::Result<Result<EnvMap>>;
 
-/// Reads `items` and returns their values in order, as if read one at a
-/// time: `on_read(item)` runs right before each item's result is awaited, and
-/// the first failure in order is returned (a panicking read is resumed when
-/// reached). Up to [`READ_CONCURRENCY`] reads overlap (DIVERGENCES l1).
-///
-/// Workers claim indexes in increasing order and stop claiming after any
-/// failure, so every index before the earliest failing one has been claimed
-/// and will be filled; results after a failure are never consumed. Returning
-/// waits for reads already in flight. A single item, or a host that cannot
-/// start threads, reads sequentially on the calling thread.
-pub(crate) fn read_in_order(
-    op: &dyn OnePassword,
-    items: &[&ItemSummary],
-    on_read: &mut dyn FnMut(&ItemSummary),
-) -> Result<Vec<EnvMap>> {
-    let sequential = |on_read: &mut dyn FnMut(&ItemSummary)| {
-        items
-            .iter()
-            .map(|item| {
-                on_read(item);
-                op.read_env_item(item)
-            })
-            .collect()
-    };
-    if items.len() <= 1 {
-        return sequential(on_read);
-    }
-    let next = AtomicUsize::new(0);
-    let stop = AtomicBool::new(false);
-    let slots: Mutex<Vec<Option<Outcome>>> = Mutex::new(items.iter().map(|_| None).collect());
-    let filled = Condvar::new();
-    let worker = || {
-        loop {
-            if stop.load(AtomicOrdering::SeqCst) {
-                break;
+/// Every env item a switch will read, deduplicated by `ItemSummary::key()`,
+/// in the order the sequential TS loop reads them: targets in order,
+/// candidates in API order within each target (the shared read cache means
+/// a key is read only for the first target that classifies it).
+pub(crate) fn planned_reads<'a>(
+    candidates: &'a [ItemSummary],
+    targets: &[ResolvedTarget],
+    matcher: &TagMatcher,
+) -> Vec<&'a ItemSummary> {
+    let mut seen = HashSet::new();
+    let mut reads = Vec::new();
+    for resolved in targets {
+        for item in candidates {
+            if classify_with_matcher(item, &resolved.target.name, matcher).is_some()
+                && seen.insert(item.key())
+            {
+                reads.push(item);
             }
-            let index = next.fetch_add(1, AtomicOrdering::SeqCst);
+        }
+    }
+    reads
+}
+
+/// State shared between the consumer and the read workers.
+struct Shared {
+    next: AtomicUsize,
+    stop: AtomicBool,
+    slots: Mutex<Vec<Option<Outcome>>>,
+    filled: Condvar,
+}
+
+impl Shared {
+    /// Claims indexes in increasing order until the plan is exhausted or
+    /// anything stopped the run. Every index before the earliest failure has
+    /// been claimed and will be filled, so the consumer, which takes slots in
+    /// order and stops at the first failure, never waits for an unclaimed one.
+    fn work(&self, op: &dyn OnePassword, items: &[&ItemSummary]) {
+        while !self.stop.load(AtomicOrdering::SeqCst) {
+            let index = self.next.fetch_add(1, AtomicOrdering::SeqCst);
             let Some(item) = items.get(index) else {
                 break;
             };
             let outcome = catch_unwind(AssertUnwindSafe(|| op.read_env_item(item)));
             if !matches!(outcome, Ok(Ok(_))) {
-                stop.store(true, AtomicOrdering::SeqCst);
+                self.stop.store(true, AtomicOrdering::SeqCst);
             }
-            slots.lock().unwrap_or_else(PoisonError::into_inner)[index] = Some(outcome);
-            filled.notify_all();
+            self.slots.lock().unwrap_or_else(PoisonError::into_inner)[index] = Some(outcome);
+            self.filled.notify_all();
         }
-    };
-    let consumed: std::result::Result<Result<Vec<EnvMap>>, Box<dyn Any + Send>> =
-        thread::scope(|scope| {
-            let started = (0..items.len().min(READ_CONCURRENCY))
-                .filter(|_| thread::Builder::new().spawn_scoped(scope, worker).is_ok())
-                .count();
-            if started == 0 {
-                return Ok(sequential(on_read));
+    }
+
+    fn take(&self, index: usize) -> Outcome {
+        let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
+        loop {
+            if let Some(outcome) = slots[index].take() {
+                return outcome;
             }
-            let mut values = Vec::with_capacity(items.len());
-            for (index, item) in items.iter().enumerate() {
-                on_read(item);
-                let mut slots = slots.lock().unwrap_or_else(PoisonError::into_inner);
-                let outcome = loop {
-                    if let Some(outcome) = slots[index].take() {
-                        break outcome;
-                    }
-                    slots = filled.wait(slots).unwrap_or_else(PoisonError::into_inner);
-                };
-                drop(slots);
-                match outcome {
-                    Ok(Ok(env)) => values.push(env),
-                    Ok(Err(error)) => {
-                        stop.store(true, AtomicOrdering::SeqCst);
-                        return Ok(Err(error));
-                    }
-                    Err(panic) => {
-                        stop.store(true, AtomicOrdering::SeqCst);
-                        return Err(panic);
-                    }
-                }
+            slots = self
+                .filled
+                .wait(slots)
+                .unwrap_or_else(PoisonError::into_inner);
+        }
+    }
+}
+
+/// Ordered access to a plan of env reads that may run ahead on worker
+/// threads (see [`with_reads`]).
+pub(crate) struct Reads<'a> {
+    op: &'a dyn OnePassword,
+    plan: &'a [&'a ItemSummary],
+    shared: Option<&'a Shared>,
+    consumed: usize,
+}
+
+impl Reads<'_> {
+    /// The result of reading `item`, which must be the next planned item.
+    /// Returns exactly what `op.read_env_item(item)` would; a read that
+    /// panicked is resumed here. Off-plan items (and sequential mode) read
+    /// directly.
+    pub(crate) fn read(&mut self, item: &ItemSummary) -> Result<EnvMap> {
+        let planned = self.plan.get(self.consumed).map(|planned| planned.key());
+        let Some(shared) = self.shared.filter(|_| planned == Some(item.key())) else {
+            debug_assert!(self.shared.is_none(), "read out of plan order");
+            return self.op.read_env_item(item);
+        };
+        let index = self.consumed;
+        self.consumed += 1;
+        match shared.take(index) {
+            Ok(Ok(values)) => Ok(values),
+            Ok(Err(error)) => {
+                shared.stop.store(true, AtomicOrdering::SeqCst);
+                Err(error)
             }
-            Ok(Ok(values))
+            Err(panic) => {
+                shared.stop.store(true, AtomicOrdering::SeqCst);
+                resume_unwind(panic)
+            }
+        }
+    }
+}
+
+/// Runs `body` while up to [`READ_CONCURRENCY`] workers read `plan` ahead
+/// (DIVERGENCES l1). `body` gets each result through [`Reads::read`], in plan
+/// order, so its events, errors, and writes keep the sequential TS order;
+/// only the `op` calls run early. When `body` returns (or fails) no new reads
+/// start, and returning waits for reads already in flight. A plan of at most
+/// one item, or a host that cannot start threads, reads on demand on the
+/// calling thread.
+pub(crate) fn with_reads<T>(
+    op: &dyn OnePassword,
+    plan: &[&ItemSummary],
+    body: impl FnOnce(&mut Reads<'_>) -> T,
+) -> T {
+    if plan.len() <= 1 {
+        return body(&mut Reads {
+            op,
+            plan,
+            shared: None,
+            consumed: 0,
         });
-    consumed.unwrap_or_else(|panic| resume_unwind(panic))
+    }
+    let shared = Shared {
+        next: AtomicUsize::new(0),
+        stop: AtomicBool::new(false),
+        slots: Mutex::new(plan.iter().map(|_| None).collect()),
+        filled: Condvar::new(),
+    };
+    struct StopOnExit<'s>(&'s Shared);
+    impl Drop for StopOnExit<'_> {
+        fn drop(&mut self) {
+            self.0.stop.store(true, AtomicOrdering::SeqCst);
+        }
+    }
+    thread::scope(|scope| {
+        let _stop = StopOnExit(&shared);
+        let worker = || shared.work(op, plan);
+        let started = (0..plan.len().min(READ_CONCURRENCY))
+            .filter(|_| thread::Builder::new().spawn_scoped(scope, worker).is_ok())
+            .count();
+        body(&mut Reads {
+            op,
+            plan,
+            shared: (started > 0).then_some(&shared),
+            consumed: 0,
+        })
+    })
+}
+
+/// Reads `items` in order through [`with_reads`]: `on_read(item)` runs right
+/// before each result is awaited, and the first failure in order is returned.
+#[cfg(test)]
+pub(crate) fn read_in_order(
+    op: &dyn OnePassword,
+    items: &[&ItemSummary],
+    on_read: &mut dyn FnMut(&ItemSummary),
+) -> Result<Vec<EnvMap>> {
+    with_reads(op, items, |reads| {
+        items
+            .iter()
+            .map(|item| {
+                on_read(item);
+                reads.read(item)
+            })
+            .collect()
+    })
 }
 
 /// TS `mergeTarget(op, candidates, params)` (02 §4.3).
 ///
 /// * Candidates are visited in API order. Each classified item is read at
 ///   most once per switch: `cache` is keyed by `ItemSummary::key()` and shared
-///   across targets. A miss emits `info reading <title || id>` *before* the
-///   read result is used; a failed read aborts immediately (nothing is cached
-///   for it). This target's misses are read with [`read_in_order`]: they
-///   overlap, but only within this target, so earlier targets are written
-///   before any later target's read starts (DIVERGENCES l1).
+///   across targets. A miss emits `info reading <title || id>` *before* its
+///   result is taken from `reads`; a failed read aborts immediately (nothing
+///   is cached for it). With [`planned_reads`] as the plan, misses arrive in
+///   plan order.
 /// * Layers are stably sorted by rank, then by title collation; ties keep
 ///   API order (no id tie-break).
 /// * Later layers overwrite earlier values. A key is reported as overwritten
 ///   only when it already existed with a *different* value.
 pub(crate) fn merge_target(
-    op: &dyn OnePassword,
+    reads: &mut Reads<'_>,
     candidates: &[ItemSummary],
     resolved: &ResolvedTarget,
     matcher: &TagMatcher,
     cache: &mut HashMap<String, EnvMap>,
     log: &mut dyn FnMut(ProgressEvent),
 ) -> Result<MergeResult> {
-    let classified: Vec<_> = candidates
-        .iter()
-        .filter_map(|item| {
-            classify_with_matcher(item, &resolved.target.name, matcher).map(|name| (name, item))
-        })
-        .collect();
-    let mut pending = HashSet::new();
-    let misses: Vec<&ItemSummary> = classified
-        .iter()
-        .map(|(_, item)| *item)
-        .filter(|item| !cache.contains_key(item.key()) && pending.insert(item.key()))
-        .collect();
-    let values = read_in_order(op, &misses, &mut |item| {
-        log(ProgressEvent::info(format!(
-            "reading {}",
-            item.display_name()
-        )))
-    })?;
-    for (item, values) in misses.iter().zip(values) {
-        cache.insert(item.key().to_string(), values);
-    }
+    let mut layers = Vec::new();
+    for item in candidates {
+        let Some(name) = classify_with_matcher(item, &resolved.target.name, matcher) else {
+            continue;
+        };
 
-    let layers = classified
-        .into_iter()
-        .map(|(name, item)| EnvLayer {
+        let key = item.key();
+        let values = match cache.get(key) {
+            Some(values) => values.clone(),
+            None => {
+                log(ProgressEvent::info(format!(
+                    "reading {}",
+                    item.display_name()
+                )));
+                let values = reads.read(item)?;
+                cache.insert(key.to_string(), values.clone());
+                values
+            }
+        };
+        layers.push(EnvLayer {
             name,
             rank: name.rank(),
             item: item.clone(),
-            values: cache[item.key()].clone(),
-        })
-        .collect();
+            values,
+        });
+    }
+
     Ok(merge_layers(layers))
 }
 

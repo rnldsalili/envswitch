@@ -24,7 +24,11 @@ use envswitch::model::{Config, LayerName, ProgressEvent, SwitchRequest, SwitchRe
 use envswitch::switcher::{inspect_project, switch_environment};
 use serde_json::json;
 
-use support::{EventLog, FakeOp, OpCall, TempProject, env_map, item, link_dir};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
+
+use support::{ConcurrencyGate, EventLog, FakeOp, OpCall, TempProject, env_map, item, link_dir};
 
 fn ts_config() -> Config {
     parse_config(
@@ -475,21 +479,48 @@ fn the_earliest_failing_read_wins_even_when_later_reads_overlap() {
 }
 
 #[test]
-fn later_targets_are_not_read_before_earlier_targets_are_written() {
-    // DIVERGENCES l1: reads overlap only within a target. When api's write
-    // fails, web's items were never read, exactly as in TS.
+fn reads_overlap_across_targets() {
+    // DIVERGENCES l1: every planned read (5 for api, 3 for web) may be in
+    // flight at once; a per-target or sequential reader times out the gate.
+    let gate = ConcurrencyGate::new(8, Duration::from_secs(10));
+    let timed_out = Arc::new(AtomicBool::new(false));
+    let (hook_gate, hook_flag) = (Arc::clone(&gate), Arc::clone(&timed_out));
+    let op = ts_op().on_read(move |_| {
+        if !hook_gate.wait() {
+            hook_flag.store(true, Ordering::SeqCst);
+        }
+    });
+    let project = TempProject::new();
+    let (result, _) = run(&op, &request(ts_config(), project.root(), "all", true));
+    result.unwrap();
+    assert!(
+        !timed_out.load(Ordering::SeqCst),
+        "reads did not overlap across targets"
+    );
+    assert_eq!(gate.arrived(), 8);
+}
+
+#[test]
+fn a_failed_write_reports_the_ts_error_even_after_later_reads_ran() {
+    // DIVERGENCES l1: web's items may already have been read, but events,
+    // the error, and the files match TS: api fails to write, web is untouched.
     let project = TempProject::new();
     std::fs::create_dir_all(project.path("apps/api/.env")).unwrap();
     let op = ts_op();
-    let (result, _) = run(&op, &request(ts_config(), project.root(), "all", false));
+    let (result, events) = run(&op, &request(ts_config(), project.root(), "all", false));
     assert!(result.is_err());
-    let mut read: Vec<String> = op.read_counts().keys().cloned().collect();
-    read.sort_unstable();
     assert_eq!(
-        read,
-        ["alpha", "alpha-api", "api-group", "api-target", "shared"]
+        events.last().unwrap(),
+        &format!("info:writing {}", out("api"))
+    );
+    assert!(
+        !events.iter().any(|event| event.contains("web")),
+        "{events:?}"
     );
     assert!(!project.path("apps/web/.env").exists());
+    for key in ["alpha", "alpha-api", "api-group", "api-target", "shared"] {
+        assert_eq!(op.read_counts().get(key), Some(&1), "{key}");
+    }
 }
 
 #[test]

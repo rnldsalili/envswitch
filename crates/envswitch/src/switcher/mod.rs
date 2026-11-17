@@ -26,7 +26,7 @@ use crate::model::{
 use crate::ports::OnePassword;
 
 use matcher::{build_tag_matcher, classify_with_matcher};
-use merge::merge_target;
+use merge::{merge_target, planned_reads, with_reads};
 
 /// TS `switchEnvironment(config, op, options)` (02 §4.5).
 ///
@@ -35,7 +35,7 @@ use merge::merge_target;
 /// `info listing candidate 1Password items`, one `list_items_by_tags`,
 /// `done found <n> candidate item(s)`, then per target `info processing
 /// <name> -> <path>`, `info reading <title||id>` per read-cache miss (cache
-/// shared across targets; a target's reads overlap, DIVERGENCES l1), and
+/// shared across targets; reads may start early, DIVERGENCES l1), and
 /// either `info writing <path>`, write, `done wrote <path>` (path re-resolved
 /// right before writing) or
 /// `dry-run would write <path>`. Never prints; emits only through `log`.
@@ -62,47 +62,51 @@ pub fn switch_environment(
     )));
     let matcher = build_tag_matcher(config, &req.env, &req.client, &req.cwd);
     let mut cache = HashMap::new();
-
-    let mut targets = Vec::with_capacity(resolved_targets.len());
-    for resolved in resolved_targets {
-        log(ProgressEvent::info(format!(
-            "processing {} -> {}",
-            resolved.target.name,
-            resolved.output_path.display()
-        )));
-        let merge = merge_target(op, &candidates, &resolved, &matcher, &mut cache, log)?;
-
-        if req.dry_run {
-            log(ProgressEvent::dry_run(format!(
-                "would write {}",
+    // Every planned read may start early (DIVERGENCES l1); results, events,
+    // and writes below still follow the sequential TS order.
+    let plan = planned_reads(&candidates, &resolved_targets, &matcher);
+    with_reads(op, &plan, |reads| {
+        let mut targets = Vec::with_capacity(resolved_targets.len());
+        for resolved in resolved_targets {
+            log(ProgressEvent::info(format!(
+                "processing {} -> {}",
+                resolved.target.name,
                 resolved.output_path.display()
             )));
-        } else {
-            // Re-check right before writing: a parent may have been swapped
-            // for a symlink while `op` was running (02 §2.2).
-            let output_path = resolve_output_path(&req.root, &resolved.target.output)?;
-            log(ProgressEvent::info(format!(
-                "writing {}",
-                output_path.display()
-            )));
-            write_env_file(&output_path, &merge.values)?;
-            log(ProgressEvent::done(format!(
-                "wrote {}",
-                output_path.display()
-            )));
+            let merge = merge_target(reads, &candidates, &resolved, &matcher, &mut cache, log)?;
+
+            if req.dry_run {
+                log(ProgressEvent::dry_run(format!(
+                    "would write {}",
+                    resolved.output_path.display()
+                )));
+            } else {
+                // Re-check right before writing: a parent may have been swapped
+                // for a symlink while `op` was running (02 §2.2).
+                let output_path = resolve_output_path(&req.root, &resolved.target.output)?;
+                log(ProgressEvent::info(format!(
+                    "writing {}",
+                    output_path.display()
+                )));
+                write_env_file(&output_path, &merge.values)?;
+                log(ProgressEvent::done(format!(
+                    "wrote {}",
+                    output_path.display()
+                )));
+            }
+
+            targets.push(TargetSwitchResult {
+                target: resolved.target,
+                output_path: resolved.output_path,
+                written: !req.dry_run,
+                key_count: merge.values.len(),
+                layers: merge.layers,
+                overwritten_keys: merge.overwritten_keys,
+            });
         }
 
-        targets.push(TargetSwitchResult {
-            target: resolved.target,
-            output_path: resolved.output_path,
-            written: !req.dry_run,
-            key_count: merge.values.len(),
-            layers: merge.layers,
-            overwritten_keys: merge.overwritten_keys,
-        });
-    }
-
-    Ok(SwitchResult { targets })
+        Ok(SwitchResult { targets })
+    })
 }
 
 /// TS `inspectProject(config, root)` (02 §4.6): root markers, then resolve

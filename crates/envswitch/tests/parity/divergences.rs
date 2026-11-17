@@ -10,22 +10,17 @@ fn require(ok: bool, message: &str) -> Result<(), String> {
 fn text(t: &J, key: &str, b: &Bridge) -> String {
     String::from_utf8_lossy(&b.decode_base64(t.get(key).text())).into_owned()
 }
-/// DIVERGENCES l1, applied to every scenario: a target's env reads overlap,
-/// so their order within that target is free. Only the run of `item get`
-/// calls directly after the candidate `op item list` (not the
-/// `envswitch-config` scan) qualifies. Each call in it must be the exact
+/// DIVERGENCES l1, applied to every scenario: a switch's env reads may start
+/// early and overlap (across targets too), so their order is free. Only the
+/// run of `item get` calls directly after the candidate `op item list` (not
+/// the `envswitch-config` scan) qualifies. Each call in it must be the exact
 /// env-read argv for that list's vault, for an item the scenario's fake `op`
-/// serves (shorthand items or an explicit response). The oracle's progress
-/// splits the run into targets (`reading` events per `processing` segment);
-/// each target's reads must be a permutation of the oracle's, in target order,
-/// so no read ever crosses into a later target. The last target alone may add
-/// reads that other workers claimed before the failure was seen (not bounded:
-/// they keep claiming while a slow read fails), and only when the oracle
-/// failed on an env read (nonzero exit, last progress event `reading`). Their
-/// target membership is not checked here; successful multi-target scenarios
-/// and `later_targets_are_not_read_before_earlier_targets_are_written` guard
-/// the target boundary. Every other call and `readCounts` per key stay exact. Accepted
-/// transcripts adopt the actual order.
+/// serves (shorthand items or an explicit response), each read once. A
+/// successful switch reads exactly the oracle's set. A failing one (nonzero
+/// exit, this run last) may add reads that started before the failure was
+/// seen: a failed read, a failed write, or a failed output-path re-check.
+/// Every other call and `readCounts` per key stay exact. Accepted transcripts
+/// adopt the actual order.
 fn overlapped_reads(s: &J, e: &mut J, a: &J) -> Result<(), String> {
     fn is_get(call: &J) -> bool {
         call.at(0).text() == "item" && call.at(1).text() == "get"
@@ -108,47 +103,15 @@ fn overlapped_reads(s: &J, e: &mut J, a: &J) -> Result<(), String> {
         "l1 reads each item once per switch",
     )?;
 
-    // Reads per target, from the oracle's progress.
-    let mut targets: Vec<usize> = Vec::new();
-    for event in e.get("progress").items() {
-        let message = event.get("message").text();
-        if message.starts_with("processing ") {
-            targets.push(0);
-        } else if message.starts_with("reading ")
-            && let Some(count) = targets.last_mut()
-        {
-            *count += 1;
-        }
-    }
     require(
-        targets.iter().sum::<usize>() == want.len() && !targets.is_empty(),
-        "l1 oracle reads match its per-target reading events",
+        want.iter().all(|call| got.contains(call)),
+        "l1 overlapped run keeps every oracle read",
     )?;
-    let (mut w, mut g) = (0, 0);
-    for (target, &count) in targets.iter().enumerate() {
-        let oracle = &want[w..w + count];
-        let take = if target + 1 == targets.len() {
-            got.len() - g
-        } else {
-            count
-        };
-        let actual = got.get(g..g + take).unwrap_or(&[]);
-        require(
-            actual.len() >= count && oracle.iter().all(|call| actual.contains(call)),
-            "l1 each target reads the oracle's items before the next target starts",
-        )?;
-        (w, g) = (w + count, g + take);
-    }
     let extras = got.len() - want.len();
     if extras > 0 {
-        let progress = e.get("progress").items();
         require(
-            index + 1 == expected_runs.len()
-                && e.get("exitCode").int() != 0
-                && progress
-                    .last()
-                    .is_some_and(|event| event.get("message").text().starts_with("reading ")),
-            "l1 extra in-flight reads only after a failed env read",
+            index + 1 == expected_runs.len() && e.get("exitCode").int() != 0,
+            "l1 extra early reads only when the switch failed",
         )?;
     }
     let (want_counts, got_counts) = (e.get("readCounts").pairs(), a.get("readCounts").pairs());
@@ -561,7 +524,7 @@ mod overlapped_reads_tests {
     ];
 
     #[test]
-    fn accepts_reordering_within_each_target_and_adopts_it() {
+    fn accepts_reordering_across_targets_and_adopts_it() {
         let mut e = transcript(
             0,
             &TWO_TARGETS,
@@ -570,49 +533,29 @@ mod overlapped_reads_tests {
         let a = transcript(
             0,
             &TWO_TARGETS,
-            vec![get("cfg"), list(), get("b"), get("a"), get("d"), get("c")],
+            vec![get("cfg"), list(), get("d"), get("a"), get("c"), get("b")],
         );
         overlapped_reads(&scenario(), &mut e, &a).unwrap();
         assert_eq!(e, a);
     }
 
     #[test]
-    fn rejects_reads_that_cross_a_target_boundary() {
-        let mut e = transcript(
-            0,
-            &TWO_TARGETS,
-            vec![list(), get("a"), get("b"), get("c"), get("d")],
-        );
-        let a = transcript(
-            0,
-            &TWO_TARGETS,
-            vec![list(), get("a"), get("c"), get("b"), get("d")],
-        );
-        assert!(overlapped_reads(&scenario(), &mut e, &a).is_err());
-    }
-
-    #[test]
-    fn accepts_in_flight_extras_only_in_the_failing_last_target() {
-        let failed = ["processing api", "reading a"];
-        let mut e = transcript(2, &failed, vec![list(), get("a")]);
-        let a = transcript(2, &failed, vec![list(), get("b"), get("a")]);
-        overlapped_reads(&scenario(), &mut e, &a).unwrap();
-        assert_eq!(e, a);
-
-        // A success, or a failure that was not an env read (e.g. a write).
-        for (exit, progress) in [
-            (0, &["processing api", "reading a"][..]),
-            (2, &["processing api", "reading a", "writing x"][..]),
+    fn accepts_early_extras_only_when_the_switch_failed() {
+        // A failed read, or a failed write after later targets' reads ran.
+        for progress in [
+            &["processing api", "reading a"][..],
+            &["processing api", "reading a", "writing x"][..],
         ] {
-            let mut e = transcript(exit, progress, vec![list(), get("a")]);
-            let a = transcript(exit, progress, vec![list(), get("b"), get("a")]);
-            assert!(overlapped_reads(&scenario(), &mut e, &a).is_err());
+            let mut e = transcript(2, progress, vec![list(), get("a")]);
+            let a = transcript(2, progress, vec![list(), get("c"), get("a"), get("b")]);
+            overlapped_reads(&scenario(), &mut e, &a).unwrap();
+            assert_eq!(e, a);
         }
 
-        // An earlier target never gains extras (b would shift api's reads).
-        let failed = ["processing api", "reading a", "processing web", "reading c"];
-        let mut e = transcript(2, &failed, vec![list(), get("a"), get("c")]);
-        let a = transcript(2, &failed, vec![list(), get("b"), get("a"), get("c")]);
+        // A successful switch reads exactly the oracle's set.
+        let p = ["processing api", "reading a"];
+        let mut e = transcript(0, &p, vec![list(), get("a")]);
+        let a = transcript(0, &p, vec![list(), get("b"), get("a")]);
         assert!(overlapped_reads(&scenario(), &mut e, &a).is_err());
     }
 

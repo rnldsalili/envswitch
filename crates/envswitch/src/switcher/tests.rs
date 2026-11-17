@@ -21,7 +21,10 @@ use super::collation_golden::{FULL_ENV, GROUPS, PAIRS, TITLES};
 use super::matcher::{
     MatcherTags, SCOPE_SENTINEL, TagMatcher, classify_with_matcher, scope_tag_pattern,
 };
-use super::merge::{READ_CONCURRENCY, compare_titles, merge_layers, merge_target, read_in_order};
+use super::merge::{
+    READ_CONCURRENCY, compare_titles, merge_layers, merge_target, planned_reads, read_in_order,
+    with_reads,
+};
 use crate::error::{Error, Result};
 use crate::model::{
     EnvLayer, EnvMap, ItemSummary, LayerName, ProgressEvent, ResolvedTarget, TargetConfig,
@@ -232,14 +235,16 @@ fn merge(
     cache: &mut HashMap<String, EnvMap>,
 ) -> (Result<crate::model::MergeResult>, Vec<String>) {
     let mut events = Vec::new();
-    let result = merge_target(
-        op,
-        candidates,
-        &resolved(target),
-        matcher,
-        cache,
-        &mut |event: ProgressEvent| events.push(format!("{}:{}", event.status, event.message)),
-    );
+    let result = with_reads(op, &[], |reads| {
+        merge_target(
+            reads,
+            candidates,
+            &resolved(target),
+            matcher,
+            cache,
+            &mut |event: ProgressEvent| events.push(format!("{}:{}", event.status, event.message)),
+        )
+    });
     (result, events)
 }
 
@@ -1105,6 +1110,25 @@ fn read_all(op: &GateOp, items: &[ItemSummary]) -> (Result<Vec<EnvMap>>, Vec<Str
     let mut started = Vec::new();
     let result = read_in_order(op, &refs, &mut |item| started.push(item.key().to_string()));
     (result, started)
+}
+
+#[test]
+fn planned_reads_follow_the_sequential_ts_read_order() {
+    let items = ts_items();
+    let plan = planned_reads(&items, &[resolved("api"), resolved("web")], &ts_matcher());
+    assert_eq!(
+        plan.iter().map(|item| item.key()).collect::<Vec<_>>(),
+        [
+            "shared",
+            "api-group",
+            "api-target",
+            "alpha",
+            "alpha-api",
+            "app-group",
+            "web-target",
+            "alpha-web",
+        ]
+    );
 }
 
 #[test]
