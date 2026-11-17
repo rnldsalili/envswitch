@@ -270,7 +270,8 @@ function Replace-Managed([string]$Path,[byte[]]$Bytes,[string]$Source) {
             # PowerShell converts $null to '' for .NET string parameters; File.Replace needs a real null (no backup file).
             try { [IO.File]::Replace($temp,$Path,[NullString]::Value) }
             catch { $state.Journal.RemoveAt($state.Journal.Count-1); if ($Path -eq $state.Launcher) { Fail "could not replace envswitch launcher: $Path" 'close processes using the launcher and retry; the previous installation was preserved' }; throw }
-        } else { [IO.File]::Move($temp,$Path) }
+        } elseif ([IO.Directory]::Exists($temp)) { [IO.Directory]::Move($temp,$Path) } # a new directory (src, node_modules); File.Move only moves files
+        else { [IO.File]::Move($temp,$Path) }
     } finally { if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Recurse -Force } }
 }
 function Invoke-Captured([string]$File,[string]$Argument,[int]$Timeout = 15000) {

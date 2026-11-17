@@ -380,10 +380,11 @@ fn update(s: &J, e: &mut J, a: &J, b: &Bridge, rows: &[&str]) -> Result<(), Stri
         plan.get("currentVersion").text() == format!("v{}", env!("CARGO_PKG_VERSION")),
         "e1 current version is compiled",
     )?;
+    let sep = std::path::MAIN_SEPARATOR;
     require(
         plan.get("repo").text() == "demo-suite/alpha"
-            && plan.get("appRoot").text() == "{TMP}/app"
-            && plan.get("installDir").text() == "{TMP}/launcher",
+            && plan.get("appRoot").text() == format!("{{TMP}}{sep}app")
+            && plan.get("installDir").text() == format!("{{TMP}}{sep}launcher"),
         "e3 persisted receipt settings forwarded",
     )?;
     require(
