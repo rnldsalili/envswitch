@@ -1,12 +1,13 @@
 // Protocol-1 synthetic install state and installer output; no installer or payload is executed.
-import { join, dirname } from "node:path";
+import { join, dirname, normalize } from "node:path";
 import type { context } from "../../context.ts";
 
 type Sandbox = Awaited<ReturnType<typeof context>>;
 export async function nativeFixture(c: Sandbox, s: any, expected: any, build: { version: string; target: string }) {
   if (!s.rustUpdate) return null;
   const windows = process.platform === "win32", suffix = windows ? ".exe" : "";
-  const appRoot = join(c.tmp, "app"), installDir = s.rustUpdate.installDir;
+  // normalize: scenarios spell paths with `/`; on Windows the receipt validator requires native separators.
+  const appRoot = join(c.tmp, "app"), installDir = normalize(s.rustUpdate.installDir);
   const canonical = (v: string) => "v" + v.trim().replace(/^v/, "");
   const currentTag = canonical(build.version);
   const disposition = s.rustUpdate.disposition ?? "installed";
@@ -38,7 +39,7 @@ export async function nativeFixture(c: Sandbox, s: any, expected: any, build: { 
     else await c.actions([{ path: join(c.paths.APP, ".version"), remove: true }]);
   }
   const before = await c.snapshot();
-  const sourceGuard = s.files?.some((f: any) => f.path === join(c.paths.APP, ".git"));
+  const sourceGuard = s.files?.some((f: any) => normalize(f.path) === join(c.paths.APP, ".git"));
   const success = !sourceGuard && !s.update?.installerError && !s.update?.exitCode;
   const onInstall = success && disposition !== "unchanged" ? recipe(tag).filter(entry =>
     !before.files.some((file: any) => file.path === c.normalizeString(entry.path) && file.kind === "file" && file.bytesBase64 === c.bytes(entry.content) && (windows || file.mode === entry.mode))) : [];

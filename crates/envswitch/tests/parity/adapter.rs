@@ -193,10 +193,12 @@ pub fn execute(s: &J, bundle: &Value, path: &Path, bridge: &Bridge) -> Result<J>
                 let values = model::env_input(s.get("values"));
                 if s.get("write").boolean() {
                     let output = s.get("output").str_or("nested/.env");
+                    // Like the TS adapter's path.resolve: rebuild from components so `/` in
+                    // scenario paths becomes the native separator on Windows.
                     let output = if Path::new(output).is_absolute() {
                         PathBuf::from(output)
                     } else {
-                        root.join(output)
+                        root.join(Path::new(output).components().collect::<PathBuf>())
                     };
                     envswitch::dotenv::write_env_file(&output, &values)?
                 } else {
