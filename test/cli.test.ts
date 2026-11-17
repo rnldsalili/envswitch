@@ -2,8 +2,6 @@ import { afterAll, describe, expect, test } from "bun:test";
 import type { Subprocess } from "bun";
 import { createHash } from "node:crypto";
 import {
-  constants as fsConstants,
-  copyFileSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -1733,75 +1731,148 @@ function windowsBaseEnv(): Record<string, string> {
   return env;
 }
 
+let symlinkedPowerShellWorks: boolean | undefined;
+
 /**
- * A fresh PATH directory holding only the tools the Windows rows invoke by
- * name: Bun, Windows PowerShell (the bridge's `powershell`), and chcp/where
- * (used by launchers). Each is a symlink, or else an exclusively created copy;
- * nothing is ever written through them.
+ * Whether Windows PowerShell started through a symlink outside System32 runs
+ * and loads the cmdlets the installer and bridge need. Checked once per run.
  */
-function makeWindowsTools(dir: string): string {
-  mkdirSync(dir, { recursive: true });
-  const tools = [
-    ["bun.exe", process.execPath],
-    ["powershell.exe", WINDOWS_POWERSHELL],
-    ["chcp.com", join(SYSTEM_ROOT, "System32", "chcp.com")],
-    ["where.exe", join(SYSTEM_ROOT, "System32", "where.exe")],
-  ] as const;
-  for (const [name, target] of tools) {
-    const path = join(dir, name);
-    try {
-      symlinkSync(target, path, "file");
-    } catch {
-      copyFileSync(target, path, fsConstants.COPYFILE_EXCL);
-    }
+function powerShellLinkWorks(link: string, scratch: string): boolean {
+  if (symlinkedPowerShellWorks !== undefined) {
+    return symlinkedPowerShellWorks;
   }
-  return dir;
+  const script = join(scratch, "powershell-smoke.ps1");
+  writeFileSync(
+    script,
+    [
+      "$ErrorActionPreference = 'Stop'",
+      "[Console]::Out.WriteLine($PSVersionTable.PSVersion.Major)",
+      "[Console]::Out.WriteLine((Get-FileHash -Algorithm SHA256 -LiteralPath $PSCommandPath).Hash)",
+      "$null = Get-Acl -LiteralPath $PSCommandPath",
+      "$null = ConvertTo-Json @{ ok = 1 }",
+      "$null = [Security.Principal.WindowsIdentity]::GetCurrent().User",
+      "",
+    ].join("\r\n"),
+    { flag: "wx" },
+  );
+  const result = Bun.spawnSync([link, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script], {
+    env: { ...windowsBaseEnv(), PATH: dirname(link), USERPROFILE: scratch, LOCALAPPDATA: scratch, APPDATA: scratch, TEMP: scratch, TMP: scratch },
+    stdout: "pipe",
+    stderr: "pipe",
+    timeout: 60_000,
+  });
+  const lines = result.stdout.toString().trim().split(/\r?\n/);
+  symlinkedPowerShellWorks = result.exitCode === 0 && lines[0] === "5" && /^[0-9A-F]{64}$/.test(lines[1] ?? "");
+  return symlinkedPowerShellWorks;
 }
 
 /**
- * Runs `runInstallScript` in a fresh Bun process whose console is controlled:
- * set to code page 850 (restored afterwards), or detached with FreeConsole.
- * Records the console code page before and after the handoff.
+ * The isolated Windows PATH: a fresh directory holding only symlinks to the
+ * tools the Windows rows invoke by name — Bun, Windows PowerShell (the
+ * bridge's `powershell`), and chcp/where (used by launchers). Nothing is ever
+ * copied or written through a link. If a symlinked PowerShell cannot be
+ * created or fails its startup check, PATH falls back to the ORIGINAL system
+ * PowerShell directory (only that directory) after the tools directory.
  */
-const CONSOLE_DRIVER = [
+function makeWindowsToolsPath(dir: string): string {
+  mkdirSync(dir, { recursive: true });
+  for (const [name, target] of [
+    ["bun.exe", process.execPath],
+    ["chcp.com", join(SYSTEM_ROOT, "System32", "chcp.com")],
+    ["where.exe", join(SYSTEM_ROOT, "System32", "where.exe")],
+  ] as const) {
+    try {
+      symlinkSync(target, join(dir, name), "file");
+    } catch (error) {
+      throw new Error(`the Windows sandbox needs symlinks (Developer Mode or an elevated runner) for ${target}: ${String(error)}`);
+    }
+  }
+  const link = join(dir, "powershell.exe");
+  let linked = false;
+  try {
+    symlinkSync(WINDOWS_POWERSHELL, link, "file");
+    linked = true;
+  } catch {
+    // Fall back to the original binary below.
+  }
+  if (linked) {
+    const scratch = join(dir, ".smoke");
+    mkdirSync(scratch, { recursive: true });
+    if (powerShellLinkWorks(link, scratch)) {
+      return dir;
+    }
+    unlinkSync(link);
+  }
+  return [dir, dirname(WINDOWS_POWERSHELL)].join(";");
+}
+
+/**
+ * Shared driver prologue: detach from any inherited console, then either stay
+ * headless or allocate a PRIVATE console set to code page 850 (asserted).
+ * `releaseConsole()` belongs in a finally block.
+ */
+const DRIVER_CONSOLE = [
   'import { dlopen, FFIType } from "bun:ffi";',
-  'import { existsSync, readFileSync, writeFileSync } from "node:fs";',
-  `import { runInstallScript } from ${JSON.stringify(join(REPO_ROOT, "src", "cli.ts"))};`,
-  'const input = JSON.parse(readFileSync(process.argv[2], "utf8"));',
   'const k = dlopen("kernel32.dll", {',
   "  GetConsoleOutputCP: { args: [], returns: FFIType.u32 },",
   "  SetConsoleOutputCP: { args: [FFIType.u32], returns: FFIType.i32 },",
   "  GetOEMCP: { args: [], returns: FFIType.u32 },",
   "  FreeConsole: { args: [], returns: FFIType.i32 },",
+  "  AllocConsole: { args: [], returns: FFIType.i32 },",
   "}).symbols;",
-  "let saved = 0;",
-  "if (input.headless) { k.FreeConsole(); } else { saved = k.GetConsoleOutputCP(); k.SetConsoleOutputCP(850); }",
-  "const before = k.GetConsoleOutputCP();",
-  "const pending = runInstallScript(input.plan, { windows: true, tempRoot: input.tempRoot, stdout: { write: () => {} } });",
-  "if (input.marker) { while (!existsSync(input.marker)) { await Bun.sleep(50); } process.emit(\"SIGTERM\"); }",
-  "const run = await pending;",
-  "const after = k.GetConsoleOutputCP();",
-  "const oem = k.GetOEMCP();",
-  "if (saved !== 0) { k.SetConsoleOutputCP(saved); }",
-  "writeFileSync(process.argv[3], JSON.stringify({ before, after, oem, run }));",
+  "let privateConsole = false;",
+  "function useConsole(headless) {",
+  "  k.FreeConsole();",
+  "  if (headless) { return; }",
+  '  if (k.AllocConsole() === 0) { throw new Error("AllocConsole failed"); }',
+  "  privateConsole = true;",
+  '  if (k.SetConsoleOutputCP(850) === 0 || k.GetConsoleOutputCP() !== 850) { throw new Error("SetConsoleOutputCP(850) failed"); }',
+  "}",
+  "function releaseConsole() { if (privateConsole) { privateConsole = false; k.FreeConsole(); } }",
+];
+
+/**
+ * Runs `runInstallScript` in a fresh Bun process with a controlled console
+ * (private at 850, or headless) and records the code page before and after.
+ */
+const CONSOLE_DRIVER = [
+  ...DRIVER_CONSOLE,
+  'import { existsSync, readFileSync, writeFileSync } from "node:fs";',
+  `import { runInstallScript } from ${JSON.stringify(join(REPO_ROOT, "src", "cli.ts"))};`,
+  'const input = JSON.parse(readFileSync(process.argv[2], "utf8"));',
+  "try {",
+  "  useConsole(input.headless);",
+  "  const before = k.GetConsoleOutputCP();",
+  "  const pending = runInstallScript(input.plan, { windows: true, tempRoot: input.tempRoot, stdout: { write: () => {} } });",
+  "  if (input.marker) { while (!existsSync(input.marker)) { await Bun.sleep(50); } process.emit(\"SIGTERM\"); }",
+  "  const run = await pending;",
+  "  const after = k.GetConsoleOutputCP();",
+  "  writeFileSync(process.argv[3], JSON.stringify({ before, after, oem: k.GetOEMCP(), run }));",
+  "} catch (error) {",
+  "  writeFileSync(process.argv[3], JSON.stringify({ error: String(error) }));",
+  "  process.exitCode = 1;",
+  "} finally {",
+  "  releaseConsole();",
+  "}",
   "",
 ].join("\n");
 
-/** Runs argv as a child of a fresh Bun process whose console is set to code page 850 (then restored). */
+/** Runs argv as a child of a fresh Bun process attached to a private console at code page 850. */
 const CP850_DRIVER = [
-  'import { dlopen, FFIType } from "bun:ffi";',
+  ...DRIVER_CONSOLE,
   'import { writeFileSync } from "node:fs";',
-  'const k = dlopen("kernel32.dll", {',
-  "  GetConsoleOutputCP: { args: [], returns: FFIType.u32 },",
-  "  SetConsoleOutputCP: { args: [FFIType.u32], returns: FFIType.i32 },",
-  "}).symbols;",
-  "const saved = k.GetConsoleOutputCP();",
-  "k.SetConsoleOutputCP(850);",
-  "const before = k.GetConsoleOutputCP();",
-  'const child = Bun.spawnSync(JSON.parse(process.env.CP850_ARGV), { stdout: "pipe", stderr: "pipe" });',
-  "const after = k.GetConsoleOutputCP();",
-  "if (saved !== 0) { k.SetConsoleOutputCP(saved); }",
-  'writeFileSync(process.argv[2], JSON.stringify({ before, after, code: child.exitCode, stdout: child.stdout.toString("utf8"), stderr: child.stderr.toString("utf8") }));',
+  "try {",
+  "  useConsole(false);",
+  "  const before = k.GetConsoleOutputCP();",
+  '  const child = Bun.spawnSync(JSON.parse(process.env.CP850_ARGV), { stdout: "pipe", stderr: "pipe" });',
+  "  const after = k.GetConsoleOutputCP();",
+  '  writeFileSync(process.argv[2], JSON.stringify({ before, after, code: child.exitCode, stdout: child.stdout.toString("utf8"), stderr: child.stderr.toString("utf8") }));',
+  "} catch (error) {",
+  "  writeFileSync(process.argv[2], JSON.stringify({ error: String(error) }));",
+  "  process.exitCode = 1;",
+  "} finally {",
+  "  releaseConsole();",
+  "}",
   "",
 ].join("\n");
 
@@ -1848,7 +1919,7 @@ describe.skipIf(!WINDOWS)("update installer runner (Windows)", () => {
     };
     const env: UpdateEnv = {
       ...windowsBaseEnv(),
-      PATH: makeWindowsTools(join(base, "tools")),
+      PATH: makeWindowsToolsPath(join(base, "tools")),
       USERPROFILE: join(root, "home"),
       LOCALAPPDATA: join(root, "home"),
       APPDATA: join(root, "home"),
@@ -1888,8 +1959,13 @@ describe.skipIf(!WINDOWS)("update installer runner (Windows)", () => {
       stderr: "pipe",
       timeout: 120_000,
     });
-    expect({ code: result.exitCode, stderr: result.stderr.toString() }).toEqual({ code: 0, stderr: "" });
-    return JSON.parse(readFileSync(output, "utf8"));
+    const recorded = existsSync(output) ? JSON.parse(readFileSync(output, "utf8")) : { error: "no driver output" };
+    expect({ code: result.exitCode, stderr: result.stderr.toString(), error: recorded.error }).toEqual({
+      code: 0,
+      stderr: "",
+      error: undefined,
+    });
+    return recorded;
   }
 
   test("attached console at 850: switched to UTF-8 for the installer and restored after success (non-ASCII decodes), failure, and interruption", () => {
@@ -2541,7 +2617,7 @@ function windowsPayload(): string {
     { flag: "wx" },
   );
   const result = Bun.spawnSync([WINDOWS_POWERSHELL, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script], {
-    env: { ...windowsBaseEnv(), PATH: makeWindowsTools(join(root, "tools")), USERPROFILE: root, LOCALAPPDATA: root, APPDATA: root, TEMP: root, TMP: root },
+    env: { ...windowsBaseEnv(), PATH: makeWindowsToolsPath(join(root, "tools")), USERPROFILE: root, LOCALAPPDATA: root, APPDATA: root, TEMP: root, TMP: root },
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -2566,6 +2642,8 @@ class WindowsBridgeSandbox {
   readonly home: string;
   readonly localAppData: string;
   readonly tools: string;
+  /** The isolated PATH value: the tools directory (plus, only as a fallback, the system PowerShell directory). */
+  readonly path: string;
   readonly temp: string;
   readonly project: string;
   readonly appRoot: string;
@@ -2582,7 +2660,8 @@ class WindowsBridgeSandbox {
     this.home = join(this.root, "home");
     this.localAppData = join(this.root, "localappdata");
     // Only the tools under test resolve by name: Bun, PowerShell, chcp, where, and fakes.
-    this.tools = makeWindowsTools(join(this.base, "tools"));
+    this.tools = join(this.base, "tools");
+    this.path = makeWindowsToolsPath(this.tools);
     this.temp = join(this.root, "temp");
     this.project = join(this.root, "project");
     this.appRoot = join(this.localAppData, "Programs", "envswitch");
@@ -2611,7 +2690,7 @@ class WindowsBridgeSandbox {
       XDG_CONFIG_HOME: join(this.root, "xdg-config"),
       XDG_CACHE_HOME: join(this.root, "xdg-cache"),
       XDG_STATE_HOME: join(this.root, "xdg-state"),
-      PATH: this.tools,
+      PATH: this.path,
       HTTPS_PROXY: "http://127.0.0.1:9",
       NO_PROXY: "127.0.0.1,localhost,::1",
       NO_COLOR: "1",
@@ -2623,7 +2702,7 @@ class WindowsBridgeSandbox {
   serverEnv(): Record<string, string> {
     return {
       ...windowsBaseEnv(),
-      PATH: this.tools,
+      PATH: this.path,
       HOME: this.home,
       USERPROFILE: this.home,
       LOCALAPPDATA: this.localAppData,
@@ -2666,8 +2745,8 @@ class WindowsBridgeSandbox {
     const output = join(this.base, `cp850-${readdirSync(this.base).length}.json`);
     const argv = [process.execPath, join(this.appDir, "src", "cli.ts"), ...args];
     const driven = this.run([process.execPath, driver, output], { ...extra, CP850_ARGV: JSON.stringify(argv) });
-    expect({ code: driven.code, stderr: driven.stderr }).toEqual({ code: 0, stderr: "" });
-    const result = JSON.parse(readFileSync(output, "utf8"));
+    const result = existsSync(output) ? JSON.parse(readFileSync(output, "utf8")) : { error: "no driver output" };
+    expect({ code: driven.code, stderr: driven.stderr, error: result.error }).toEqual({ code: 0, stderr: "", error: undefined });
     return { code: result.code ?? -1, stdout: result.stdout, stderr: result.stderr, before: result.before, after: result.after };
   }
 

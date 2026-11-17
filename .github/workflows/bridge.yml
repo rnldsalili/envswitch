@@ -34,11 +34,11 @@ jobs:
         shell: pwsh
         run: |
           $env:ENVSWITCH_TEST_POWERSHELL = (Get-Process -Id $PID).Path
-          bun test test/cli.test.ts -t 'update helpers|update installer runner|bridge migration end-to-end'
+          bun test test/cli.test.ts -t 'console code page handling|update helpers|update installer runner|bridge migration end-to-end'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Bridge tests from Windows PowerShell 5.1
         shell: powershell
         run: |
           $env:ENVSWITCH_TEST_POWERSHELL = (Get-Process -Id $PID).Path
-          bun test test/cli.test.ts -t 'update helpers|update installer runner|bridge migration end-to-end'
+          bun test test/cli.test.ts -t 'console code page handling|update helpers|update installer runner|bridge migration end-to-end'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
