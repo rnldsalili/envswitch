@@ -126,6 +126,22 @@ try {
     Set-Item Function:Send-EnvironmentChange $notifyEnvironment
     $state.TestMode=$true
 }
+# Replacing an existing file, and rolling it back, must not pass '' (PowerShell's $null) as File.Replace's backup path.
+$state.Stage=Join-Path $suite 'replace-stage'; $null=[IO.Directory]::CreateDirectory($state.Stage)
+$state.Journal=New-Object Collections.ArrayList; $state.Created=New-Object Collections.ArrayList
+$state.Token='replace'; $state.Launcher=Join-Path $suite 'replace-launcher.cmd'; $state.Committed=$false; $state.Locked=$false; $state.NewPayload=$null; $state.PathChanged=$false; $state.OldProcessPath=$null
+$replaced=Join-Path $suite 'replace-target.txt'; [IO.File]::WriteAllText($replaced,'old')
+[IO.File]::WriteAllText($state.Launcher,'old launcher')
+Replace-Managed $replaced $state.Utf8.GetBytes('new')
+Replace-Managed $state.Launcher $state.Utf8.GetBytes('new launcher')
+Assert-Equal ([IO.File]::ReadAllText($replaced)) 'new'
+Assert-Equal ([IO.File]::ReadAllText($state.Launcher)) 'new launcher'
+Assert-Equal $state.Journal.Count 2
+Cleanup
+Assert-Equal ([IO.File]::ReadAllText($replaced)) 'old'
+Assert-Equal ([IO.File]::ReadAllText($state.Launcher)) 'old launcher'
+Assert-Equal ([IO.Directory]::Exists($state.Stage)) $false
+$state.Stage=$null; $state.Launcher=$null
 Assert-Equal (Get-RetryDelay 2 '999999999999999999999') 60
 Assert-Equal (Get-RetryDelay 2 '61') 60
 Assert-Equal (Get-RetryDelay 2 '0') 2

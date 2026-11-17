@@ -267,7 +267,8 @@ function Replace-Managed([string]$Path,[byte[]]$Bytes,[string]$Source) {
         Assert-NoLinks $Path
         if ([IO.Directory]::Exists($Path)) { [IO.Directory]::Move($Path,(Join-Path $state.Stage ('moved-'+$state.Journal.Count))); [IO.Directory]::Move($temp,$Path) }
         elseif ($exists) {
-            try { [IO.File]::Replace($temp,$Path,$null) }
+            # PowerShell converts $null to '' for .NET string parameters; File.Replace needs a real null (no backup file).
+            try { [IO.File]::Replace($temp,$Path,[NullString]::Value) }
             catch { $state.Journal.RemoveAt($state.Journal.Count-1); if ($Path -eq $state.Launcher) { Fail "could not replace envswitch launcher: $Path" 'close processes using the launcher and retry; the previous installation was preserved' }; throw }
         } else { [IO.File]::Move($temp,$Path) }
     } finally { if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Recurse -Force } }
@@ -435,7 +436,7 @@ function Cleanup {
                 $p,$backup=$state.Journal[$i]
                 if ($backup) {
                     if ([IO.Directory]::Exists($p)) { Remove-Item -LiteralPath $p -Recurse -Force; [IO.Directory]::Move($backup,$p) }
-                    elseif ([IO.File]::Exists($p)) { [IO.File]::Replace($backup,$p,$null) }
+                    elseif ([IO.File]::Exists($p)) { [IO.File]::Replace($backup,$p,[NullString]::Value) }
                     elseif ([IO.Directory]::Exists($backup)) { [IO.Directory]::Move($backup,$p) }
                     else { [IO.File]::Move($backup,$p) }
                 } elseif (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Recurse -Force }
