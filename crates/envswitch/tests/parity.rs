@@ -1,5 +1,7 @@
 #[path = "parity/mod.rs"]
 mod parity;
+#[path = "support/process.rs"]
+mod process;
 mod support;
 
 #[test]
