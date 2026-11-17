@@ -1,6 +1,14 @@
 # envswitch Rust Port — Orchestrated Plan
 
-Status: **APPROVED v2 (2026-11-16).** The user approved the plan and delegated all decisions to the orchestrator. Resolved decisions are in §10.1.
+Status: **IMPLEMENTED locally (2026-11-17).** Approved 2026-11-16; all decisions are delegated to the orchestrator (§10.1).
+
+Done:
+- **`rust-port`:** the native port (C1–C4, D3), parity harness (F1), release pipeline (D1), dual-mode installers (D2b), and README.
+  - All reviewed cross-model, including whole-port reviews R1 (GPT Sol) and R2 (Opus).
+  - 474/474 oracle parity on macOS and Linux; 239 Rust tests; installer suites (bash/zsh, GNU, Alpine; pwsh in Docker); release tests.
+- **Bridge branches:** `bridge/m1a-checksummed-source` and `bridge/m1b-dual-mode`. M2 is dropped (D2 = Light).
+
+Remaining (needs owner approval, outward actions): Windows CI and Windows goldens, then the release sequence in [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md).
 
 Changes since v1 address every finding in [research/04-plan-review.md](research/04-plan-review.md); §12 maps each finding to its fix.
 
