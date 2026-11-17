@@ -561,7 +561,8 @@ try {
         $ver=$state.Tag.Substring(1); $source='envswitch_'+$ver+'_source.tar.gz'
         $natives=@($state.Targets | ForEach-Object { 'envswitch_'+$ver+'_'+$_+$(if ($_.EndsWith('msvc')) { '.zip' } else { '.tar.gz' }) })
         $kind=if (@($natives | Where-Object { $state.Assets.ContainsKey($_) }).Count) { 'native' } else { 'source' }
-        $required=if ($kind -eq 'native') { $natives } else { @($source) }
+        # @(...) around the if: a single-item branch would otherwise unroll to a string, and string + array concatenates.
+        $required=@(if ($kind -eq 'native') { $natives } else { $source })
         if (($kind -eq 'native' -and $state.Assets.ContainsKey($source)) -or @($required | Where-Object { -not $state.Assets.ContainsKey($_) }).Count) { throw 'kind' }
         foreach ($n in ($required+@('SHA256SUMS','install.sh','install.ps1'))) { if ($duplicates.Contains($n)) { throw 'duplicate' } }
     } catch { Fail "invalid envswitch release metadata for $Repo" }

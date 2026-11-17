@@ -75,10 +75,14 @@ class WindowsInstall(unittest.TestCase):
                 self.serve(fault=fault); self.assertIn('error:',self.invoke(ok=False).stderr)
                 self.assertFalse((self.dest/'envswitch.cmd').exists())
     def test_pin_and_whatif(self):
-        self.serve(); before={str(p):p.read_bytes() for p in self.home.rglob('*') if p.is_file()}
+        # PowerShell keeps its own caches under LOCALAPPDATA\Microsoft (module analysis, startup profile data); they are not installer writes.
+        cache=self.home/'LOCALAPPDATA'/'Microsoft'
+        snapshot=lambda: {str(p):p.read_bytes() for p in self.home.rglob('*') if p.is_file() and cache not in p.parents}
+        self.serve(); before=snapshot()
         r=self.invoke('-WhatIf','-Version','0.0.42','-VerifyAttestations')
         self.assertEqual(len(r.stdout.splitlines()),6); self.assertEqual(self.server.requests,[])
-        self.assertEqual(before,{str(p):p.read_bytes() for p in self.home.rglob('*') if p.is_file()})
+        after=snapshot()
+        self.assertEqual(before,after,sorted(k for k in before.keys()|after.keys() if before.get(k)!=after.get(k)))
         self.invoke('-Version','v0.0.42'); self.assertFalse(any(p.endswith('/latest') for p,_ in self.server.requests))
     def test_rollback(self):
         self.serve(); self.invoke()
