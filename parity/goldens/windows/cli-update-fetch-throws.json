@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "id": "cli-update-fetch-throws",
+  "kind": "cli",
+  "divergence": [
+    "e1",
+    "e2",
+    "e3",
+    "e5"
+  ],
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoOiBkZW1vLXN1aXRlIGZldGNoIGZhaWx1cmUK",
+  "exitCode": 2,
+  "prompts": [],
+  "progress": [],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [
+    {
+      "method": "fetchLatestVersion"
+    }
+  ],
+  "files": [
+    {
+      "path": "{APP}\\.version",
+      "kind": "file",
+      "bytesBase64": "djAuMC40Cg==",
+      "mode": null
+    },
+    {
+      "path": "{APP}\\scripts\\install.ps1",
+      "kind": "file",
+      "bytesBase64": "Zml4dHVyZSBvbmx5OyBuZXZlciBleGVjdXRlZA==",
+      "mode": null
+    }
+  ],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}\\app",
+      "mode": null
+    },
+    {
+      "path": "{APP}",
+      "mode": null
+    },
+    {
+      "path": "{APP}\\scripts",
+      "mode": null
+    },
+    {
+      "path": "{ROOT}",
+      "mode": null
+    },
+    {
+      "path": "{HOME}",
+      "mode": null
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": null
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

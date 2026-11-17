@@ -1,0 +1,234 @@
+{
+  "schemaVersion": 1,
+  "id": "cli-guided-two-unreadable-vaults",
+  "kind": "cli",
+  "divergence": "h1",
+  "stdoutBase64": "ZW52c3dpdGNoIGd1aWRlZCBzd2l0Y2gKUHJvamVjdCByb290OiB7Uk9PVH0KRHJ5IHJ1biAyIHRhcmdldChzKSBmcm9tIGRlbW8tc3VpdGUKLSBhcGkgLT4ge1JPT1R9XGFwcHNcYXBpXC5lbnYKICBrZXlzOiAwCiAgbGF5ZXJzOiBub25lCi0gd2ViIC0+IHtST09UfVxhcHBzXHdlYlwuZW52CiAga2V5czogMAogIGxheWVyczogbm9uZQo=",
+  "stderrBase64": "ZW52c3dpdGNoIFtpbmZvXSBsaXN0aW5nIDFQYXNzd29yZCB2YXVsdHMKZW52c3dpdGNoIFtkb25lXSBmb3VuZCAzIHZhdWx0KHMpCmVudnN3aXRjaCBbaW5mb10gY2hlY2tpbmcgdmF1bHRzIGZvciBjb25maWcgaXRlbXMgdGFnZ2VkIGVudnN3aXRjaC1jb25maWcKZW52c3dpdGNoIFtpbmZvXSBza2lwcGluZyB2YXVsdCBhbHBoYSAoY291bGQgbm90IGxpc3QgaXRlbXMpCmVudnN3aXRjaCBbaW5mb10gc2tpcHBpbmcgdmF1bHQgYmV0YSAoY291bGQgbm90IGxpc3QgaXRlbXMpCmVudnN3aXRjaCBbZG9uZV0gZm91bmQgMSB2YXVsdChzKSB3aXRoIGNvbmZpZyBpdGVtcwplbnZzd2l0Y2ggW2luZm9dIHJlYWRpbmcgY29uZmlnIGl0ZW0gZGVtby1zdWl0ZQplbnZzd2l0Y2ggW2RvbmVdIGxvYWRlZCBjb25maWcgaXRlbSBkZW1vLXN1aXRlCmVudnN3aXRjaCBbaW5mb10gdmFsaWRhdGluZyBwcm9qZWN0IHJvb3Qge1JPT1R9CmVudnN3aXRjaCBbaW5mb10gbGlzdGluZyBjYW5kaWRhdGUgMVBhc3N3b3JkIGl0ZW1zCmVudnN3aXRjaCBbZG9uZV0gZm91bmQgMCBjYW5kaWRhdGUgaXRlbShzKQplbnZzd2l0Y2ggW2luZm9dIHByb2Nlc3NpbmcgYXBpIC0+IHtST09UfVxhcHBzXGFwaVwuZW52CmVudnN3aXRjaCBbZHJ5LXJ1bl0gd291bGQgd3JpdGUge1JPT1R9XGFwcHNcYXBpXC5lbnYKZW52c3dpdGNoIFtpbmZvXSBwcm9jZXNzaW5nIHdlYiAtPiB7Uk9PVH1cYXBwc1x3ZWJcLmVudgplbnZzd2l0Y2ggW2RyeS1ydW5dIHdvdWxkIHdyaXRlIHtST09UfVxhcHBzXHdlYlwuZW52Cg==",
+  "exitCode": 0,
+  "prompts": [
+    {
+      "kind": "select",
+      "message": "Client",
+      "choices": [
+        {
+          "label": "alpha",
+          "value": "alpha"
+        },
+        {
+          "label": "beta",
+          "value": "beta"
+        }
+      ],
+      "default": null,
+      "required": null
+    },
+    {
+      "kind": "select",
+      "message": "Environment",
+      "choices": [
+        {
+          "label": "local",
+          "value": "local"
+        },
+        {
+          "label": "dev",
+          "value": "dev"
+        }
+      ],
+      "default": "local",
+      "required": null
+    },
+    {
+      "kind": "select",
+      "message": "Target",
+      "choices": [
+        {
+          "label": "all",
+          "value": "all"
+        },
+        {
+          "label": "api",
+          "value": "api"
+        },
+        {
+          "label": "web",
+          "value": "web"
+        }
+      ],
+      "default": "all",
+      "required": null
+    },
+    {
+      "kind": "select",
+      "message": "Mode",
+      "choices": [
+        {
+          "label": "Dry run",
+          "value": true
+        },
+        {
+          "label": "Write .env files",
+          "value": false
+        }
+      ],
+      "default": false,
+      "required": null
+    }
+  ],
+  "progress": [
+    {
+      "status": "info",
+      "message": "listing 1Password vaults"
+    },
+    {
+      "status": "done",
+      "message": "found 3 vault(s)"
+    },
+    {
+      "status": "info",
+      "message": "checking vaults for config items tagged envswitch-config"
+    },
+    {
+      "status": "info",
+      "message": "skipping vault alpha (could not list items)"
+    },
+    {
+      "status": "info",
+      "message": "skipping vault beta (could not list items)"
+    },
+    {
+      "status": "done",
+      "message": "found 1 vault(s) with config items"
+    },
+    {
+      "status": "info",
+      "message": "reading config item demo-suite"
+    },
+    {
+      "status": "done",
+      "message": "loaded config item demo-suite"
+    },
+    {
+      "status": "info",
+      "message": "validating project root {ROOT}"
+    },
+    {
+      "status": "info",
+      "message": "listing candidate 1Password items"
+    },
+    {
+      "status": "done",
+      "message": "found 0 candidate item(s)"
+    },
+    {
+      "status": "info",
+      "message": "processing api -> {ROOT}\\apps\\api\\.env"
+    },
+    {
+      "status": "dry-run",
+      "message": "would write {ROOT}\\apps\\api\\.env"
+    },
+    {
+      "status": "info",
+      "message": "processing web -> {ROOT}\\apps\\web\\.env"
+    },
+    {
+      "status": "dry-run",
+      "message": "would write {ROOT}\\apps\\web\\.env"
+    }
+  ],
+  "opCalls": [
+    [
+      "vault",
+      "list",
+      "--format",
+      "json"
+    ],
+    [
+      "item",
+      "list",
+      "--vault",
+      "alpha-bad",
+      "--format",
+      "json",
+      "--tags",
+      "envswitch-config"
+    ],
+    [
+      "item",
+      "list",
+      "--vault",
+      "beta-bad",
+      "--format",
+      "json",
+      "--tags",
+      "envswitch-config"
+    ],
+    [
+      "item",
+      "list",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--tags",
+      "envswitch-config"
+    ],
+    [
+      "item",
+      "get",
+      "cfg",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "list",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--tags",
+      "envswitch,project:demo-suite,env:local"
+    ]
+  ],
+  "readCounts": {
+    "alpha/cfg": 1
+  },
+  "factoryCalls": [
+    "alpha-bad",
+    "beta-bad",
+    "alpha"
+  ],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}\\app",
+      "mode": null
+    },
+    {
+      "path": "{APP}",
+      "mode": null
+    },
+    {
+      "path": "{ROOT}",
+      "mode": null
+    },
+    {
+      "path": "{HOME}",
+      "mode": null
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": null
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

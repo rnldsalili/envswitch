@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "id": "op-config-empty-config",
+  "kind": "op",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoOiAxUGFzc3dvcmQgY29uZmlnIGl0ZW0gY2ZnIG11c3QgY29udGFpbiBhIG5vbi1lbXB0eSBmaWVsZCBuYW1lZCBjb25maWcK",
+  "exitCode": 1,
+  "prompts": [],
+  "progress": [],
+  "opCalls": [
+    [
+      "item",
+      "get",
+      "cfg",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ]
+  ],
+  "readCounts": {
+    "alpha/cfg": 1
+  },
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}\\app",
+      "mode": null
+    },
+    {
+      "path": "{APP}",
+      "mode": null
+    },
+    {
+      "path": "{ROOT}",
+      "mode": null
+    },
+    {
+      "path": "{HOME}",
+      "mode": null
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": null
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

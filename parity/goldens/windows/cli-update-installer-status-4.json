@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "id": "cli-update-installer-status-4",
+  "kind": "cli",
+  "divergence": [
+    "e1",
+    "e2",
+    "e3",
+    "e5",
+    "e6"
+  ],
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoIFtpbmZvXSB1cGRhdGluZyBlbnZzd2l0Y2ggdjAuMC40IC0+IGxhdGVzdAplbnZzd2l0Y2g6IHVwZGF0ZSBmYWlsZWQ6IGluc3RhbGxlciBleGl0ZWQgd2l0aCBjb2RlIDQK",
+  "exitCode": 1,
+  "prompts": [],
+  "progress": [
+    {
+      "status": "info",
+      "message": "updating envswitch v0.0.4 -> latest"
+    }
+  ],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [
+    {
+      "method": "fetchLatestVersion"
+    },
+    {
+      "method": "runInstaller",
+      "scriptPath": "{APP}\\scripts\\install.ps1",
+      "appRoot": "{TMP}\\app"
+    }
+  ],
+  "files": [
+    {
+      "path": "{APP}\\.version",
+      "kind": "file",
+      "bytesBase64": "djAuMC40Cg==",
+      "mode": null
+    },
+    {
+      "path": "{APP}\\scripts\\install.ps1",
+      "kind": "file",
+      "bytesBase64": "Zml4dHVyZSBvbmx5OyBuZXZlciBleGVjdXRlZA==",
+      "mode": null
+    }
+  ],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}\\app",
+      "mode": null
+    },
+    {
+      "path": "{APP}",
+      "mode": null
+    },
+    {
+      "path": "{APP}\\scripts",
+      "mode": null
+    },
+    {
+      "path": "{ROOT}",
+      "mode": null
+    },
+    {
+      "path": "{HOME}",
+      "mode": null
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": null
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

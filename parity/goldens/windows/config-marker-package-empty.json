@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "config-marker-package-empty",
+  "kind": "config",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoOiBjb25maWcucHJvamVjdC5yb290TWFya2Vyc1swXS5wYWNrYWdlSnNvbk5hbWUgbXVzdCBiZSBhIG5vbi1lbXB0eSBzdHJpbmcK",
+  "exitCode": 1,
+  "prompts": [],
+  "progress": [],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}\\app",
+      "mode": null
+    },
+    {
+      "path": "{APP}",
+      "mode": null
+    },
+    {
+      "path": "{ROOT}",
+      "mode": null
+    },
+    {
+      "path": "{HOME}",
+      "mode": null
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": null
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

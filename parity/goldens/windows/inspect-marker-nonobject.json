@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "id": "inspect-marker-nonobject",
+  "kind": "inspect",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoOiBjdXJyZW50IGRpcmVjdG9yeSBwYWNrYWdlLmpzb24gbmFtZSBkb2VzIG5vdCBtYXRjaCBkZW1vLXN1aXRlCg==",
+  "exitCode": 1,
+  "prompts": [],
+  "progress": [],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [
+    {
+      "path": "{ROOT}\\package.json",
+      "kind": "file",
+      "bytesBase64": "W10=",
+      "mode": null
+    }
+  ],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}\\app",
+      "mode": null
+    },
+    {
+      "path": "{APP}",
+      "mode": null
+    },
+    {
+      "path": "{ROOT}",
+      "mode": null
+    },
+    {
+      "path": "{HOME}",
+      "mode": null
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": null
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

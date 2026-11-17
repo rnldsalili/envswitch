@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "id": "path-symlink-parent",
+  "kind": "path",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoOiB0YXJnZXQgb3V0cHV0IHBhdGggY29udGFpbnMgYSBzeW1ib2xpYy1saW5rIHBhcmVudDogbGlua2VkLy5lbnYK",
+  "exitCode": 1,
+  "prompts": [],
+  "progress": [],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [
+    {
+      "path": "{ROOT}\\linked",
+      "kind": "symlink",
+      "target": "{OUTSIDE}",
+      "mode": null
+    }
+  ],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}\\app",
+      "mode": null
+    },
+    {
+      "path": "{APP}",
+      "mode": null
+    },
+    {
+      "path": "{ROOT}",
+      "mode": null
+    },
+    {
+      "path": "{HOME}",
+      "mode": null
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": null
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

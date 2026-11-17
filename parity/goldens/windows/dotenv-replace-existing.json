@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "dotenv-replace-existing",
+  "kind": "dotenv",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "",
+  "exitCode": 0,
+  "prompts": [],
+  "progress": [],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [
+    {
+      "path": "{ROOT}\\.env",
+      "kind": "file",
+      "bytesBase64": "QT1uZXcK",
+      "mode": null
+    }
+  ],
+  "writtenFiles": [
+    {
+      "path": "{ROOT}\\.env",
+      "kind": "file",
+      "bytesBase64": "QT1uZXcK",
+      "mode": null
+    }
+  ],
+  "directories": [
+    {
+      "path": "{TMP}\\app",
+      "mode": null
+    },
+    {
+      "path": "{APP}",
+      "mode": null
+    },
+    {
+      "path": "{ROOT}",
+      "mode": null
+    },
+    {
+      "path": "{HOME}",
+      "mode": null
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": null
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

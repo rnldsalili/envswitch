@@ -424,7 +424,8 @@ import json, os, shutil, subprocess, sys
 from pathlib import Path
 sys.path.insert(0,str(Path(sys.argv[1])/'test/install'))
 from fixtures import Server,release
-root=Path(os.environ['ENVSWITCH_D3_SANDBOX']); env=dict(os.environ)
+# realpath: the runner's TEMP can be an 8.3 short path (RUNNER~1), and the installer records long paths.
+root=Path(os.path.realpath(os.environ['ENVSWITCH_D3_SANDBOX'])); env=dict(os.environ)
 app=root/"app '雪$`&!"; launchers=root/"bin '雪$`&!"; current=app/'current'
 version,target=sys.argv[4:6]
 windows=os.name=='nt'
@@ -470,7 +471,7 @@ try:
         if windows: assert ctypes.windll.kernel32.GetConsoleOutputCP()==prior_cp
         assert result.stdout.endswith(('updated envswitch v'+version+' -> v0.0.42\n').encode()),result.stdout
         after=json.loads((current/'install.json').read_text())
-        assert after['repo']=='demo/suite' and after['installDir']==str(launchers),after
+        assert after['repo']=='demo/suite' and after['installDir']==str(launchers),(after,str(launchers))
         assert (current/'.version').read_bytes()==b'v0.0.42\n' and old.exists()
         assert not (app/'.install.lock').exists()
         assert not list(Path(env['TMPDIR']).glob('envswitch-update-*'))

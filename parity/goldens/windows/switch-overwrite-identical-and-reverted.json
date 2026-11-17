@@ -1,0 +1,215 @@
+{
+  "schemaVersion": 1,
+  "id": "switch-overwrite-identical-and-reverted",
+  "kind": "switch",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "",
+  "exitCode": 0,
+  "prompts": [],
+  "progress": [
+    {
+      "status": "info",
+      "message": "validating project root {ROOT}"
+    },
+    {
+      "status": "info",
+      "message": "listing candidate 1Password items"
+    },
+    {
+      "status": "done",
+      "message": "found 3 candidate item(s)"
+    },
+    {
+      "status": "info",
+      "message": "processing api -> {ROOT}\\apps\\api\\.env"
+    },
+    {
+      "status": "info",
+      "message": "reading a"
+    },
+    {
+      "status": "info",
+      "message": "reading b"
+    },
+    {
+      "status": "info",
+      "message": "reading c"
+    },
+    {
+      "status": "info",
+      "message": "writing {ROOT}\\apps\\api\\.env"
+    },
+    {
+      "status": "done",
+      "message": "wrote {ROOT}\\apps\\api\\.env"
+    }
+  ],
+  "opCalls": [
+    [
+      "item",
+      "list",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--tags",
+      "env:local"
+    ],
+    [
+      "item",
+      "get",
+      "a",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "b",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "c",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ]
+  ],
+  "readCounts": {
+    "alpha/a": 1,
+    "alpha/b": 1,
+    "alpha/c": 1
+  },
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [
+    {
+      "path": "{ROOT}\\apps\\api\\.env",
+      "kind": "file",
+      "bytesBase64": "QT14ClNBTUU9c2FtZQpaPTEK",
+      "mode": null
+    }
+  ],
+  "writtenFiles": [
+    {
+      "path": "{ROOT}\\apps\\api\\.env",
+      "kind": "file",
+      "bytesBase64": "QT14ClNBTUU9c2FtZQpaPTEK",
+      "mode": null
+    }
+  ],
+  "directories": [
+    {
+      "path": "{TMP}\\app",
+      "mode": null
+    },
+    {
+      "path": "{APP}",
+      "mode": null
+    },
+    {
+      "path": "{ROOT}",
+      "mode": null
+    },
+    {
+      "path": "{ROOT}\\apps",
+      "mode": null
+    },
+    {
+      "path": "{ROOT}\\apps\\api",
+      "mode": null
+    },
+    {
+      "path": "{HOME}",
+      "mode": null
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": null
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": [
+    {
+      "target": {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      },
+      "outputPath": "{ROOT}\\apps\\api\\.env",
+      "written": true,
+      "keyCount": 3,
+      "layers": [
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "a",
+            "title": "a",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "Z": "1",
+            "A": "x",
+            "SAME": "same"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "b",
+            "title": "b",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "Z": "2",
+            "A": "y",
+            "SAME": "same"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "c",
+            "title": "c",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "Z": "1",
+            "A": "x",
+            "SAME": "same"
+          }
+        }
+      ],
+      "overwrittenKeys": [
+        "A",
+        "Z"
+      ]
+    }
+  ]
+}

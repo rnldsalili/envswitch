@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "id": "switch-symlink-swap-before-write",
+  "kind": "switch",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoOiB0YXJnZXQgb3V0cHV0IHBhdGggY29udGFpbnMgYSBzeW1ib2xpYy1saW5rIHBhcmVudDogYXBwcy9hcGkvLmVudgo=",
+  "exitCode": 1,
+  "prompts": [],
+  "progress": [
+    {
+      "status": "info",
+      "message": "validating project root {ROOT}"
+    },
+    {
+      "status": "info",
+      "message": "listing candidate 1Password items"
+    },
+    {
+      "status": "done",
+      "message": "found 1 candidate item(s)"
+    },
+    {
+      "status": "info",
+      "message": "processing api -> {ROOT}\\apps\\api\\.env"
+    },
+    {
+      "status": "info",
+      "message": "reading alpha"
+    }
+  ],
+  "opCalls": [
+    [
+      "item",
+      "list",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--tags",
+      "env:local"
+    ],
+    [
+      "item",
+      "get",
+      "alpha",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ]
+  ],
+  "readCounts": {
+    "alpha/alpha": 1
+  },
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [
+    {
+      "path": "{ROOT}\\apps\\api",
+      "kind": "symlink",
+      "target": "{OUTSIDE}",
+      "mode": null
+    }
+  ],
+  "writtenFiles": [
+    {
+      "path": "{ROOT}\\apps\\api",
+      "kind": "symlink",
+      "target": "{OUTSIDE}",
+      "mode": null
+    }
+  ],
+  "directories": [
+    {
+      "path": "{TMP}\\app",
+      "mode": null
+    },
+    {
+      "path": "{APP}",
+      "mode": null
+    },
+    {
+      "path": "{ROOT}",
+      "mode": null
+    },
+    {
+      "path": "{ROOT}\\apps",
+      "mode": null
+    },
+    {
+      "path": "{HOME}",
+      "mode": null
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": null
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}
