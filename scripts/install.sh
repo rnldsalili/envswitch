@@ -109,7 +109,8 @@ JSON_AWK_END
 json_parse() { awk "$JSON_AWK"; }
 json_quote() { printf '%s' "$1" | awk -v action=quote "$JSON_AWK"; }
 hex_key() { printf '%s' "$1" | od -An -tx1 | tr -d ' \n'; }
-jget() { printf '%s\n' "$JSON_DATA" | awk -F '\t' -v key="$1" -v type="$2" '$1==key && $2==type{print $3;found=1;exit} END{if(!found)exit 1}'; }
+# awk reads all input: an early exit could make printf fail with EPIPE under pipefail.
+jget() { printf '%s\n' "$JSON_DATA" | awk -F '\t' -v key="$1" -v type="$2" '!found && $1==key && $2==type{print $3;found=1} END{if(!found)exit 1}'; }
 jstring() {
   local encoded rest pair decoded=''
   encoded=$(jget "$1" string) || return 1
@@ -372,7 +373,7 @@ http_get() {
 select_release() {
   local endpoint data_ok=0 id count index path name url assetid natives=0 native
   endpoint="repos/$REPO/releases/latest"; [[ -z $PIN ]] || endpoint="repos/$REPO/releases/tags/$PIN"
-  if [[ -n $GH ]]; then bounded 60 "$STAGE/release.json" "$STAGE/gh-error" "$GH" api "$endpoint" && data_ok=1 || :; fi
+  if [[ -n $GH ]] && bounded 60 "$STAGE/release.json" "$STAGE/gh-error" "$GH" api "$endpoint"; then data_ok=1; fi
   if [[ $data_ok == 0 ]]; then
     if ! http_get "$API_BASE/$endpoint" "$STAGE/release.json" application/vnd.github+json; then
       [[ -z $PIN ]] || die "GitHub Release not found or unavailable: $REPO@$PIN"
@@ -416,7 +417,7 @@ download() {
   local name=$1 good=0
   if [[ -n $GH ]]; then
     info "downloading $name with GitHub CLI"
-    bounded 900 "$STAGE/gh-out" "$STAGE/gh-error" "$GH" release download "$TAG" --repo "$REPO" --pattern "$name" --dir "$STAGE" && good=1 || :
+    if bounded 900 "$STAGE/gh-out" "$STAGE/gh-error" "$GH" release download "$TAG" --repo "$REPO" --pattern "$name" --dir "$STAGE"; then good=1; fi
     [[ $good == 0 || ! -f $STAGE/$name ]] || return 0
     rm -f "$STAGE/$name"; info "GitHub CLI download did not find $name; trying direct download"
   else info "downloading $name"; fi
@@ -582,7 +583,7 @@ main() {
   read_receipt; recognize_launcher || unmanaged "$LAUNCH"
   if [[ -d $APP && -n $(find "$APP" -mindepth 1 -maxdepth 1 -print) && $P_PRESENT == 0 && ! -f $LAUNCH ]]; then
     [[ -f $APP/package.json ]] || unmanaged "$APP"
-    JSON_DATA=$(json_parse < "$APP/package.json") && [[ $(jfield name) == envswitch ]] || unmanaged "$APP"
+    if ! { JSON_DATA=$(json_parse < "$APP/package.json") && [[ $(jfield name) == envswitch ]]; }; then unmanaged "$APP"; fi
   fi
   os=$(uname -s | tr '[:upper:]' '[:lower:]'); arch=$(uname -m)
   case "$os" in darwin) info 'detected macOS'; if command -v sysctl >/dev/null 2>&1 && [[ $(sysctl -n hw.optional.arm64 2>/dev/null || :) == 1 ]]; then arch=arm64; fi;; linux) if [[ -r /proc/version ]] && grep -qi microsoft /proc/version; then info 'detected WSL/Linux'; else info 'detected Linux'; fi;; *) die "unsupported OS for this installer: $os" 'use scripts/install.ps1 on Windows';; esac
@@ -617,7 +618,8 @@ main() {
   fi
   launcher "$KIND" "$PAYLOAD" > "$STAGE/launcher"; write_receipt
   if [[ $P_PRESENT == 1 && $P_KIND == "$KIND" && $P_TAG == "$TAG" && $P_REPO == "$REPO" && $P_DEST == "$DEST" && $P_PAYLOAD == "$PAYLOAD" && -x $LAUNCH && -f $PAYLOAD ]] && cmp -s "$STAGE/marker" "$APP/.version" && cmp -s "$STAGE/launcher" "$LAUNCH" && cmp -s "$TREE/scripts/install.sh" "$APP/scripts/install.sh" && cmp -s "$TREE/scripts/install.ps1" "$APP/scripts/install.ps1"; then
-    if [[ $KIND == native ]]; then cmp -s "$STAGED" "$PAYLOAD" && healthy=1 || :; else [[ -f $APP/package.json && -f $APP/bun.lock && -f $APP/src/cli.ts ]] && healthy=1 || :; fi
+    if [[ $KIND == native ]]; then if cmp -s "$STAGED" "$PAYLOAD"; then healthy=1; fi
+    elif [[ -f $APP/package.json && -f $APP/bun.lock && -f $APP/src/cli.ts ]]; then healthy=1; fi
     if [[ $healthy == 1 ]] && check_payload "$LAUNCH" "$KIND"; then COMMITTED=1; cleanup; printf 'success: envswitch is already up to date (%s)\n' "$TAG"; return; fi
   fi
   oldtag=$P_TAG
