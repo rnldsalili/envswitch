@@ -6,6 +6,9 @@ pub mod client;
 pub mod parse;
 pub mod runner;
 
+#[cfg(windows)]
+mod job;
+
 pub use client::{OnePasswordClient, OpClientFactory, OpVaultLister, list_vaults};
 pub use runner::ExecCommandRunner;
 

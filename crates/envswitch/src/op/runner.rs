@@ -22,13 +22,26 @@ pub struct ExecCommandRunner;
 
 impl CommandRunner for ExecCommandRunner {
     fn run(&self, program: &str, args: &[String]) -> Result<CommandOutput> {
-        let mut child = Command::new(program)
+        let mut command = Command::new(program);
+        command
             .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::piped());
+        #[cfg(windows)]
+        let job = {
+            use std::os::windows::process::CommandExt;
+            // Only envswitch handles console interrupts; op cannot race its exit.
+            command.creation_flags(0x0000_0200); // CREATE_NEW_PROCESS_GROUP
+            super::job::process_job()
+        };
+        let mut child = command
             .spawn()
             .map_err(|error| Error::internal(format!("failed to run {program}: {error}")))?;
+        #[cfg(windows)]
+        if let Some(job) = job {
+            super::job::assign_child(job, &child);
+        }
         drop(child.stdin.take());
         let stdout = child.stdout.take().expect("piped stdout");
         let stderr = child.stderr.take().expect("piped stderr");
