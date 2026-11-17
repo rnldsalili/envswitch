@@ -16,6 +16,9 @@ use std::io::Write;
 pub use args::{FlagValue, ParsedArgs, parse_args};
 pub use output::format_progress_event;
 
+#[cfg(windows)]
+static INTERRUPTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// TS `main(argv, options)` (01 §0): dispatch, returns the exit code and never
 /// exits the process. Errors print `envswitch: <msg>` to `deps.err` (1 or 2);
 /// `Error::Cancelled` prints nothing (130). `argv` excludes the program name.
@@ -23,12 +26,21 @@ pub fn run(argv: Vec<String>, deps: &mut Deps) -> i32 {
     match dispatch(&argv, deps) {
         Ok(()) => 0,
         Err(error) => {
-            if error != Error::Cancelled {
-                let _ = writeln!(deps.err, "envswitch: {error}");
-            }
-            error.exit_code()
+            #[cfg(windows)]
+            let interrupted = INTERRUPTED.load(std::sync::atomic::Ordering::SeqCst);
+            #[cfg(not(windows))]
+            let interrupted = false;
+            report_error(error, deps.err.as_mut(), interrupted)
         }
     }
+}
+
+fn report_error(error: Error, err: &mut dyn Write, interrupted: bool) -> i32 {
+    if interrupted || error == Error::Cancelled {
+        return 130;
+    }
+    let _ = writeln!(err, "envswitch: {error}");
+    error.exit_code()
 }
 
 /// One-time process setup called by `main.rs` before [`run`] and never by
@@ -41,6 +53,7 @@ pub fn init_process() {
         let _ = enable_ansi_support::enable_ansi_support();
         let _ = ctrlc::set_handler(|| {
             if !crate::install::process::handoff_active() {
+                INTERRUPTED.store(true, std::sync::atomic::Ordering::SeqCst);
                 std::process::exit(130);
             }
         });
@@ -83,5 +96,31 @@ fn dispatch(argv: &[String], deps: &mut Deps) -> Result<()> {
             update::run_update(&args, deps)
         }
         command => fail(format!("unknown command: {command}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn interruption_suppresses_errors_and_overrides_their_exit_codes() {
+        for error in [
+            Error::user("bad input"),
+            Error::internal("op failed"),
+            Error::status(7, "installer failed"),
+        ] {
+            let mut err = Vec::new();
+            assert_eq!(report_error(error.clone(), &mut err, true), 130);
+            assert!(err.is_empty());
+            assert_eq!(
+                report_error(error.clone(), &mut err, false),
+                error.exit_code()
+            );
+            assert_eq!(
+                String::from_utf8(err).unwrap(),
+                format!("envswitch: {error}\n")
+            );
+        }
     }
 }

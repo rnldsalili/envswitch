@@ -4,10 +4,11 @@
 mod process;
 
 use std::{
+    ffi::c_void,
     fs,
     io::{BufRead, BufReader},
-    os::windows::process::CommandExt,
-    process::{Child, Stdio},
+    os::windows::{io::AsRawHandle, process::CommandExt},
+    process::{Child, Command, Stdio},
     sync::Mutex,
     time::{Duration, Instant},
 };
@@ -16,7 +17,9 @@ use process::{Sandbox, resolve_tool};
 use serde_json::json;
 
 const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+const CREATE_SUSPENDED: u32 = 0x0000_0004;
 const CTRL_BREAK_EVENT: u32 = 1;
+const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x0000_2000;
 static CONSOLE: Mutex<()> = Mutex::new(());
 
 #[link(name = "kernel32")]
@@ -24,10 +27,20 @@ unsafe extern "system" {
     fn GenerateConsoleCtrlEvent(event: u32, process_group: u32) -> i32;
     fn GetConsoleCP() -> u32;
     fn AllocConsole() -> i32;
+    fn CreateJobObjectW(attributes: *const c_void, name: *const u16) -> *mut c_void;
+    fn SetInformationJobObject(job: *mut c_void, class: i32, info: *const c_void, size: u32)
+    -> i32;
+    fn AssignProcessToJobObject(job: *mut c_void, process: *mut c_void) -> i32;
+    fn CloseHandle(handle: *mut c_void) -> i32;
+    fn CreateToolhelp32Snapshot(flags: u32, pid: u32) -> *mut c_void;
+    fn Thread32First(snapshot: *mut c_void, entry: *mut ThreadEntry) -> i32;
+    fn Thread32Next(snapshot: *mut c_void, entry: *mut ThreadEntry) -> i32;
+    fn OpenThread(access: u32, inherit: i32, tid: u32) -> *mut c_void;
+    fn ResumeThread(thread: *mut c_void) -> u32;
 }
 
 fn console() -> std::sync::MutexGuard<'static, ()> {
-    let guard = CONSOLE.lock().unwrap();
+    let guard = CONSOLE.lock().unwrap_or_else(|e| e.into_inner());
     // SAFETY: scalar Win32 calls; a console is needed for targeted control events.
     unsafe {
         if GetConsoleCP() == 0 {
@@ -58,9 +71,146 @@ fn until(mut ready: impl FnMut() -> bool) {
     }
 }
 
-struct Guard(Option<Child>);
+#[repr(C)]
+#[derive(Default)]
+struct BasicLimitInformation {
+    per_process_user_time_limit: i64,
+    per_job_user_time_limit: i64,
+    limit_flags: u32,
+    minimum_working_set_size: usize,
+    maximum_working_set_size: usize,
+    active_process_limit: u32,
+    affinity: usize,
+    priority_class: u32,
+    scheduling_class: u32,
+}
+
+#[repr(C)]
+#[derive(Default)]
+struct ExtendedLimitInformation {
+    basic: BasicLimitInformation,
+    io_counters: [u64; 6],
+    process_memory_limit: usize,
+    job_memory_limit: usize,
+    peak_process_memory_used: usize,
+    peak_job_memory_used: usize,
+}
+
+struct Handle(*mut c_void);
+impl Handle {
+    fn new_job() -> Self {
+        // SAFETY: null attributes/name create a private, non-inheritable job handle.
+        let job = Self(unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) });
+        assert!(!job.0.is_null(), "{}", std::io::Error::last_os_error());
+        let limits = ExtendedLimitInformation {
+            basic: BasicLimitInformation {
+                limit_flags: JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        // SAFETY: class 9 takes this repr(C) extended-limit structure and its exact size.
+        assert_ne!(
+            unsafe {
+                SetInformationJobObject(
+                    job.0,
+                    9,
+                    (&limits as *const ExtendedLimitInformation).cast(),
+                    std::mem::size_of_val(&limits) as u32,
+                )
+            },
+            0,
+            "{}",
+            std::io::Error::last_os_error()
+        );
+        job
+    }
+
+    fn close(&mut self) {
+        if !self.0.is_null() && self.0 as isize != -1 {
+            // SAFETY: this value owns the handle, and closes it only once.
+            unsafe {
+                CloseHandle(self.0);
+            }
+            self.0 = std::ptr::null_mut();
+        }
+    }
+}
+impl Drop for Handle {
+    fn drop(&mut self) {
+        self.close();
+    }
+}
+
+#[repr(C)]
+#[derive(Default)]
+struct ThreadEntry {
+    size: u32,
+    usage: u32,
+    tid: u32,
+    owner_pid: u32,
+    base_priority: i32,
+    delta_priority: i32,
+    flags: u32,
+}
+
+fn resume_child(child: &Child) {
+    // SAFETY: TH32CS_SNAPTHREAD snapshots thread metadata; it runs no child code.
+    let snapshot = Handle(unsafe { CreateToolhelp32Snapshot(4, 0) });
+    assert_ne!(
+        snapshot.0 as isize,
+        -1,
+        "{}",
+        std::io::Error::last_os_error()
+    );
+    let mut entry = ThreadEntry {
+        size: std::mem::size_of::<ThreadEntry>() as u32,
+        ..Default::default()
+    };
+    // SAFETY: the snapshot is live; entry has the required repr(C) layout and size.
+    let mut found = unsafe { Thread32First(snapshot.0, &mut entry) };
+    while found != 0 {
+        if entry.owner_pid == child.id() {
+            // SAFETY: request only THREAD_SUSPEND_RESUME for this child's startup thread.
+            let thread = Handle(unsafe { OpenThread(2, 0, entry.tid) });
+            assert!(!thread.0.is_null(), "{}", std::io::Error::last_os_error());
+            // SAFETY: the child remains suspended until after assignment to its job.
+            assert_ne!(
+                unsafe { ResumeThread(thread.0) },
+                u32::MAX,
+                "{}",
+                std::io::Error::last_os_error()
+            );
+            return;
+        }
+        // SAFETY: the same live snapshot and entry buffer are reused.
+        found = unsafe { Thread32Next(snapshot.0, &mut entry) };
+    }
+    panic!("suspended child startup thread not found");
+}
+
+struct Guard(Option<Child>, Handle);
+impl Guard {
+    fn spawn(command: &mut Command) -> Self {
+        let job = Handle::new_job();
+        // Assign before running any child code, so no grandchild can escape the job.
+        command.creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_SUSPENDED);
+        let guard = Self(Some(command.spawn().unwrap()), job);
+        let handle = guard.0.as_ref().unwrap().as_raw_handle();
+        // SAFETY: both handles are live and the child is still suspended.
+        assert_ne!(
+            unsafe { AssignProcessToJobObject(guard.1.0, handle) },
+            0,
+            "{}",
+            std::io::Error::last_os_error()
+        );
+        resume_child(guard.0.as_ref().unwrap());
+        guard
+    }
+}
 impl Drop for Guard {
     fn drop(&mut self) {
+        self.1.close();
         if let Some(child) = &mut self.0 {
             let _ = child.kill();
             let _ = child.wait();
@@ -86,10 +236,9 @@ fn ctrl_break_during_op_exits_130_without_cancellation_output() {
             "--config-item",
             "cfg",
         ])
-        .creation_flags(CREATE_NEW_PROCESS_GROUP)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = Guard(Some(command.spawn().unwrap()));
+    let mut child = Guard::spawn(&mut command);
     until(|| {
         fs::read_to_string(s.root.join("trace.jsonl"))
             .unwrap()
@@ -155,12 +304,18 @@ fn ctrl_break_during_update_waits_for_installer_and_returns_its_status() {
     s.owned(&executable);
     let build_script = s.root.join("build.ps1");
     s.write(&build_script, "Add-Type -Path $env:ENVSWITCH_SIGNAL_SOURCE -OutputAssembly $env:ENVSWITCH_SIGNAL_EXE -OutputType ConsoleApplication\n");
+    let build_temp = s.root.join("build-temp");
+    s.owned(&build_temp);
+    fs::create_dir(&build_temp).unwrap();
     let built = s
         .command(resolve_tool("powershell.exe"))
         .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
         .arg(&build_script)
         .env("ENVSWITCH_SIGNAL_SOURCE", &source)
         .env("ENVSWITCH_SIGNAL_EXE", &executable)
+        .env("TEMP", &build_temp)
+        .env("TMP", &build_temp)
+        .env("TMPDIR", &build_temp)
         .output()
         .unwrap();
     assert!(built.status.success(), "{built:?}");
@@ -196,10 +351,9 @@ fn ctrl_break_during_update_waits_for_installer_and_returns_its_status() {
     command
         .arg("update")
         .env("ENVSWITCH_SIGNAL_ROOT", &s.root)
-        .creation_flags(CREATE_NEW_PROCESS_GROUP)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = Guard(Some(command.spawn().unwrap()));
+    let mut child = Guard::spawn(&mut command);
     until(|| s.root.join("ready").is_file());
     send_break(child.0.as_ref().unwrap().id());
     until(|| s.root.join("handled").is_file());
