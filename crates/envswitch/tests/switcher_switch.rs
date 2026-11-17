@@ -267,31 +267,37 @@ fn caches_item_reads_across_targets_in_one_switch() {
         ["api", "web"]
     );
     let counts = op.read_counts();
+    // Reads overlap (DIVERGENCES l1), so the call order is not fixed; the set
+    // and once-per-switch caching are. The "reading" events below keep the
+    // oracle's sequential order.
+    let mut read = counts.keys().map(String::as_str).collect::<Vec<_>>();
+    read.sort_unstable();
     assert_eq!(
-        counts.keys().map(String::as_str).collect::<Vec<_>>(),
+        read,
         [
-            "shared",
-            "api-group",
-            "api-target",
             "alpha",
             "alpha-api",
-            "app-group",
-            "web-target",
             "alpha-web",
+            "api-group",
+            "api-target",
+            "app-group",
+            "shared",
+            "web-target",
         ]
     );
     assert!(counts.values().all(|&count| count == 1), "{counts:?}");
-    // Oracle: one list call with the candidate tags, then reads in API order.
+    // Oracle: one list call with the candidate tags, then the reads.
     assert_eq!(
         op.tag_queries(),
         [vec!["envswitch", "project:demo", "env:local"]]
     );
     assert!(matches!(op.calls()[0], OpCall::ListItemsByTags(_)));
-    assert_eq!(
-        op.argvs()[1],
-        [
-            "item", "get", "shared", "--vault", "Demo", "--format", "json", "--reveal"
-        ]
+    assert!(
+        op.calls()[1..]
+            .iter()
+            .all(|call| matches!(call, OpCall::ReadEnvItem(_))),
+        "{:?}",
+        op.calls()
     );
     // Oracle event sequence for `all` (dry run).
     assert_eq!(
@@ -438,6 +444,34 @@ fn a_failed_read_aborts_after_earlier_targets_were_written() {
     );
     assert!(project.path("apps/api/.env").exists());
     assert!(!project.path("apps/web/.env").exists());
+}
+
+#[test]
+fn the_earliest_failing_read_wins_even_when_later_reads_overlap() {
+    // DIVERGENCES l1: reads overlap, but results are consumed in TS order, so
+    // the first failing item in that order is reported and nothing is written.
+    for _ in 0..25 {
+        let project = TempProject::new();
+        let op = ts_op()
+            .with_read_error("alpha-web", Error::internal("later read failed"))
+            .with_read_error("api-target", Error::internal("earlier read failed"));
+        let (result, events) = run(&op, &request(ts_config(), project.root(), "all", false));
+        assert_eq!(result.unwrap_err(), Error::internal("earlier read failed"));
+        assert_eq!(
+            events,
+            [
+                "info:validating project root {ROOT}".to_string(),
+                "info:listing candidate 1Password items".to_string(),
+                "done:found 16 candidate item(s)".to_string(),
+                format!("info:processing api -> {}", out("api")),
+                "info:reading shared".to_string(),
+                "info:reading api-group".to_string(),
+                "info:reading api-target".to_string(),
+            ]
+        );
+        assert!(!project.path("apps/api/.env").exists());
+        assert!(!project.path("apps/web/.env").exists());
+    }
 }
 
 #[test]

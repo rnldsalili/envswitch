@@ -13,13 +13,17 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering as AtomicOrdering};
+use std::sync::{Condvar, Mutex};
+use std::time::Duration;
 
 use super::collation_golden::{FULL_ENV, GROUPS, PAIRS, TITLES};
 use super::matcher::{
     MatcherTags, SCOPE_SENTINEL, TagMatcher, classify_with_matcher, scope_tag_pattern,
 };
-use super::merge::{compare_titles, merge_layers, merge_target};
+use super::merge::{
+    READ_CONCURRENCY, compare_titles, merge_layers, merge_target, planned_reads, prefetch_reads,
+};
 use crate::error::{Error, Result};
 use crate::model::{
     EnvLayer, EnvMap, ItemSummary, LayerName, ProgressEvent, ResolvedTarget, TargetConfig,
@@ -236,6 +240,7 @@ fn merge(
         &resolved(target),
         matcher,
         cache,
+        &mut HashMap::new(),
         &mut |event: ProgressEvent| events.push(format!("{}:{}", event.status, event.message)),
     );
     (result, events)
@@ -987,4 +992,142 @@ fn known_divergence_unicode_17_marks_tie_in_icu4x() {
     // Oracle: "R" for both API orders. Rust: the later item in API order.
     assert_eq!(winner(&[("L", left), ("R", right)]), "R");
     assert_eq!(winner(&[("R", right), ("L", left)]), "L");
+}
+
+// ---------------------------------------------------------------------------
+// Overlapped reads (DIVERGENCES l1)
+// ---------------------------------------------------------------------------
+
+/// Env reads that hold until `gate` reads have started, tracking the peak
+/// number in flight. Keys in `failing` fail with their message.
+struct GateOp {
+    gate: usize,
+    arrived: Mutex<usize>,
+    cv: Condvar,
+    in_flight: AtomicUsize,
+    peak: AtomicUsize,
+    timed_out: AtomicBool,
+    failing: HashMap<String, String>,
+    reads: Mutex<Vec<String>>,
+}
+
+impl GateOp {
+    fn new(gate: usize, failing: &[(&str, &str)]) -> Self {
+        GateOp {
+            gate,
+            arrived: Mutex::new(0),
+            cv: Condvar::new(),
+            in_flight: AtomicUsize::new(0),
+            peak: AtomicUsize::new(0),
+            timed_out: AtomicBool::new(false),
+            failing: failing
+                .iter()
+                .map(|(key, message)| (key.to_string(), message.to_string()))
+                .collect(),
+            reads: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+impl OnePassword for GateOp {
+    fn assert_authenticated(&self) -> Result<()> {
+        unreachable!("prefetch never authenticates")
+    }
+
+    fn list_items_by_tags(&self, _tags: &[String]) -> Result<Vec<ItemSummary>> {
+        unreachable!("prefetch never lists")
+    }
+
+    fn read_config_item(&self, _item: &str) -> Result<String> {
+        unreachable!("prefetch never reads config items")
+    }
+
+    fn read_env_item(&self, item: &ItemSummary) -> Result<EnvMap> {
+        self.reads.lock().unwrap().push(item.key().to_string());
+        let now = self.in_flight.fetch_add(1, AtomicOrdering::SeqCst) + 1;
+        self.peak.fetch_max(now, AtomicOrdering::SeqCst);
+        {
+            let mut arrived = self.arrived.lock().unwrap();
+            *arrived += 1;
+            self.cv.notify_all();
+            let (arrived, _) = self
+                .cv
+                .wait_timeout_while(arrived, Duration::from_secs(10), |count| *count < self.gate)
+                .unwrap();
+            if *arrived < self.gate {
+                self.timed_out.store(true, AtomicOrdering::SeqCst);
+            }
+        }
+        self.in_flight.fetch_sub(1, AtomicOrdering::SeqCst);
+        match self.failing.get(item.key()) {
+            Some(message) => Err(Error::internal(message.clone())),
+            None => Ok(env(&[("KEY", item.key())])),
+        }
+    }
+}
+
+fn numbered_items(count: usize) -> Vec<ItemSummary> {
+    (0..count)
+        .map(|index| item(&format!("i{index}"), "", &[]))
+        .collect()
+}
+
+#[test]
+fn planned_reads_follow_the_sequential_ts_read_order() {
+    let items = ts_items();
+    let plan = planned_reads(&items, &[resolved("api"), resolved("web")], &ts_matcher());
+    assert_eq!(
+        plan.iter().map(|item| item.key()).collect::<Vec<_>>(),
+        [
+            "shared",
+            "api-group",
+            "api-target",
+            "alpha",
+            "alpha-api",
+            "app-group",
+            "web-target",
+            "alpha-web",
+        ]
+    );
+}
+
+#[test]
+fn prefetch_overlaps_reads_up_to_the_cap() {
+    // Every read holds until READ_CONCURRENCY reads have started, so a
+    // sequential implementation times out and a wider one exceeds the peak.
+    let items = numbered_items(READ_CONCURRENCY + 3);
+    let refs: Vec<&ItemSummary> = items.iter().collect();
+    let op = GateOp::new(READ_CONCURRENCY, &[]);
+    let results = prefetch_reads(&op, &refs);
+    assert!(!op.timed_out.load(AtomicOrdering::SeqCst));
+    assert_eq!(op.peak.load(AtomicOrdering::SeqCst), READ_CONCURRENCY);
+    assert_eq!(results.len(), items.len());
+    for item in &items {
+        assert_eq!(results[item.key()], Ok(env(&[("KEY", item.key())])));
+    }
+}
+
+#[test]
+fn prefetch_keeps_every_result_before_the_first_failure() {
+    // Consumed in plan order, the first error is the one the sequential TS
+    // loop would hit; later items may or may not have been read.
+    for _ in 0..50 {
+        let items = numbered_items(12);
+        let refs: Vec<&ItemSummary> = items.iter().collect();
+        let op = GateOp::new(1, &[("i2", "two"), ("i5", "five")]);
+        let results = prefetch_reads(&op, &refs);
+        assert_eq!(results["i0"], Ok(env(&[("KEY", "i0")])));
+        assert_eq!(results["i1"], Ok(env(&[("KEY", "i1")])));
+        assert_eq!(results["i2"], Err(Error::internal("two")));
+        let reads = op.reads.lock().unwrap();
+        assert!(reads.len() <= items.len(), "{reads:?}");
+    }
+}
+
+#[test]
+fn prefetch_leaves_a_single_read_to_the_lazy_sequential_path() {
+    let items = numbered_items(1);
+    let op = GateOp::new(1, &[]);
+    assert!(prefetch_reads(&op, &[&items[0]]).is_empty());
+    assert!(op.reads.lock().unwrap().is_empty());
 }
