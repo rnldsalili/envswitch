@@ -23,8 +23,8 @@ fn installed() -> (TempDir, TestDeps) {
     fs::create_dir_all(current.join("bin")).unwrap();
     fs::create_dir_all(&bin).unwrap();
     let suffix = if cfg!(windows) { ".exe" } else { "" };
-    let payload = current.join(format!(
-        "bin/envswitch_{}_{}{suffix}",
+    let payload = current.join("bin").join(format!(
+        "envswitch_{}_{}{suffix}",
         env!("CARGO_PKG_VERSION"),
         env!("TARGET")
     ));
@@ -115,8 +115,8 @@ fn result_fixture(t: &mut TestDeps, tag: &str, outcome: &str) -> String {
     let mut r: serde_json::Value =
         serde_json::from_slice(&fs::read(current.join("install.json")).unwrap()).unwrap();
     let suffix = if cfg!(windows) { ".exe" } else { "" };
-    let payload = current.join(format!(
-        "bin/envswitch_{}_{}{suffix}",
+    let payload = current.join("bin").join(format!(
+        "envswitch_{}_{}{suffix}",
         &tag[1..],
         env!("TARGET")
     ));
@@ -232,8 +232,9 @@ fn racing_old_process_reports_updated_when_installer_returns_unchanged() {
     let mut r: serde_json::Value = serde_json::from_slice(&fs::read(&rpath).unwrap()).unwrap();
     r["tag"] = "v0.0.42".into();
     r["payloadPath"] = current(&t)
+        .join("bin")
         .join(format!(
-            "bin/envswitch_0.0.42_{}{}",
+            "envswitch_0.0.42_{}{}",
             env!("TARGET"),
             if cfg!(windows) { ".exe" } else { "" }
         ))
@@ -508,8 +509,9 @@ fn receipt_with_missing_newer_payload_can_be_repaired_by_installer() {
     let mut r: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
     r["tag"] = "v0.0.42".into();
     r["payloadPath"] = current(&t)
+        .join("bin")
         .join(format!(
-            "bin/envswitch_0.0.42_{}{}",
+            "envswitch_0.0.42_{}{}",
             env!("TARGET"),
             if cfg!(windows) { ".exe" } else { "" }
         ))
@@ -542,10 +544,10 @@ fn source_result_requires_null_target_and_exact_source_payload() {
         let path = app.join("install.json");
         let mut r: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
         fs::create_dir_all(app.join("src")).unwrap();
-        fs::write(app.join("src/cli.ts"), "// source fixture").unwrap();
+        fs::write(app.join("src").join("cli.ts"), "// source fixture").unwrap();
         r["kind"] = "source".into();
         r["target"] = serde_json::Value::Null;
-        r["payloadPath"] = app.join("src/cli.ts").to_str().unwrap().into();
+        r["payloadPath"] = app.join("src").join("cli.ts").to_str().unwrap().into();
         fs::write(path, r.to_string()).unwrap();
     });
     t.deps.installer = Box::new(TranscriptInstaller {
