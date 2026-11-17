@@ -23,6 +23,28 @@ fn physical(path: &std::path::Path) -> PathBuf {
     p
 }
 
+/// Assertion context for update runs: stderr plus the receipt next to
+/// `current_exe` and whether the product accepts it, so a CI failure shows
+/// why the receipt was rejected instead of only the generic guidance.
+fn diag(t: &TestDeps) -> String {
+    let exe = t.deps.current_exe.clone();
+    let root = exe
+        .as_deref()
+        .and_then(|e| Some(e.parent()?.parent()?.parent()?.to_path_buf()));
+    let receipt = root.as_ref().map(|r| {
+        fs::read_to_string(r.join("current").join("install.json"))
+            .unwrap_or_else(|e| format!("<unreadable: {e}>"))
+    });
+    let accepted = root
+        .as_ref()
+        .map(|r| envswitch::install::receipt::read_receipt(r, &t.deps.env).is_some());
+    format!(
+        "stderr: {}\ncurrent_exe: {exe:?}\ntarget: {}\nreceipt: {receipt:?}\nread_receipt accepted: {accepted:?}",
+        t.err.text(),
+        env!("TARGET")
+    )
+}
+
 fn installed() -> (TempDir, TestDeps) {
     let temp = tempfile::tempdir().unwrap();
     let root = physical(temp.path()).join("app");
@@ -66,7 +88,7 @@ fn copied_binary_requires_reinstall_and_never_calls_installer() {
 fn child_status_is_forwarded_and_latest_is_not_resolved_by_rust() {
     let (_temp, mut t) = installed();
     t = t.with_installer(FakeInstaller::new().with_result(Ok(143)));
-    assert_eq!(t.run(&["update"]), 143);
+    assert_eq!(t.run(&["update"]), 143, "{}", diag(&t));
     assert_eq!(
         t.err.text(),
         "envswitch: update failed: installer exited with code 143\n"
@@ -90,7 +112,11 @@ fn child_status_is_forwarded_and_latest_is_not_resolved_by_rust() {
 fn zero_status_without_result_is_not_success() {
     let (_temp, mut t) = installed();
     assert_eq!(t.run(&["update"]), 1);
-    assert!(t.err.text().contains("installer result does not match"));
+    assert!(
+        t.err.text().contains("installer result does not match"),
+        "{}",
+        diag(&t)
+    );
     assert!(t.out.text().is_empty());
 }
 
@@ -184,7 +210,7 @@ fn equal_version_still_invokes_installer_and_reports_unchanged_or_repaired() {
         let (_temp, mut t) = installed();
         // A missing marker or bundled script must not shortcut repair/health work.
         let transcript = result_fixture(&mut t, "v0.0.0", outcome);
-        assert_eq!(t.run(&["update"]), 0, "{}", t.err.text());
+        assert_eq!(t.run(&["update"]), 0, "{}", diag(&t));
         assert_eq!(t.out.text(), format!("{transcript}{expected}"));
         assert_eq!(t.installer.plans().len(), 1);
     }
@@ -215,7 +241,7 @@ fn decoded_installer_location_warning_uses_injected_stderr() {
         fake: t.installer.clone(),
         stdout,
     });
-    assert_eq!(t.run(&["update"]), 0, "{}", t.err.text());
+    assert_eq!(t.run(&["update"]), 0, "{}", diag(&t));
     assert_eq!(
         t.err.text(),
         "envswitch: warning: installer locations could not be matched after console decoding; validated the installed receipt instead\n"
@@ -240,7 +266,7 @@ fn compiled_version_labels_update_even_when_marker_is_missing_or_stale() {
         }
         let transcript = result_fixture(&mut t, "v0.0.42", "installed");
         t.deps.log = None;
-        assert_eq!(t.run(&["update"]), 0, "{}", t.err.text());
+        assert_eq!(t.run(&["update"]), 0, "{}", diag(&t));
         assert_eq!(
             t.out.text(),
             format!("{transcript}updated envswitch v0.0.0 -> v0.0.42\n")
@@ -275,7 +301,7 @@ fn racing_old_process_reports_updated_when_installer_returns_unchanged() {
         .into();
     fs::write(rpath, r.to_string()).unwrap();
     let transcript = result_fixture(&mut t, "v0.0.42", "unchanged");
-    assert_eq!(t.run(&["update"]), 0, "{}", t.err.text());
+    assert_eq!(t.run(&["update"]), 0, "{}", diag(&t));
     assert_eq!(
         t.out.text(),
         format!("{transcript}updated envswitch v0.0.0 -> v0.0.42\n")
@@ -324,7 +350,7 @@ fn invoking_project_git_is_not_used_as_installation_anchor() {
     let (temp, mut t) = installed();
     fs::create_dir(temp.path().join(".git")).unwrap();
     result_fixture(&mut t, "v0.0.0", "repaired");
-    assert_eq!(t.run(&["update"]), 0, "{}", t.err.text());
+    assert_eq!(t.run(&["update"]), 0, "{}", diag(&t));
 }
 
 #[test]
@@ -342,7 +368,7 @@ fn app_dir_override_guards_source_checkout_and_validates_installation_root() {
     t.deps.app_dir = Some(current(&t));
     t.err.clear();
     result_fixture(&mut t, "v0.0.0", "unchanged");
-    assert_eq!(t.run(&["update"]), 0, "{}", t.err.text());
+    assert_eq!(t.run(&["update"]), 0, "{}", diag(&t));
 }
 
 #[test]
@@ -417,7 +443,7 @@ fn spawn_failure_remains_internal_and_prints_no_success() {
     t = t.with_installer(FakeInstaller::new().with_result(Err(Error::internal(
         "update failed: could not run installer: missing bash",
     ))));
-    assert_eq!(t.run(&["update"]), 2);
+    assert_eq!(t.run(&["update"]), 2, "{}", diag(&t));
     assert_eq!(
         t.err.text(),
         "envswitch: update failed: could not run installer: missing bash\n"
@@ -493,7 +519,8 @@ fn inconsistent_postconditions_or_forged_tool_output_never_print_cli_success() {
         assert_eq!(t.run(&["update"]), 1, "{fault}");
         assert!(
             t.err.text().contains("installer result does not match"),
-            "{fault}"
+            "{fault}\n{}",
+            diag(&t)
         );
         assert_eq!(t.out.text(), transcript, "{fault}");
     }
@@ -516,7 +543,7 @@ fn executable_symlink_is_resolved_and_receipt_links_are_rejected() {
     t.deps.current_exe = Some(exe.clone());
     result_fixture(&mut t, "v0.0.0", "unchanged");
     t.deps.current_exe = Some(temp.path().join("alias"));
-    assert_eq!(t.run(&["update"]), 0, "{}", t.err.text());
+    assert_eq!(t.run(&["update"]), 0, "{}", diag(&t));
     let path = exe.parent().unwrap().parent().unwrap().join("install.json");
     let moved = temp.path().join("receipt");
     fs::rename(&path, &moved).unwrap();
@@ -588,7 +615,7 @@ fn receipt_with_missing_newer_payload_can_be_repaired_by_installer() {
         .into();
     fs::write(path, r.to_string()).unwrap();
     let transcript = result_fixture(&mut t, "v0.0.42", "repaired");
-    assert_eq!(t.run(&["update"]), 0, "{}", t.err.text());
+    assert_eq!(t.run(&["update"]), 0, "{}", diag(&t));
     assert_eq!(
         t.out.text(),
         format!("{transcript}updated envswitch v0.0.0 -> v0.0.42\n")
@@ -626,7 +653,7 @@ fn source_result_requires_null_target_and_exact_source_payload() {
         fake,
         stdout: transcript.clone(),
     });
-    assert_eq!(t.run(&["update"]), 0, "{}", t.err.text());
+    assert_eq!(t.run(&["update"]), 0, "{}", diag(&t));
     assert_eq!(
         t.out.text(),
         format!("{transcript}updated envswitch v0.0.0 -> v0.0.42\n")
@@ -648,7 +675,7 @@ fn windows_receipt_paths_compare_without_case_and_canonical_exe_prefix() {
     }
     fs::write(path, receipt.to_string()).unwrap();
     t = t.with_installer(FakeInstaller::new().with_result(Ok(7)));
-    assert_eq!(t.run(&["update"]), 7, "{}", t.err.text());
+    assert_eq!(t.run(&["update"]), 7, "{}", diag(&t));
 }
 
 #[test]
