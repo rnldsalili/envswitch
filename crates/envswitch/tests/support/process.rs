@@ -179,8 +179,11 @@ pub fn fake_op_binary() -> PathBuf {
                 let cargo = Path::new(env!("CARGO"));
                 let toolchain = cargo.parent().unwrap();
                 let rustc = toolchain.join(if cfg!(windows) { "rustc.exe" } else { "rustc" });
+                // gcc's collect2 finds the linker on PATH (clang uses xcrun on macOS).
                 for name in if cfg!(windows) {
                     &[][..]
+                } else if cfg!(target_os = "linux") {
+                    &["cc", "ar", "ld"][..]
                 } else {
                     &["cc", "ar"][..]
                 } {
