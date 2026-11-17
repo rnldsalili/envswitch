@@ -34,6 +34,7 @@ import {
   type InstallPlan,
   type InstallReceipt,
   type UpdateEnv,
+  windowsPowerShellEnv,
 } from "../src/cli.ts";
 import { EnvswitchError } from "../src/errors.ts";
 
@@ -1244,7 +1245,13 @@ describe("update helpers", () => {
       version: "v0.0.42",
       currentVersion: "v0.0.41",
     };
-    const inherited = { Path: "C:\\Windows", envswitch_verify_attestations: "1", Envswitch_Current_Version: "v0.0.1" };
+    const inherited = {
+      Path: "C:\\Windows",
+      envswitch_verify_attestations: "1",
+      Envswitch_Current_Version: "v0.0.1",
+      PSModulePath: "C:\\Program Files\\PowerShell\\7\\Modules",
+      psmodulepath: "C:\\Users\\Demo\\Documents\\PowerShell\\Modules",
+    };
 
     const pinned = buildInstallerInvocation(plan, "C:\\Temp\\envswitch-update-x\\install.ps1", inherited, true);
     expect(pinned.argv).toEqual([
@@ -1270,6 +1277,14 @@ describe("update helpers", () => {
     const unknown = buildInstallerInvocation({ ...plan, currentVersion: undefined }, "C:\\T\\install.ps1", inherited, true);
     expect(unknown.argv).not.toContain("-CurrentVersion");
     expect(unknown.env).toEqual({ Path: "C:\\Windows" });
+    // Only the Windows handoff drops it; Unix installers never see PowerShell's module path anyway.
+    expect(buildInstallerInvocation(plan, "/tmp/p/install.sh", { PSModulePath: "/opt/pwsh" }, false).env.PSModulePath).toBe("/opt/pwsh");
+  });
+
+  test("Windows PowerShell children compute their own module path", () => {
+    expect(
+      windowsPowerShellEnv({ Path: "C:\\Windows", PSModulePath: "C:\\pwsh", PSMODULEPATH: "C:\\pwsh2", psModulePath: "C:\\pwsh3", UNSET: undefined }),
+    ).toEqual({ Path: "C:\\Windows" });
   });
 
   describe("latest release resolution", () => {
@@ -1709,6 +1724,33 @@ function processEnv(name: string): string | undefined {
   return Object.entries(process.env).find(([key]) => key.toUpperCase() === name)?.[1];
 }
 
+/** Rethrow with the error's cause (such as Windows PowerShell's stderr) in the message, so a failure shows it. */
+async function surfacingCause<T>(pending: Promise<T>): Promise<T> {
+  try {
+    return await pending;
+  } catch (error) {
+    if (error instanceof Error && error.cause !== undefined) {
+      throw new Error(`${error.message}\ncause: ${String(error.cause)}`);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Harness-only Windows PowerShell runs (compiling fixtures, startup checks,
+ * reading the real User PATH) get no inherited PSModulePath, so they behave
+ * the same from pwsh and from Windows PowerShell 5.1.
+ */
+function harnessPowerShellEnv(env: Record<string, string | undefined>): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [name, value] of Object.entries(env)) {
+    if (value !== undefined && name.toUpperCase() !== "PSMODULEPATH") {
+      result[name] = value;
+    }
+  }
+  return result;
+}
+
 /**
  * Windows child environment: inherited system settings only. Credentials,
  * envswitch settings, profile/data/temp locations, and PATH are dropped so
@@ -1756,7 +1798,7 @@ function powerShellLinkWorks(link: string, scratch: string): boolean {
     { flag: "wx" },
   );
   const result = Bun.spawnSync([link, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script], {
-    env: { ...windowsBaseEnv(), PATH: dirname(link), USERPROFILE: scratch, LOCALAPPDATA: scratch, APPDATA: scratch, TEMP: scratch, TMP: scratch },
+    env: harnessPowerShellEnv({ ...windowsBaseEnv(), PATH: dirname(link), USERPROFILE: scratch, LOCALAPPDATA: scratch, APPDATA: scratch, TEMP: scratch, TMP: scratch }),
     stdout: "pipe",
     stderr: "pipe",
     timeout: 60_000,
@@ -1849,7 +1891,7 @@ const CONSOLE_DRIVER = [
   "  const after = k.GetConsoleOutputCP();",
   "  writeFileSync(process.argv[3], JSON.stringify({ before, after, oem: k.GetOEMCP(), run }));",
   "} catch (error) {",
-  "  writeFileSync(process.argv[3], JSON.stringify({ error: String(error) }));",
+  "  writeFileSync(process.argv[3], JSON.stringify({ error: String(error), cause: error?.cause === undefined ? undefined : String(error.cause) }));",
   "  process.exitCode = 1;",
   "} finally {",
   "  releaseConsole();",
@@ -1960,10 +2002,11 @@ describe.skipIf(!WINDOWS)("update installer runner (Windows)", () => {
       timeout: 120_000,
     });
     const recorded = existsSync(output) ? JSON.parse(readFileSync(output, "utf8")) : { error: "no driver output" };
-    expect({ code: result.exitCode, stderr: result.stderr.toString(), error: recorded.error }).toEqual({
+    expect({ code: result.exitCode, stderr: result.stderr.toString(), error: recorded.error, cause: recorded.cause }).toEqual({
       code: 0,
       stderr: "",
       error: undefined,
+      cause: undefined,
     });
     return recorded;
   }
@@ -2010,7 +2053,7 @@ describe.skipIf(!WINDOWS)("update installer runner (Windows)", () => {
     const { plan, env, tempRoot, readLog } = arrange();
     const chunks: Uint8Array[] = [];
 
-    const run = await runInstallScript(plan, { env, windows: true, tempRoot, stdout: { write: (c) => chunks.push(c) } });
+    const run = await surfacingCause(runInstallScript(plan, { env, windows: true, tempRoot, stdout: { write: (c) => chunks.push(c) } }));
 
     expect(run).toEqual({ code: 0, stdout: "info: from fake installer\r\n" });
     expect(Buffer.concat(chunks).toString()).toBe("info: from fake installer\r\n");
@@ -2037,14 +2080,38 @@ describe.skipIf(!WINDOWS)("update installer runner (Windows)", () => {
     expect(readdirSync(tempRoot)).toEqual([]);
     expect(readFileSync(plan.installer, "utf8")).toBe(FAKE_INSTALLER);
 
-    await runInstallScript({ ...plan, currentVersion: undefined }, { env, windows: true, tempRoot, stdout: { write: () => {} } });
+    await surfacingCause(runInstallScript({ ...plan, currentVersion: undefined }, { env, windows: true, tempRoot, stdout: { write: () => {} } }));
     expect(readLog()).toMatchObject({ CurrentVersion: "<unset>", ENVSWITCH_CURRENT_VERSION: undefined });
+  }, 60_000);
+
+  test("an inherited PowerShell 7 module path never reaches Windows PowerShell 5.1", async () => {
+    const { base, plan, env, tempRoot, readLog } = arrange();
+    // A module directory listed first that shadows Get-Acl/Set-Acl and fails to load,
+    // as pwsh's own Microsoft.PowerShell.Security does under Windows PowerShell 5.1.
+    const modules = join(base, "pwsh-modules");
+    const poisoned = join(modules, "Microsoft.PowerShell.Security");
+    mkdirSync(poisoned, { recursive: true });
+    writeFileSync(
+      join(poisoned, "Microsoft.PowerShell.Security.psd1"),
+      "@{ ModuleVersion = '99.0.0'; RootModule = 'poisoned.psm1'; FunctionsToExport = @('Get-Acl', 'Set-Acl'); CmdletsToExport = @(); AliasesToExport = @() }\r\n",
+      { flag: "wx" },
+    );
+    writeFileSync(join(poisoned, "poisoned.psm1"), "throw 'inherited PSModulePath was used'\r\n", { flag: "wx" });
+    const inherited = processEnv("PSMODULEPATH");
+    const polluted = { ...harnessPowerShellEnv(env), PSModulePath: inherited ? `${modules};${inherited}` : modules };
+
+    const run = await surfacingCause(runInstallScript(plan, { env: polluted, windows: true, tempRoot, stdout: { write: () => {} } }));
+
+    expect(run).toEqual({ code: 0, stdout: "info: from fake installer\r\n" });
+    // The fake installer's Get-Acl loaded the real module, so the directory ACL is readable.
+    expect(readLog()).toMatchObject({ protected: "True" });
+    expect(readdirSync(tempRoot)).toEqual([]);
   }, 60_000);
 
   test("forwards a nonzero status and reports launch failures as controlled errors", async () => {
     const { plan, env, tempRoot } = arrange();
 
-    expect((await runInstallScript(plan, { env: { ...env, FAKE_MODE: "status" }, windows: true, tempRoot, stdout: { write: () => {} } })).code).toBe(7);
+    expect((await surfacingCause(runInstallScript(plan, { env: { ...env, FAKE_MODE: "status" }, windows: true, tempRoot, stdout: { write: () => {} } }))).code).toBe(7);
 
     const missing = await runInstallScript({ ...plan, installer: `${plan.installer}.missing` }, { env, windows: true, tempRoot }).catch((e: unknown) => e);
     expect(missing).toBeInstanceOf(EnvswitchError);
@@ -2617,7 +2684,7 @@ function windowsPayload(): string {
     { flag: "wx" },
   );
   const result = Bun.spawnSync([WINDOWS_POWERSHELL, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script], {
-    env: { ...windowsBaseEnv(), PATH: makeWindowsToolsPath(join(root, "tools")), USERPROFILE: root, LOCALAPPDATA: root, APPDATA: root, TEMP: root, TMP: root },
+    env: harnessPowerShellEnv({ ...windowsBaseEnv(), PATH: makeWindowsToolsPath(join(root, "tools")), USERPROFILE: root, LOCALAPPDATA: root, APPDATA: root, TEMP: root, TMP: root }),
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -2803,7 +2870,7 @@ class WindowsBridgeSandbox {
   realUserPath(): string {
     const result = Bun.spawnSync(
       [WINDOWS_POWERSHELL, "-NoProfile", "-Command", "[Console]::Out.Write([Environment]::GetEnvironmentVariable('Path','User'))"],
-      { env: this.serverEnv(), stdout: "pipe", stderr: "pipe" },
+      { env: harnessPowerShellEnv(this.serverEnv()), stdout: "pipe", stderr: "pipe" },
     );
     expect(result.exitCode).toBe(0);
     return result.stdout.toString();
@@ -2962,14 +3029,24 @@ describe.skipIf(!WINDOWS)("bridge migration end-to-end (Windows)", () => {
     const server = await MockReleaseServer.start(sandbox, { repo: DEFAULT_REPO, windowsBinary: windowsPayload() });
     let reinstall: ProcessResult;
     try {
+      // iex never exits the caller's session; it reports through $LASTEXITCODE (README), which
+      // -Command alone would not turn into the process status. Exit with it so failures surface.
       reinstall = sandbox.run(
-        [host, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", `Get-Content -LiteralPath '${script}' -Raw | Invoke-Expression`],
+        [
+          host,
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-Command",
+          `Get-Content -LiteralPath '${script}' -Raw | Invoke-Expression; exit $global:LASTEXITCODE`,
+        ],
         server.hooks(),
       );
     } finally {
       await server.close();
     }
     expectSuccess(reinstall);
+    expect(lf(reinstall.stderr)).not.toContain("error:");
     expect(lf(reinstall.stdout)).toContain("success: installed envswitch v0.0.42\n");
     const receipt = JSON.parse(readFileSync(join(sandbox.appDir, "install.json"), "utf8"));
     expect(receipt).toMatchObject({ kind: "native", repo: DEFAULT_REPO, tag: "v0.0.42" });

@@ -66,6 +66,9 @@ jobs:
         run: ./test/install-ps.Tests.ps1
       - if: runner.os == 'Windows'
         shell: pwsh
+        # pwsh's PSModulePath lists PowerShell 7 modules first; 5.1 must compute its own
+        # (Microsoft.PowerShell.Security, i.e. Set-Acl, fails to load from the 7 directory).
         run: |
+          Remove-Item Env:PSModulePath -ErrorAction SilentlyContinue
           & "$env:SystemRoot/SysWOW64/WindowsPowerShell/v1.0/powershell.exe" -NoProfile -File ./test/install-ps.Tests.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

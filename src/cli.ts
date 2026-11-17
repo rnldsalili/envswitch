@@ -1037,6 +1037,8 @@ export function buildInstallerInvocation(
 
   let argv: string[];
   if (windows) {
+    // Windows PowerShell 5.1 must compute its own module path (see windowsPowerShellEnv).
+    unset("PSMODULEPATH");
     argv = [
       "powershell",
       "-NoProfile",
@@ -1326,16 +1328,32 @@ export function openConsoleEncoding(
   };
 }
 
-/** Owner-only ACL (plus SYSTEM and Administrators) before writing the script. */
-function restrictWindowsDirectory(dir: string, env: UpdateEnv): void {
-  const script =
-    "$ErrorActionPreference='Stop'; $p=$env:ENVSWITCH_INSTALLER_TEMP; $a=New-Object System.Security.AccessControl.DirectorySecurity; $a.SetAccessRuleProtection($true,$false); $u=[System.Security.Principal.WindowsIdentity]::GetCurrent().User; foreach($s in @($u,(New-Object System.Security.Principal.SecurityIdentifier 'S-1-5-18'),(New-Object System.Security.Principal.SecurityIdentifier 'S-1-5-32-544'))) { $r=New-Object System.Security.AccessControl.FileSystemAccessRule($s,'FullControl','ContainerInherit,ObjectInherit','None','Allow'); $a.AddAccessRule($r) }; Set-Acl -LiteralPath $p -AclObject $a";
-  const childEnv: Record<string, string> = {};
+/**
+ * Environment for a Windows PowerShell 5.1 child: everything defined, minus
+ * PSModulePath in any letter case. PowerShell 7 exports a PSModulePath that
+ * lists its own module directories first; a 5.1 grandchild (pwsh -> launcher
+ * -> Bun -> powershell) inheriting it fails to autoload built-in modules such
+ * as Microsoft.PowerShell.Security (Get-Acl, Set-Acl). Without the variable,
+ * 5.1 computes its default module path.
+ */
+export function windowsPowerShellEnv(env: UpdateEnv): Record<string, string> {
+  const result: Record<string, string> = {};
   for (const [name, value] of Object.entries(env)) {
-    if (value !== undefined) {
-      childEnv[name] = value;
+    if (value !== undefined && name.toUpperCase() !== "PSMODULEPATH") {
+      result[name] = value;
     }
   }
+  return result;
+}
+
+/**
+ * Owner-only ACL (plus SYSTEM and Administrators) before writing the script.
+ * .NET Framework APIs only: no cmdlet, so no module autoloading.
+ */
+function restrictWindowsDirectory(dir: string, env: UpdateEnv): void {
+  const script =
+    "$ErrorActionPreference='Stop'; $p=$env:ENVSWITCH_INSTALLER_TEMP; $a=[System.Security.AccessControl.DirectorySecurity]::new(); $a.SetAccessRuleProtection($true,$false); $u=[System.Security.Principal.WindowsIdentity]::GetCurrent().User; foreach($s in @($u,[System.Security.Principal.SecurityIdentifier]::new('S-1-5-18'),[System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'))) { $a.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($s,'FullControl','ContainerInherit,ObjectInherit','None','Allow')) }; [System.IO.Directory]::SetAccessControl($p,$a)";
+  const childEnv = windowsPowerShellEnv(env);
   childEnv.ENVSWITCH_INSTALLER_TEMP = dir;
   // The system Windows PowerShell by absolute path: no PATH lookup for this step.
   const systemRoot = Object.entries(env).find(([name]) => name.toUpperCase() === "SYSTEMROOT")?.[1] ?? "C:\\Windows";
@@ -1343,10 +1361,15 @@ function restrictWindowsDirectory(dir: string, env: UpdateEnv): void {
   const result = Bun.spawnSync([powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script], {
     env: childEnv,
     stdout: "ignore",
-    stderr: "ignore",
+    stderr: "pipe",
   });
   if (result.exitCode !== 0) {
-    fail("update failed: could not run installer: could not secure temporary directory");
+    // The message stays user-facing; PowerShell's own error is kept as the cause for diagnostics.
+    const detail = result.stderr?.toString().trim();
+    throw new EnvswitchError(
+      "update failed: could not run installer: could not secure temporary directory",
+      { cause: new Error(`Windows PowerShell exited with ${result.exitCode ?? "no status"}${detail ? `: ${detail}` : ""}`) },
+    );
   }
 }
 
