@@ -8,10 +8,7 @@ export async function materialize(destination: string) {
   const dir = resolve(destination);
   await mkdir(dir, { recursive: true });
   if ((await readdir(dir)).length) throw new Error(`oracle destination must be empty: ${dir}`);
-  const repo = fileURLToPath(new URL("../../", import.meta.url));
-  const archive = Bun.spawn(["git", "-C", repo, "-c", "core.autocrlf=false", "archive", ORACLE], { stdout: "pipe", stderr: "inherit" });
-  const extract = Bun.spawn(["tar", "-xf", "-", "-C", dir], { stdin: archive.stdout, stderr: "inherit" });
-  if (await extract.exited || await archive.exited) throw new Error("git archive/extraction failed");
+  await exportOracle(dir);
   const home = join(dir, ".parity-home");
   await mkdir(home);
   const env = { ...process.env, LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8", HOME: home, USERPROFILE: home,
@@ -25,6 +22,17 @@ export async function materialize(destination: string) {
   await writeFile(join(dir, "oracle-metadata.json"), JSON.stringify(metadata, null, 2) + "\n");
   await verifyOracle(dir);
   return dir;
+}
+// Extract `git archive ORACLE [paths]` into an existing directory. tar runs with
+// `dir` as its working directory instead of receiving it as `-C <dir>`: GNU tar
+// (Git for Windows' default `tar`) unquotes that argument, so the `\a` in a runner
+// path such as `D:\a\_temp` becomes BEL and the directory cannot be opened.
+export async function exportOracle(dir: string, ...paths: string[]) {
+  const repo = fileURLToPath(new URL("../../", import.meta.url));
+  const archive = Bun.spawn(["git", "-C", repo, "-c", "core.autocrlf=false", "archive", ORACLE, ...paths], { stdout: "pipe", stderr: "inherit" });
+  const extract = Bun.spawn(["tar", "-xf", "-"], { cwd: dir, stdin: archive.stdout, stderr: "inherit" });
+  const [tar, git] = [await extract.exited, await archive.exited];
+  if (tar || git) throw new Error(`git archive/extraction of the oracle failed (git exit ${git}, tar exit ${tar}) into ${dir}`);
 }
 // Hash exact blob bytes, executable bits and filenames against the immutable Git tree.
 export async function verifyOracle(dir: string) {

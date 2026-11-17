@@ -273,10 +273,11 @@ so Rust must match their winners and stable order exactly.
 
 `crates/envswitch/tests/parity.rs` loads every applicable input and OS golden.
 It drives all 12 kinds through the real Rust library/`cli::run`; the blackbox kind
-uses the built native binary and the shared guarded runner. The ignored test is:
+uses the built native binary and the shared guarded runner. It builds fake-op
+beside the CLI (same profile directory) when it is missing, so a clean checkout
+needs no separate build step. The ignored test is:
 
 ```sh
-cargo build --locked -p envswitch-fake-op
 # Optional implemented-S1 transport smoke, without running stubbed cli::run:
 cargo test --locked --test parity scaffold_version_transcript -- --ignored --nocapture
 ENVSWITCH_PARITY_FILTER=formatProgressEvent cargo test --locked --test parity -- --ignored --nocapture
@@ -379,6 +380,9 @@ cargo build --locked --workspace --bins --target aarch64-unknown-linux-musl
 LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 cargo test --locked --test parity --target aarch64-unknown-linux-musl -- --ignored --nocapture
 ```
 
+CI does the same: the Linux Rust lane runs with `--target $(uname -m)-unknown-linux-musl`
+and `musl-gcc` as the linker. Under any non-packaged target, receipt-backed update
+scenarios fail with a hint naming the target.
 `parity/linux.Dockerfile` installs the host's musl target and linker. A GNU debug
 target is not one of the protocol's five supported receipt targets. The fake-op
 builder uses its own target directory even when a caller exports CARGO_TARGET_DIR.

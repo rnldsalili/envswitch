@@ -45,7 +45,7 @@ pub(crate) fn run_update(_args: &ParsedArgs, deps: &mut Deps) -> Result<()> {
     }
     let after =
         read_receipt(&before.app_root, &deps.env).ok_or_else(|| Error::user(POSTCONDITION))?;
-    let marker_path = after.app_root.join("current/.version");
+    let marker_path = after.app_root.join("current").join(".version");
     let marker = fs::read(&marker_path).ok();
     if after.repo != before.repo
         || !same_path(&after.install_dir, &before.install_dir)

@@ -296,6 +296,10 @@ public class Installer {
 "#;
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn ctrl_break_during_update_waits_for_installer_and_returns_its_status() {
     let _console = console();
     let s = Sandbox::new();

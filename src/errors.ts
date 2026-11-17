@@ -1,6 +1,7 @@
 export class EnvswitchError extends Error {
-  constructor(message: string) {
-    super(message);
+  /** `options.cause` carries diagnostics; only `message` is shown to users. */
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = "EnvswitchError";
   }
 }
