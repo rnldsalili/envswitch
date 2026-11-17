@@ -79,6 +79,22 @@ jobs:
         run: |
           echo "::error::Windows baseline missing: download windows-parity-goldens and commit these goldens under parity/goldens/windows/."
           exit 1
+      # Native update only trusts receipts for packaged release targets, and Linux
+      # ships musl builds; a GNU test binary fails every receipt-backed update case.
+      - name: Install the packaged musl target for the Linux Rust lane
+        if: runner.os == 'Linux' && steps.goldens.outputs.windows_missing != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes musl-tools
+          target="$(uname -m)-unknown-linux-musl"
+          rustup target add "$target"
+          # Same linker as parity/linux.Dockerfile, which produced the Linux baseline.
+          echo "CARGO_TARGET_$(echo "$target" | tr 'a-z-' 'A-Z_')_LINKER=musl-gcc" >> "$GITHUB_ENV"
+          echo "PARITY_TARGET=$target" >> "$GITHUB_ENV"
       - name: Rust parity against the oracle goldens
         if: steps.goldens.outputs.windows_missing != 'true'
-        run: cargo test --locked --test parity -- --ignored --nocapture
+        run: |
+          # Build fake-op beside the CLI with the job's toolchain environment; the
+          # harness's env-cleared fallback builder is for local clean checkouts.
+          cargo build --locked --workspace --bins ${PARITY_TARGET:+--target "$PARITY_TARGET"}
+          cargo test --locked --test parity ${PARITY_TARGET:+--target "$PARITY_TARGET"} -- --ignored --nocapture

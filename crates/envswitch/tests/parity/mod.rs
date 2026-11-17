@@ -100,13 +100,9 @@ fn one(bridge: &Bridge, scenario: &Path, golden: &Path, kind: &str) -> Result<()
     }
     if kind == "blackbox" {
         let cli = PathBuf::from(env!("CARGO_BIN_EXE_envswitch"));
-        let fake = cli
-            .parent()
-            .unwrap()
-            .join(if cfg!(windows) { "op.exe" } else { "op" });
-        if !fake.exists() {
-            return Err("build fake-op first: cargo build --locked -p envswitch-fake-op".into());
-        }
+        // `cargo test --test parity` builds only the envswitch package; a clean
+        // checkout (CI) has no fake-op yet, so build it beside the CLI on demand.
+        let fake = crate::process::fake_op_binary();
         let (_binaries, cli, fake) = isolated_binaries(&cli, &fake).map_err(|e| e.to_string())?;
         let actual = J::decode(&bridge.run(
             &[
@@ -262,7 +258,32 @@ fn apply_divergences(s: &J, expected: &mut J, actual: &J, bridge: &Bridge) -> Re
     divergences::apply(s, expected, actual, bridge).map_err(|error| {
         let stdout = bridge.decode_base64(actual.get("stdoutBase64").text());
         let stderr = bridge.decode_base64(actual.get("stderrBase64").text());
-        format!("{error}\nactual.exitCode: {}\nactual.stdout: {:?}\nactual.stderr: {:?}\nactual.result: {}", actual.get("exitCode").int(), String::from_utf8_lossy(&stdout), String::from_utf8_lossy(&stderr), actual.get("result").json())
+        let report = format!("{error}\nactual.exitCode: {}\nactual.stdout: {:?}\nactual.stderr: {:?}\nactual.result: {}", actual.get("exitCode").int(), String::from_utf8_lossy(&stdout), String::from_utf8_lossy(&stderr), actual.get("result").json());
+        match unpackaged_update_target(s) {
+            Some(hint) => format!("{report}\n{hint}"),
+            None => report,
+        }
+    })
+}
+
+/// Native `update` only trusts receipts for the five packaged release targets
+/// (`install/receipt.rs`), so on any other target (such as Linux GNU) every
+/// receipt-backed update scenario fails its D3/e6 assertion. Say why.
+fn unpackaged_update_target(s: &J) -> Option<String> {
+    const PACKAGED: [&str; 5] = [
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+        "x86_64-unknown-linux-musl",
+        "aarch64-unknown-linux-musl",
+        "x86_64-pc-windows-msvc",
+    ];
+    let target = env!("TARGET");
+    (s.has("rustUpdate") && !PACKAGED.contains(&target)).then(|| {
+        format!(
+            "hint: {target} is not a packaged release target, so native update cannot locate \
+             its receipt; on Linux run this lane with --target <arch>-unknown-linux-musl \
+             (parity/README.md)"
+        )
     })
 }
 

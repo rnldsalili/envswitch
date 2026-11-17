@@ -165,7 +165,9 @@ pub fn resolve_tool(name: &str) -> PathBuf {
         .unwrap_or_else(|| panic!("required test tool missing: {name}"))
 }
 
-fn fake_op_binary() -> PathBuf {
+/// The native fake `op` next to the CLI under test, building it (once per test
+/// binary) when the profile directory does not have it yet.
+pub fn fake_op_binary() -> PathBuf {
     static BINARY: OnceLock<PathBuf> = OnceLock::new();
     BINARY
         .get_or_init(|| {
@@ -177,8 +179,11 @@ fn fake_op_binary() -> PathBuf {
                 let cargo = Path::new(env!("CARGO"));
                 let toolchain = cargo.parent().unwrap();
                 let rustc = toolchain.join(if cfg!(windows) { "rustc.exe" } else { "rustc" });
+                // gcc's collect2 finds the linker on PATH (clang uses xcrun on macOS).
                 for name in if cfg!(windows) {
                     &[][..]
+                } else if cfg!(target_os = "linux") {
+                    &["cc", "ar", "ld"][..]
                 } else {
                     &["cc", "ar"][..]
                 } {

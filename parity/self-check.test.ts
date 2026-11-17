@@ -3,7 +3,7 @@ import { readFile, readdir, mkdtemp, writeFile, chmod, rm, cp } from "node:fs/pr
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { differences } from "./diff/compare.ts";
-import { ORACLE, verifyOracle } from "./oracle/materialize.ts";
+import { exportOracle, verifyOracle } from "./oracle/materialize.ts";
 import { runScenario } from "./adapters/ts/run.ts";
 import { nativeFixture } from "./adapters/rust/update.ts";
 import { normalizeOrdered, plain } from "./adapters/rust/ordered.ts";
@@ -75,9 +75,7 @@ describe("parity harness invariants", () => {
         await cp(join(process.env.ENVSWITCH_ORACLE_DIR, "src"), join(tmp, "src"), { recursive: true });
       } else {
         // The working tree's src/ may differ from the oracle (bridge release, TS removal); export the pinned commit.
-        const archive = Bun.spawn(["git", "-C", join(import.meta.dir, ".."), "-c", "core.autocrlf=false", "archive", ORACLE, "src"], { stdout: "pipe", stderr: "inherit" });
-        const extract = Bun.spawn(["tar", "-xf", "-", "-C", tmp], { stdin: archive.stdout, stderr: "inherit" });
-        if (await extract.exited || await archive.exited) throw new Error("git archive of the oracle src/ failed");
+        await exportOracle(tmp, "src");
       }
       await verifyOracle(tmp);
       await writeFile(join(tmp, "src/cli.ts"), "mutated source");
