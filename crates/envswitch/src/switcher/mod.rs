@@ -26,7 +26,7 @@ use crate::model::{
 use crate::ports::OnePassword;
 
 use matcher::{build_tag_matcher, classify_with_matcher};
-use merge::{merge_target, planned_reads, prefetch_reads};
+use merge::merge_target;
 
 /// TS `switchEnvironment(config, op, options)` (02 §4.5).
 ///
@@ -35,9 +35,9 @@ use merge::{merge_target, planned_reads, prefetch_reads};
 /// `info listing candidate 1Password items`, one `list_items_by_tags`,
 /// `done found <n> candidate item(s)`, then per target `info processing
 /// <name> -> <path>`, `info reading <title||id>` per read-cache miss (cache
-/// shared across targets; reads overlap, DIVERGENCES l1), and either
-/// `info writing <path>`, write, `done wrote <path>` (path re-resolved right
-/// before writing) or
+/// shared across targets; a target's reads overlap, DIVERGENCES l1), and
+/// either `info writing <path>`, write, `done wrote <path>` (path re-resolved
+/// right before writing) or
 /// `dry-run would write <path>`. Never prints; emits only through `log`.
 pub fn switch_environment(
     op: &dyn OnePassword,
@@ -62,10 +62,6 @@ pub fn switch_environment(
     )));
     let matcher = build_tag_matcher(config, &req.env, &req.client, &req.cwd);
     let mut cache = HashMap::new();
-    // Overlap every planned read up front (DIVERGENCES l1); results are still
-    // consumed, logged, and failed in the sequential TS order below.
-    let mut prefetched =
-        prefetch_reads(op, &planned_reads(&candidates, &resolved_targets, &matcher));
 
     let mut targets = Vec::with_capacity(resolved_targets.len());
     for resolved in resolved_targets {
@@ -74,15 +70,7 @@ pub fn switch_environment(
             resolved.target.name,
             resolved.output_path.display()
         )));
-        let merge = merge_target(
-            op,
-            &candidates,
-            &resolved,
-            &matcher,
-            &mut cache,
-            &mut prefetched,
-            log,
-        )?;
+        let merge = merge_target(op, &candidates, &resolved, &matcher, &mut cache, log)?;
 
         if req.dry_run {
             log(ProgressEvent::dry_run(format!(

@@ -10,22 +10,26 @@ fn require(ok: bool, message: &str) -> Result<(), String> {
 fn text(t: &J, key: &str, b: &Bridge) -> String {
     String::from_utf8_lossy(&b.decode_base64(t.get(key).text())).into_owned()
 }
-/// DIVERGENCES l1, applied to every scenario: env reads overlap, so within
-/// each run of consecutive `op item get` calls the order is free. Everything
+/// DIVERGENCES l1, applied to every scenario: a target's env reads overlap,
+/// so within a run of consecutive env reads the order is free. Only runs that
+/// directly follow the candidate `op item list` (not the `envswitch-config`
+/// scan) qualify, and every read in them must be the exact env-read argv for
+/// that list's vault and an item the scenario's fake `op` serves. Everything
 /// else stays exact: every other call in order, the same runs, the same read
-/// set (each item once), and `readCounts` per key. A failed run may also hold
-/// reads that were already in flight, but only in a failing transcript's
-/// final run, each read once. Accepted transcripts adopt the actual order.
-fn overlapped_reads(e: &mut J, a: &J) -> Result<(), String> {
+/// set (each item once), and `readCounts` per key. Extra reads (already in
+/// flight) are allowed only when the oracle failed on an env read: its last
+/// call ends this final run and its last progress event is that `reading`.
+/// Accepted transcripts adopt the actual order.
+fn overlapped_reads(s: &J, e: &mut J, a: &J) -> Result<(), String> {
     fn is_get(call: &J) -> bool {
         call.at(0).text() == "item" && call.at(1).text() == "get"
     }
-    fn runs(calls: &[J]) -> Vec<(bool, Vec<J>)> {
-        let mut out: Vec<(bool, Vec<J>)> = Vec::new();
+    fn runs(calls: &[J]) -> Vec<Vec<J>> {
+        let mut out: Vec<Vec<J>> = Vec::new();
         for call in calls {
             match out.last_mut() {
-                Some((true, run)) if is_get(call) => run.push(call.clone()),
-                _ => out.push((is_get(call), vec![call.clone()])),
+                Some(run) if is_get(call) && is_get(&run[0]) => run.push(call.clone()),
+                _ => out.push(vec![call.clone()]),
             }
         }
         out
@@ -38,15 +42,52 @@ fn overlapped_reads(e: &mut J, a: &J) -> Result<(), String> {
     if expected_runs.len() != actual_runs.len() {
         return Ok(()); // a structural difference: let the exact compare report it
     }
+    let op = s.get("op");
+    let served: Vec<&str> = std::iter::once(op.get("items"))
+        .chain(
+            op.get("byVault")
+                .pairs()
+                .iter()
+                .map(|(_, v)| v.get("items")),
+        )
+        .flat_map(J::items)
+        .flat_map(|item| [item.get("id").text(), item.get("title").text()])
+        .filter(|key| !key.is_empty())
+        .collect();
     let last = expected_runs.len() - 1;
     let mut extras = false;
-    for (index, ((get, want), (_, got))) in expected_runs.iter().zip(&actual_runs).enumerate() {
-        if !get || want == got {
-            if want != got {
-                return Ok(());
-            }
+    for (index, (want, got)) in expected_runs.iter().zip(&actual_runs).enumerate() {
+        if want == got {
             continue;
         }
+        let list = index
+            .checked_sub(1)
+            .and_then(|i| expected_runs[i].first())
+            .filter(|call| {
+                expected_runs[index - 1].len() == 1
+                    && call.at(0).text() == "item"
+                    && call.at(1).text() == "list"
+                    && call.items().last().map(J::text) != Some("envswitch-config")
+            });
+        let Some(list) = list else {
+            return Ok(()); // not an env-read run: let the exact compare report it
+        };
+        let vault = list.at(3).text();
+        let env_read = |call: &J| {
+            let item = call.at(2).text();
+            *call
+                == J::array(
+                    [
+                        "item", "get", item, "--vault", vault, "--format", "json", "--reveal",
+                    ]
+                    .map(J::string),
+                )
+                && served.contains(&item)
+        };
+        require(
+            want.iter().chain(got).all(env_read),
+            "l1 reorders only env reads of served items in the listed vault",
+        )?;
         let distinct = |run: &[J]| run.iter().enumerate().all(|(i, c)| !run[..i].contains(c));
         require(
             distinct(want) && distinct(got),
@@ -57,9 +98,14 @@ fn overlapped_reads(e: &mut J, a: &J) -> Result<(), String> {
             "l1 overlapped run keeps every oracle read",
         )?;
         if got.len() > want.len() {
+            let progress = e.get("progress").items();
             require(
-                index == last && e.get("exitCode").int() != 0,
-                "l1 extra in-flight reads only in a failing final run",
+                index == last
+                    && e.get("exitCode").int() != 0
+                    && progress
+                        .last()
+                        .is_some_and(|event| event.get("message").text().starts_with("reading ")),
+                "l1 extra in-flight reads only after a failed env read",
             )?;
             extras = true;
         }
@@ -85,7 +131,7 @@ fn overlapped_reads(e: &mut J, a: &J) -> Result<(), String> {
 }
 
 pub fn apply(s: &J, expected: &mut J, actual: &J, b: &Bridge) -> Result<(), String> {
-    overlapped_reads(expected, actual)?;
+    overlapped_reads(s, expected, actual)?;
     let markers = match s.get("divergence") {
         J::Array(v) => v.iter().map(|v| v.text()).collect(),
         J::String(v) => vec![v.as_str()],
@@ -415,65 +461,119 @@ mod overlapped_reads_tests {
     fn call(parts: &[&str]) -> J {
         J::array(parts.iter().map(|p| J::string(*p)))
     }
-    fn get(id: &str) -> J {
+    fn get_in(vault: &str, id: &str) -> J {
         call(&[
-            "item", "get", id, "--vault", "v", "--format", "json", "--reveal",
+            "item", "get", id, "--vault", vault, "--format", "json", "--reveal",
         ])
     }
-    fn transcript(exit: i64, calls: Vec<J>) -> J {
+    fn get(id: &str) -> J {
+        get_in("v", id)
+    }
+    fn list() -> J {
+        call(&[
+            "item",
+            "list",
+            "--vault",
+            "v",
+            "--format",
+            "json",
+            "--tags",
+            "env:local",
+        ])
+    }
+    fn scenario() -> J {
+        let items = ["a", "b", "c"].map(|id| J::object([("id", J::string(id))]));
+        J::object([("op", J::object([("items", J::array(items))]))])
+    }
+    fn transcript(exit: i64, last_progress: &str, calls: Vec<J>) -> J {
         let mut counts: Vec<(String, J)> = Vec::new();
         for c in &calls {
             if c.at(1).text() == "get" {
-                counts.push((format!("v/{}", c.at(2).text()), J::number(1)));
+                counts.push((
+                    format!("{}/{}", c.at(4).text(), c.at(2).text()),
+                    J::number(1),
+                ));
             }
         }
         J::object([
             ("exitCode", J::number(exit)),
+            (
+                "progress",
+                J::array([J::object([("message", J::string(last_progress))])]),
+            ),
             ("opCalls", J::array(calls)),
             ("readCounts", J::object(counts)),
         ])
     }
-    fn list() -> J {
-        call(&["item", "list", "--vault", "v"])
-    }
 
     #[test]
-    fn accepts_a_reordered_read_run_and_adopts_it() {
-        let mut e = transcript(0, vec![get("cfg"), list(), get("a"), get("b"), get("c")]);
-        let a = transcript(0, vec![get("cfg"), list(), get("c"), get("a"), get("b")]);
-        overlapped_reads(&mut e, &a).unwrap();
+    fn accepts_a_reordered_env_read_run_and_adopts_it() {
+        let mut e = transcript(
+            0,
+            "done",
+            vec![get("cfg"), list(), get("a"), get("b"), get("c")],
+        );
+        let a = transcript(
+            0,
+            "done",
+            vec![get("cfg"), list(), get("c"), get("a"), get("b")],
+        );
+        overlapped_reads(&scenario(), &mut e, &a).unwrap();
         assert_eq!(e, a);
     }
 
     #[test]
-    fn accepts_in_flight_extras_only_in_a_failing_final_run() {
-        let mut e = transcript(2, vec![list(), get("a"), get("b")]);
-        let a = transcript(2, vec![list(), get("b"), get("c"), get("a")]);
-        overlapped_reads(&mut e, &a).unwrap();
+    fn accepts_in_flight_extras_only_after_a_failed_env_read() {
+        let mut e = transcript(2, "reading a", vec![list(), get("a")]);
+        let a = transcript(2, "reading a", vec![list(), get("b"), get("a")]);
+        overlapped_reads(&scenario(), &mut e, &a).unwrap();
         assert_eq!(e, a);
 
-        let mut e = transcript(0, vec![list(), get("a"), get("b")]);
-        let a = transcript(0, vec![list(), get("b"), get("c"), get("a")]);
-        assert!(overlapped_reads(&mut e, &a).is_err());
+        // A success, or a failure that was not an env read (e.g. a write).
+        for (exit, progress) in [(0, "reading a"), (2, "writing x")] {
+            let mut e = transcript(exit, progress, vec![list(), get("a")]);
+            let a = transcript(exit, progress, vec![list(), get("b"), get("a")]);
+            assert!(overlapped_reads(&scenario(), &mut e, &a).is_err());
+        }
     }
 
     #[test]
-    fn rejects_a_missing_or_repeated_read() {
-        let mut e = transcript(2, vec![list(), get("a"), get("b")]);
-        let a = transcript(2, vec![list(), get("b"), get("c")]);
-        assert!(overlapped_reads(&mut e, &a).is_err());
+    fn rejects_a_missing_repeated_unserved_or_foreign_read() {
+        let mut e = transcript(2, "reading b", vec![list(), get("a"), get("b")]);
+        let a = transcript(2, "reading b", vec![list(), get("b"), get("c")]);
+        assert!(overlapped_reads(&scenario(), &mut e, &a).is_err());
 
-        let mut e = transcript(0, vec![list(), get("a"), get("b")]);
-        let a = transcript(0, vec![list(), get("b"), get("a"), get("a")]);
-        assert!(overlapped_reads(&mut e, &a).is_err());
+        let mut e = transcript(0, "done", vec![list(), get("a"), get("b")]);
+        let a = transcript(0, "done", vec![list(), get("b"), get("a"), get("a")]);
+        assert!(overlapped_reads(&scenario(), &mut e, &a).is_err());
+
+        let mut e = transcript(2, "reading a", vec![list(), get("a")]);
+        let a = transcript(2, "reading a", vec![list(), get("SECRET"), get("a")]);
+        assert!(overlapped_reads(&scenario(), &mut e, &a).is_err());
+
+        let mut e = transcript(2, "reading a", vec![list(), get("a")]);
+        let a = transcript(2, "reading a", vec![list(), get_in("other", "b"), get("a")]);
+        assert!(overlapped_reads(&scenario(), &mut e, &a).is_err());
     }
 
     #[test]
-    fn leaves_other_order_changes_to_the_exact_compare() {
-        let original = transcript(0, vec![get("cfg"), list(), get("a"), get("b")]);
+    fn leaves_non_env_read_runs_to_the_exact_compare() {
+        // A config read that fails (no candidate list before it).
+        let original = transcript(2, "reading config item cfg", vec![get("cfg")]);
         let mut e = original.clone();
-        let a = transcript(0, vec![list(), get("cfg"), get("a"), get("b")]);
-        overlapped_reads(&mut e, &a).unwrap();
-        assert_eq!(e, original, "non-read reorder is not adopted");
+        let a = transcript(
+            2,
+            "reading config item cfg",
+            vec![get("SECRET"), get("cfg")],
+        );
+        overlapped_reads(&scenario(), &mut e, &a).unwrap();
+        assert_eq!(e, original);
+
+        // Reordered non-read calls.
+        let original = transcript(0, "done", vec![get("cfg"), list(), get("a"), get("b")]);
+        let mut e = original.clone();
+        let a = transcript(0, "done", vec![list(), get("cfg"), get("a"), get("b")]);
+        overlapped_reads(&scenario(), &mut e, &a).unwrap();
+        assert_eq!(e, original);
     }
 }

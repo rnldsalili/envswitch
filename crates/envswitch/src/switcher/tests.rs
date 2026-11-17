@@ -21,9 +21,7 @@ use super::collation_golden::{FULL_ENV, GROUPS, PAIRS, TITLES};
 use super::matcher::{
     MatcherTags, SCOPE_SENTINEL, TagMatcher, classify_with_matcher, scope_tag_pattern,
 };
-use super::merge::{
-    READ_CONCURRENCY, compare_titles, merge_layers, merge_target, planned_reads, prefetch_reads,
-};
+use super::merge::{READ_CONCURRENCY, compare_titles, merge_layers, merge_target, read_in_order};
 use crate::error::{Error, Result};
 use crate::model::{
     EnvLayer, EnvMap, ItemSummary, LayerName, ProgressEvent, ResolvedTarget, TargetConfig,
@@ -240,7 +238,6 @@ fn merge(
         &resolved(target),
         matcher,
         cache,
-        &mut HashMap::new(),
         &mut |event: ProgressEvent| events.push(format!("{}:{}", event.status, event.message)),
     );
     (result, events)
@@ -999,7 +996,8 @@ fn known_divergence_unicode_17_marks_tie_in_icu4x() {
 // ---------------------------------------------------------------------------
 
 /// Env reads that hold until `gate` reads have started, tracking the peak
-/// number in flight. Keys in `failing` fail with their message.
+/// number in flight. Per key: an optional delay, then a failure message or a
+/// panic.
 struct GateOp {
     gate: usize,
     arrived: Mutex<usize>,
@@ -1007,12 +1005,14 @@ struct GateOp {
     in_flight: AtomicUsize,
     peak: AtomicUsize,
     timed_out: AtomicBool,
+    delays: HashMap<String, u64>,
     failing: HashMap<String, String>,
+    panicking: Vec<String>,
     reads: Mutex<Vec<String>>,
 }
 
 impl GateOp {
-    fn new(gate: usize, failing: &[(&str, &str)]) -> Self {
+    fn new(gate: usize) -> Self {
         GateOp {
             gate,
             arrived: Mutex::new(0),
@@ -1020,30 +1020,45 @@ impl GateOp {
             in_flight: AtomicUsize::new(0),
             peak: AtomicUsize::new(0),
             timed_out: AtomicBool::new(false),
-            failing: failing
-                .iter()
-                .map(|(key, message)| (key.to_string(), message.to_string()))
-                .collect(),
+            delays: HashMap::new(),
+            failing: HashMap::new(),
+            panicking: Vec::new(),
             reads: Mutex::new(Vec::new()),
         }
+    }
+
+    fn delay(mut self, key: &str, millis: u64) -> Self {
+        self.delays.insert(key.to_string(), millis);
+        self
+    }
+
+    fn fail(mut self, key: &str, message: &str) -> Self {
+        self.failing.insert(key.to_string(), message.to_string());
+        self
+    }
+
+    fn panic_on(mut self, key: &str) -> Self {
+        self.panicking.push(key.to_string());
+        self
     }
 }
 
 impl OnePassword for GateOp {
     fn assert_authenticated(&self) -> Result<()> {
-        unreachable!("prefetch never authenticates")
+        unreachable!("reads never authenticate")
     }
 
     fn list_items_by_tags(&self, _tags: &[String]) -> Result<Vec<ItemSummary>> {
-        unreachable!("prefetch never lists")
+        unreachable!("reads never list")
     }
 
     fn read_config_item(&self, _item: &str) -> Result<String> {
-        unreachable!("prefetch never reads config items")
+        unreachable!("reads never read config items")
     }
 
     fn read_env_item(&self, item: &ItemSummary) -> Result<EnvMap> {
-        self.reads.lock().unwrap().push(item.key().to_string());
+        let key = item.key();
+        self.reads.lock().unwrap().push(key.to_string());
         let now = self.in_flight.fetch_add(1, AtomicOrdering::SeqCst) + 1;
         self.peak.fetch_max(now, AtomicOrdering::SeqCst);
         {
@@ -1058,10 +1073,16 @@ impl OnePassword for GateOp {
                 self.timed_out.store(true, AtomicOrdering::SeqCst);
             }
         }
+        if let Some(millis) = self.delays.get(key) {
+            std::thread::sleep(Duration::from_millis(*millis));
+        }
         self.in_flight.fetch_sub(1, AtomicOrdering::SeqCst);
-        match self.failing.get(item.key()) {
+        if self.panicking.iter().any(|k| k == key) {
+            panic!("read panicked: {key}");
+        }
+        match self.failing.get(key) {
             Some(message) => Err(Error::internal(message.clone())),
-            None => Ok(env(&[("KEY", item.key())])),
+            None => Ok(env(&[("KEY", key)])),
         }
     }
 }
@@ -1072,62 +1093,102 @@ fn numbered_items(count: usize) -> Vec<ItemSummary> {
         .collect()
 }
 
+/// `read_in_order` over `items`, returning the result and the `on_read` keys.
+fn read_all(op: &GateOp, items: &[ItemSummary]) -> (Result<Vec<EnvMap>>, Vec<String>) {
+    let refs: Vec<&ItemSummary> = items.iter().collect();
+    let mut started = Vec::new();
+    let result = read_in_order(op, &refs, &mut |item| started.push(item.key().to_string()));
+    (result, started)
+}
+
 #[test]
-fn planned_reads_follow_the_sequential_ts_read_order() {
-    let items = ts_items();
-    let plan = planned_reads(&items, &[resolved("api"), resolved("web")], &ts_matcher());
+fn reads_overlap_up_to_the_cap_and_return_values_in_order() {
+    // Every read holds until READ_CONCURRENCY reads have started, so a
+    // sequential implementation times out and a wider one exceeds the peak.
+    let items = numbered_items(READ_CONCURRENCY + 3);
+    let op = GateOp::new(READ_CONCURRENCY);
+    let (result, started) = read_all(&op, &items);
+    assert!(!op.timed_out.load(AtomicOrdering::SeqCst));
+    assert_eq!(op.peak.load(AtomicOrdering::SeqCst), READ_CONCURRENCY);
+    let keys: Vec<String> = items.iter().map(|item| item.key().to_string()).collect();
+    assert_eq!(started, keys);
     assert_eq!(
-        plan.iter().map(|item| item.key()).collect::<Vec<_>>(),
-        [
-            "shared",
-            "api-group",
-            "api-target",
-            "alpha",
-            "alpha-api",
-            "app-group",
-            "web-target",
-            "alpha-web",
-        ]
+        result.unwrap(),
+        keys.iter()
+            .map(|key| env(&[("KEY", key)]))
+            .collect::<Vec<_>>()
     );
 }
 
 #[test]
-fn prefetch_overlaps_reads_up_to_the_cap() {
-    // Every read holds until READ_CONCURRENCY reads have started, so a
-    // sequential implementation times out and a wider one exceeds the peak.
-    let items = numbered_items(READ_CONCURRENCY + 3);
-    let refs: Vec<&ItemSummary> = items.iter().collect();
-    let op = GateOp::new(READ_CONCURRENCY, &[]);
-    let results = prefetch_reads(&op, &refs);
-    assert!(!op.timed_out.load(AtomicOrdering::SeqCst));
-    assert_eq!(op.peak.load(AtomicOrdering::SeqCst), READ_CONCURRENCY);
-    assert_eq!(results.len(), items.len());
-    for item in &items {
-        assert_eq!(results[item.key()], Ok(env(&[("KEY", item.key())])));
-    }
-}
-
-#[test]
-fn prefetch_keeps_every_result_before_the_first_failure() {
-    // Consumed in plan order, the first error is the one the sequential TS
-    // loop would hit; later items may or may not have been read.
+fn the_first_failure_in_order_wins_and_stops_on_read() {
     for _ in 0..50 {
-        let items = numbered_items(12);
-        let refs: Vec<&ItemSummary> = items.iter().collect();
-        let op = GateOp::new(1, &[("i2", "two"), ("i5", "five")]);
-        let results = prefetch_reads(&op, &refs);
-        assert_eq!(results["i0"], Ok(env(&[("KEY", "i0")])));
-        assert_eq!(results["i1"], Ok(env(&[("KEY", "i1")])));
-        assert_eq!(results["i2"], Err(Error::internal("two")));
-        let reads = op.reads.lock().unwrap();
-        assert!(reads.len() <= items.len(), "{reads:?}");
+        let op = GateOp::new(1).fail("i2", "two").fail("i5", "five");
+        let (result, started) = read_all(&op, &numbered_items(12));
+        assert_eq!(result, Err(Error::internal("two")));
+        assert_eq!(started, ["i0", "i1", "i2"]);
     }
 }
 
 #[test]
-fn prefetch_leaves_a_single_read_to_the_lazy_sequential_path() {
+fn a_slow_earlier_failure_beats_a_fast_later_one() {
+    // Completion order is reversed: i1 fails first, but i0 is earlier.
+    let op = GateOp::new(2)
+        .delay("i0", 150)
+        .fail("i0", "zero")
+        .fail("i1", "one");
+    let (result, started) = read_all(&op, &numbered_items(4));
+    assert_eq!(result, Err(Error::internal("zero")));
+    assert_eq!(started, ["i0"]);
+
+    let op = GateOp::new(2).delay("i0", 150).fail("i1", "one");
+    let (result, started) = read_all(&op, &numbered_items(4));
+    assert_eq!(result, Err(Error::internal("one")));
+    assert_eq!(started, ["i0", "i1"]);
+}
+
+#[test]
+fn a_later_panic_never_replaces_an_earlier_error() {
+    let op = GateOp::new(2)
+        .delay("i0", 100)
+        .fail("i0", "zero")
+        .panic_on("i1");
+    let (result, _) = read_all(&op, &numbered_items(3));
+    assert_eq!(result, Err(Error::internal("zero")));
+}
+
+#[test]
+fn a_panic_reached_in_order_is_resumed() {
+    let panic = std::panic::catch_unwind(|| {
+        let op = GateOp::new(2).panic_on("i0");
+        read_all(&op, &numbered_items(3))
+    })
+    .unwrap_err();
+    assert_eq!(panic.downcast_ref::<String>().unwrap(), "read panicked: i0");
+}
+
+#[test]
+fn a_single_read_stays_on_the_calling_thread() {
     let items = numbered_items(1);
-    let op = GateOp::new(1, &[]);
-    assert!(prefetch_reads(&op, &[&items[0]]).is_empty());
-    assert!(op.reads.lock().unwrap().is_empty());
+    let op = GateOp::new(1);
+    let caller = std::thread::current().id();
+    struct ThreadCheck<'a>(&'a GateOp, std::thread::ThreadId);
+    impl OnePassword for ThreadCheck<'_> {
+        fn assert_authenticated(&self) -> Result<()> {
+            unreachable!()
+        }
+        fn list_items_by_tags(&self, _tags: &[String]) -> Result<Vec<ItemSummary>> {
+            unreachable!()
+        }
+        fn read_config_item(&self, _item: &str) -> Result<String> {
+            unreachable!()
+        }
+        fn read_env_item(&self, item: &ItemSummary) -> Result<EnvMap> {
+            assert_eq!(std::thread::current().id(), self.1);
+            self.0.read_env_item(item)
+        }
+    }
+    let check = ThreadCheck(&op, caller);
+    let result = read_in_order(&check, &[&items[0]], &mut |_| {});
+    assert_eq!(result.unwrap(), [env(&[("KEY", "i0")])]);
 }

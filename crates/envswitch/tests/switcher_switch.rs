@@ -475,6 +475,24 @@ fn the_earliest_failing_read_wins_even_when_later_reads_overlap() {
 }
 
 #[test]
+fn later_targets_are_not_read_before_earlier_targets_are_written() {
+    // DIVERGENCES l1: reads overlap only within a target. When api's write
+    // fails, web's items were never read, exactly as in TS.
+    let project = TempProject::new();
+    std::fs::create_dir_all(project.path("apps/api/.env")).unwrap();
+    let op = ts_op();
+    let (result, _) = run(&op, &request(ts_config(), project.root(), "all", false));
+    assert!(result.is_err());
+    let mut read: Vec<String> = op.read_counts().keys().cloned().collect();
+    read.sort_unstable();
+    assert_eq!(
+        read,
+        ["alpha", "alpha-api", "api-group", "api-target", "shared"]
+    );
+    assert!(!project.path("apps/web/.env").exists());
+}
+
+#[test]
 fn validation_fails_before_any_op_call() {
     // Oracle: only `validating project root` is logged and `op` is never
     // called when the root, selection, or an output path is invalid.
