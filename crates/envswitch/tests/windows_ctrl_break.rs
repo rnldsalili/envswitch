@@ -1,5 +1,8 @@
 #![cfg(windows)]
 
+#[path = "../src/op/job.rs"]
+#[allow(dead_code)]
+mod op_job;
 #[path = "support/process.rs"]
 mod process;
 
@@ -7,7 +10,11 @@ use std::{
     ffi::c_void,
     fs,
     io::{BufRead, BufReader},
-    os::windows::{io::AsRawHandle, process::CommandExt},
+    os::windows::{
+        io::{AsRawHandle, IntoRawHandle},
+        process::CommandExt,
+    },
+    path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::Mutex,
     time::{Duration, Instant},
@@ -19,7 +26,6 @@ use serde_json::json;
 const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
 const CREATE_SUSPENDED: u32 = 0x0000_0004;
 const CTRL_BREAK_EVENT: u32 = 1;
-const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x0000_2000;
 static CONSOLE: Mutex<()> = Mutex::new(());
 
 #[link(name = "kernel32")]
@@ -27,9 +33,6 @@ unsafe extern "system" {
     fn GenerateConsoleCtrlEvent(event: u32, process_group: u32) -> i32;
     fn GetConsoleCP() -> u32;
     fn AllocConsole() -> i32;
-    fn CreateJobObjectW(attributes: *const c_void, name: *const u16) -> *mut c_void;
-    fn SetInformationJobObject(job: *mut c_void, class: i32, info: *const c_void, size: u32)
-    -> i32;
     fn AssignProcessToJobObject(job: *mut c_void, process: *mut c_void) -> i32;
     fn CloseHandle(handle: *mut c_void) -> i32;
     fn CreateToolhelp32Snapshot(flags: u32, pid: u32) -> *mut c_void;
@@ -37,6 +40,8 @@ unsafe extern "system" {
     fn Thread32Next(snapshot: *mut c_void, entry: *mut ThreadEntry) -> i32;
     fn OpenThread(access: u32, inherit: i32, tid: u32) -> *mut c_void;
     fn ResumeThread(thread: *mut c_void) -> u32;
+    fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut c_void;
+    fn WaitForSingleObject(handle: *mut c_void, millis: u32) -> u32;
 }
 
 fn console() -> std::sync::MutexGuard<'static, ()> {
@@ -71,59 +76,14 @@ fn until(mut ready: impl FnMut() -> bool) {
     }
 }
 
-#[repr(C)]
-#[derive(Default)]
-struct BasicLimitInformation {
-    per_process_user_time_limit: i64,
-    per_job_user_time_limit: i64,
-    limit_flags: u32,
-    minimum_working_set_size: usize,
-    maximum_working_set_size: usize,
-    active_process_limit: u32,
-    affinity: usize,
-    priority_class: u32,
-    scheduling_class: u32,
-}
-
-#[repr(C)]
-#[derive(Default)]
-struct ExtendedLimitInformation {
-    basic: BasicLimitInformation,
-    io_counters: [u64; 6],
-    process_memory_limit: usize,
-    job_memory_limit: usize,
-    peak_process_memory_used: usize,
-    peak_job_memory_used: usize,
-}
-
 struct Handle(*mut c_void);
 impl Handle {
     fn new_job() -> Self {
-        // SAFETY: null attributes/name create a private, non-inheritable job handle.
-        let job = Self(unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) });
-        assert!(!job.0.is_null(), "{}", std::io::Error::last_os_error());
-        let limits = ExtendedLimitInformation {
-            basic: BasicLimitInformation {
-                limit_flags: JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        // SAFETY: class 9 takes this repr(C) extended-limit structure and its exact size.
-        assert_ne!(
-            unsafe {
-                SetInformationJobObject(
-                    job.0,
-                    9,
-                    (&limits as *const ExtendedLimitInformation).cast(),
-                    std::mem::size_of_val(&limits) as u32,
-                )
-            },
-            0,
-            "{}",
-            std::io::Error::last_os_error()
-        );
-        job
+        Self(
+            op_job::create_job()
+                .expect("create cleanup Job")
+                .into_raw_handle(),
+        )
     }
 
     fn close(&mut self) {
@@ -135,6 +95,54 @@ impl Handle {
             self.0 = std::ptr::null_mut();
         }
     }
+}
+
+const OP_ARGS: &[&str] = &[
+    "item", "get", "cfg", "--vault", "vault", "--format", "json", "--reveal",
+];
+
+fn catching_op_fixture(s: &Sandbox) -> PathBuf {
+    let ready = s.root.join("op-ready");
+    s.owned(&ready);
+    s.fake_op(&json!({"responses":[{
+        "argv":OP_ARGS,"delayMs":30000,"stdout":"{}",
+        "catchCtrlBreak":{"readyFile":ready}
+    }]}));
+    ready
+}
+
+fn ready_op(ready: &Path) -> Handle {
+    let mut pid = None;
+    until(|| {
+        pid = fs::read_to_string(ready)
+            .ok()
+            .and_then(|s| s.parse::<u32>().ok());
+        pid.is_some()
+    });
+    // SAFETY: retain SYNCHRONIZE access to this live fixture process, even after exit.
+    let handle = Handle(unsafe { OpenProcess(0x0010_0000, 0, pid.unwrap()) });
+    assert!(!handle.0.is_null(), "{}", std::io::Error::last_os_error());
+    handle
+}
+
+#[test]
+fn fake_op_catches_ctrl_break_and_exits_one_with_stderr() {
+    let _console = console();
+    let s = Sandbox::new();
+    let ready = catching_op_fixture(&s);
+    let mut command = s.op_command(s.tools.join("op.exe"));
+    command
+        .args(OP_ARGS)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = Guard::spawn(&mut command);
+    let _op = ready_op(&ready);
+    send_break(child.0.as_ref().unwrap().id());
+    until(|| child.0.as_mut().unwrap().try_wait().unwrap().is_some());
+    let output = child.0.take().unwrap().wait_with_output().unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    assert_eq!(output.stderr, b"fake-op: caught Ctrl-Break\n");
 }
 impl Drop for Handle {
     fn drop(&mut self) {
@@ -222,10 +230,7 @@ impl Drop for Guard {
 fn ctrl_break_during_op_exits_130_without_cancellation_output() {
     let _console = console();
     let s = Sandbox::new();
-    s.fake_op(&json!({"responses":[{
-        "argv":["item","get","cfg","--vault","vault","--format","json","--reveal"],
-        "delayMs":30000,"stdout":"{}"
-    }]}));
+    let ready = catching_op_fixture(&s);
     let mut command = s.cli();
     command
         .args([
@@ -239,13 +244,7 @@ fn ctrl_break_during_op_exits_130_without_cancellation_output() {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let mut child = Guard::spawn(&mut command);
-    until(|| {
-        fs::read_to_string(s.root.join("trace.jsonl"))
-            .unwrap()
-            .lines()
-            .count()
-            == 2
-    });
+    let op = ready_op(&ready);
     // Progress precedes op; cancellation itself must produce no output.
     let mut stderr = BufReader::new(child.0.as_mut().unwrap().stderr.take().unwrap());
     let mut progress = String::new();
@@ -253,6 +252,8 @@ fn ctrl_break_during_op_exits_130_without_cancellation_output() {
     assert_eq!(progress, "envswitch [info] reading config item cfg\n");
     send_break(child.0.as_ref().unwrap().id());
     until(|| child.0.as_mut().unwrap().try_wait().unwrap().is_some());
+    // The product Job must kill op before the test's outer cleanup Job closes.
+    until(|| unsafe { WaitForSingleObject(op.0, 0) } == 0);
     let mut child = child.0.take().unwrap();
     child.stderr = Some(stderr.into_inner());
     let output = child.wait_with_output().unwrap();

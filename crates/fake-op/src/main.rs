@@ -8,6 +8,55 @@ use std::{
 
 const HANDSHAKE: &str = "envswitch-fake-op-v1";
 
+#[cfg(windows)]
+mod ctrl_break {
+    use std::ffi::c_void;
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn SetConsoleCtrlHandler(
+            handler: Option<unsafe extern "system" fn(u32) -> i32>,
+            add: i32,
+        ) -> i32;
+        fn GetStdHandle(kind: u32) -> *mut c_void;
+        fn WriteFile(
+            handle: *mut c_void,
+            bytes: *const u8,
+            len: u32,
+            written: *mut u32,
+            overlapped: *mut c_void,
+        ) -> i32;
+        fn ExitProcess(code: u32) -> !;
+    }
+
+    unsafe extern "system" fn handler(kind: u32) -> i32 {
+        if kind != 1 {
+            return 0;
+        }
+        let message = b"fake-op: caught Ctrl-Break\n";
+        let mut written = 0;
+        // SAFETY: synchronous write to this process's stderr, followed by exit.
+        unsafe {
+            WriteFile(
+                GetStdHandle(-12_i32 as u32),
+                message.as_ptr(),
+                message.len() as u32,
+                &mut written,
+                std::ptr::null_mut(),
+            );
+            ExitProcess(1);
+        }
+    }
+
+    pub fn install() -> std::io::Result<()> {
+        // SAFETY: the callback has the required Windows ABI and static lifetime.
+        if unsafe { SetConsoleCtrlHandler(Some(handler), 1) } == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(())
+    }
+}
+
 fn run() -> Result<i32, Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().skip(1).collect();
     let mut trace = OpenOptions::new()
@@ -29,6 +78,14 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
         .iter()
         .find(|entry| entry["argv"] == serde_json::json!(args))
         .ok_or_else(|| format!("unconfigured fake-op argv: {}", serde_json::json!(args)))?;
+    #[cfg(windows)]
+    if let Some(mode) = response.get("catchCtrlBreak") {
+        let ready = mode["readyFile"]
+            .as_str()
+            .ok_or("catchCtrlBreak.readyFile must be a path")?;
+        ctrl_break::install()?;
+        fs::write(ready, process::id().to_string())?;
+    }
     if let Some(delay) = response.get("delayMs") {
         let millis = delay
             .as_u64()
