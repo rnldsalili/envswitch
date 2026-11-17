@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "dotenv-serialize-01",
+  "kind": "dotenv",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "",
+  "exitCode": 0,
+  "prompts": [],
+  "progress": [],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}\\app",
+      "mode": null
+    },
+    {
+      "path": "{APP}",
+      "mode": null
+    },
+    {
+      "path": "{ROOT}",
+      "mode": null
+    },
+    {
+      "path": "{HOME}",
+      "mode": null
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": null
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": "K=\n"
+}

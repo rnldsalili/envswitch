@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "id": "cli-switch-env-dev",
+  "kind": "cli",
+  "divergence": null,
+  "stdoutBase64": "RHJ5IHJ1biAxIHRhcmdldChzKSBmcm9tIGRlbW8tc3VpdGUKLSB3ZWIgLT4ge1JPT1R9XGFwcHNcd2ViXC5lbnYKICBrZXlzOiAwCiAgbGF5ZXJzOiBub25lCg==",
+  "stderrBase64": "ZW52c3dpdGNoIFtpbmZvXSByZWFkaW5nIGNvbmZpZyBpdGVtIGNmZwplbnZzd2l0Y2ggW2RvbmVdIGxvYWRlZCBjb25maWcgaXRlbSBjZmcKZW52c3dpdGNoIFtpbmZvXSB2YWxpZGF0aW5nIHByb2plY3Qgcm9vdCB7Uk9PVH0KZW52c3dpdGNoIFtpbmZvXSBsaXN0aW5nIGNhbmRpZGF0ZSAxUGFzc3dvcmQgaXRlbXMKZW52c3dpdGNoIFtkb25lXSBmb3VuZCAwIGNhbmRpZGF0ZSBpdGVtKHMpCmVudnN3aXRjaCBbaW5mb10gcHJvY2Vzc2luZyB3ZWIgLT4ge1JPT1R9XGFwcHNcd2ViXC5lbnYKZW52c3dpdGNoIFtkcnktcnVuXSB3b3VsZCB3cml0ZSB7Uk9PVH1cYXBwc1x3ZWJcLmVudgo=",
+  "exitCode": 0,
+  "prompts": [],
+  "progress": [
+    {
+      "status": "info",
+      "message": "reading config item cfg"
+    },
+    {
+      "status": "done",
+      "message": "loaded config item cfg"
+    },
+    {
+      "status": "info",
+      "message": "validating project root {ROOT}"
+    },
+    {
+      "status": "info",
+      "message": "listing candidate 1Password items"
+    },
+    {
+      "status": "done",
+      "message": "found 0 candidate item(s)"
+    },
+    {
+      "status": "info",
+      "message": "processing web -> {ROOT}\\apps\\web\\.env"
+    },
+    {
+      "status": "dry-run",
+      "message": "would write {ROOT}\\apps\\web\\.env"
+    }
+  ],
+  "opCalls": [
+    [
+      "item",
+      "get",
+      "cfg",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "list",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--tags",
+      "envswitch,project:demo-suite,env:dev"
+    ]
+  ],
+  "readCounts": {
+    "alpha/cfg": 1
+  },
+  "factoryCalls": [
+    "alpha"
+  ],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}\\app",
+      "mode": null
+    },
+    {
+      "path": "{APP}",
+      "mode": null
+    },
+    {
+      "path": "{ROOT}",
+      "mode": null
+    },
+    {
+      "path": "{HOME}",
+      "mode": null
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": null
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

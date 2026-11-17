@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "id": "cli-guided-no-vaults",
+  "kind": "cli",
+  "divergence": null,
+  "stdoutBase64": "ZW52c3dpdGNoIGd1aWRlZCBzd2l0Y2gKUHJvamVjdCByb290OiB7Uk9PVH0K",
+  "stderrBase64": "ZW52c3dpdGNoIFtpbmZvXSBsaXN0aW5nIDFQYXNzd29yZCB2YXVsdHMKZW52c3dpdGNoIFtkb25lXSBmb3VuZCAwIHZhdWx0KHMpCmVudnN3aXRjaDogbm8gMVBhc3N3b3JkIHZhdWx0cyBmb3VuZAo=",
+  "exitCode": 1,
+  "prompts": [],
+  "progress": [
+    {
+      "status": "info",
+      "message": "listing 1Password vaults"
+    },
+    {
+      "status": "done",
+      "message": "found 0 vault(s)"
+    }
+  ],
+  "opCalls": [
+    [
+      "vault",
+      "list",
+      "--format",
+      "json"
+    ]
+  ],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}\\app",
+      "mode": null
+    },
+    {
+      "path": "{APP}",
+      "mode": null
+    },
+    {
+      "path": "{ROOT}",
+      "mode": null
+    },
+    {
+      "path": "{HOME}",
+      "mode": null
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": null
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

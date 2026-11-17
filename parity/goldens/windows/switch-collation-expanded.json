@@ -1,0 +1,898 @@
+{
+  "schemaVersion": 1,
+  "id": "switch-collation-expanded",
+  "kind": "switch",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "",
+  "exitCode": 0,
+  "prompts": [],
+  "progress": [
+    {
+      "status": "info",
+      "message": "validating project root {ROOT}"
+    },
+    {
+      "status": "info",
+      "message": "listing candidate 1Password items"
+    },
+    {
+      "status": "done",
+      "message": "found 26 candidate item(s)"
+    },
+    {
+      "status": "info",
+      "message": "processing api -> {ROOT}\\apps\\api\\.env"
+    },
+    {
+      "status": "info",
+      "message": "reading _x"
+    },
+    {
+      "status": "info",
+      "message": "reading -x"
+    },
+    {
+      "status": "info",
+      "message": "reading ~t"
+    },
+    {
+      "status": "info",
+      "message": "reading 1abc"
+    },
+    {
+      "status": "info",
+      "message": "reading a"
+    },
+    {
+      "status": "info",
+      "message": "reading A"
+    },
+    {
+      "status": "info",
+      "message": "reading a b"
+    },
+    {
+      "status": "info",
+      "message": "reading a.b"
+    },
+    {
+      "status": "info",
+      "message": "reading ab"
+    },
+    {
+      "status": "info",
+      "message": "reading alpha"
+    },
+    {
+      "status": "info",
+      "message": "reading b"
+    },
+    {
+      "status": "info",
+      "message": "reading B"
+    },
+    {
+      "status": "info",
+      "message": "reading éclair"
+    },
+    {
+      "status": "info",
+      "message": "reading ezra"
+    },
+    {
+      "status": "info",
+      "message": "reading item10"
+    },
+    {
+      "status": "info",
+      "message": "reading item2"
+    },
+    {
+      "status": "info",
+      "message": "reading x_1"
+    },
+    {
+      "status": "info",
+      "message": "reading x-1"
+    },
+    {
+      "status": "info",
+      "message": "reading Zeta"
+    },
+    {
+      "status": "info",
+      "message": "reading ä"
+    },
+    {
+      "status": "info",
+      "message": "reading z"
+    },
+    {
+      "status": "info",
+      "message": "reading é"
+    },
+    {
+      "status": "info",
+      "message": "reading é"
+    },
+    {
+      "status": "info",
+      "message": "reading Ω"
+    },
+    {
+      "status": "info",
+      "message": "reading 中"
+    },
+    {
+      "status": "info",
+      "message": "reading あ"
+    },
+    {
+      "status": "info",
+      "message": "writing {ROOT}\\apps\\api\\.env"
+    },
+    {
+      "status": "done",
+      "message": "wrote {ROOT}\\apps\\api\\.env"
+    }
+  ],
+  "opCalls": [
+    [
+      "item",
+      "list",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--tags",
+      "env:local"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-0",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-1",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-2",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-3",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-4",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-5",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-6",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-7",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-8",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-9",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-10",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-11",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-12",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-13",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-14",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-15",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-16",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-17",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-18",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-19",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-20",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-21",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-22",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-23",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-24",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ],
+    [
+      "item",
+      "get",
+      "alpha-25",
+      "--vault",
+      "alpha",
+      "--format",
+      "json",
+      "--reveal"
+    ]
+  ],
+  "readCounts": {
+    "alpha/alpha-0": 1,
+    "alpha/alpha-1": 1,
+    "alpha/alpha-2": 1,
+    "alpha/alpha-3": 1,
+    "alpha/alpha-4": 1,
+    "alpha/alpha-5": 1,
+    "alpha/alpha-6": 1,
+    "alpha/alpha-7": 1,
+    "alpha/alpha-8": 1,
+    "alpha/alpha-9": 1,
+    "alpha/alpha-10": 1,
+    "alpha/alpha-11": 1,
+    "alpha/alpha-12": 1,
+    "alpha/alpha-13": 1,
+    "alpha/alpha-14": 1,
+    "alpha/alpha-15": 1,
+    "alpha/alpha-16": 1,
+    "alpha/alpha-17": 1,
+    "alpha/alpha-18": 1,
+    "alpha/alpha-19": 1,
+    "alpha/alpha-20": 1,
+    "alpha/alpha-21": 1,
+    "alpha/alpha-22": 1,
+    "alpha/alpha-23": 1,
+    "alpha/alpha-24": 1,
+    "alpha/alpha-25": 1
+  },
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [
+    {
+      "path": "{ROOT}\\apps\\api\\.env",
+      "kind": "file",
+      "bytesBase64": "V0lOTkVSPTI0OuS4rQo=",
+      "mode": null
+    }
+  ],
+  "writtenFiles": [
+    {
+      "path": "{ROOT}\\apps\\api\\.env",
+      "kind": "file",
+      "bytesBase64": "V0lOTkVSPTI0OuS4rQo=",
+      "mode": null
+    }
+  ],
+  "directories": [
+    {
+      "path": "{TMP}\\app",
+      "mode": null
+    },
+    {
+      "path": "{APP}",
+      "mode": null
+    },
+    {
+      "path": "{ROOT}",
+      "mode": null
+    },
+    {
+      "path": "{ROOT}\\apps",
+      "mode": null
+    },
+    {
+      "path": "{ROOT}\\apps\\api",
+      "mode": null
+    },
+    {
+      "path": "{HOME}",
+      "mode": null
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": null
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": [
+    {
+      "target": {
+        "name": "api",
+        "output": "apps/api/.env",
+        "groups": [
+          "apis"
+        ]
+      },
+      "outputPath": "{ROOT}\\apps\\api\\.env",
+      "written": true,
+      "keyCount": 1,
+      "layers": [
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-0",
+            "title": "_x",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "0:_x"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-1",
+            "title": "-x",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "1:-x"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-2",
+            "title": "~t",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "2:~t"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-3",
+            "title": "1abc",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "3:1abc"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-4",
+            "title": "a",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "4:a"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-5",
+            "title": "A",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "5:A"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-19",
+            "title": "ä",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "19:ä"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-6",
+            "title": "a b",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "6:a b"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-7",
+            "title": "a.b",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "7:a.b"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-8",
+            "title": "ab",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "8:ab"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-9",
+            "title": "alpha",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "9:alpha"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-10",
+            "title": "b",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "10:b"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-11",
+            "title": "B",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "11:B"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-21",
+            "title": "é",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "21:é"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-22",
+            "title": "é",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "22:é"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-12",
+            "title": "éclair",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "12:éclair"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-13",
+            "title": "ezra",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "13:ezra"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-14",
+            "title": "item10",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "14:item10"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-15",
+            "title": "item2",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "15:item2"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-16",
+            "title": "x_1",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "16:x_1"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-17",
+            "title": "x-1",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "17:x-1"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-20",
+            "title": "z",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "20:z"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-18",
+            "title": "Zeta",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "18:Zeta"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-23",
+            "title": "Ω",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "23:Ω"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-25",
+            "title": "あ",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "25:あ"
+          }
+        },
+        {
+          "name": "shared",
+          "rank": 1,
+          "item": {
+            "id": "alpha-24",
+            "title": "中",
+            "tags": [
+              "env:local",
+              "layer:shared"
+            ]
+          },
+          "values": {
+            "WINNER": "24:中"
+          }
+        }
+      ],
+      "overwrittenKeys": [
+        "WINNER"
+      ]
+    }
+  ]
+}

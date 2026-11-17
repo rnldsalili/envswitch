@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "id": "inspect-marker-bad-json",
+  "kind": "inspect",
+  "divergence": "a5",
+  "stdoutBase64": "",
+  "stderrBase64": "ZW52c3dpdGNoOiBmYWlsZWQgdG8gcmVhZCBwYWNrYWdlLmpzb24gZm9yIHByb2plY3Qgcm9vdCB2YWxpZGF0aW9uOiBKU09OIFBhcnNlIGVycm9yOiBFeHBlY3RlZCAnfScK",
+  "exitCode": 1,
+  "prompts": [],
+  "progress": [],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [
+    {
+      "path": "{ROOT}\\package.json",
+      "kind": "file",
+      "bytesBase64": "ew==",
+      "mode": null
+    }
+  ],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}\\app",
+      "mode": null
+    },
+    {
+      "path": "{APP}",
+      "mode": null
+    },
+    {
+      "path": "{ROOT}",
+      "mode": null
+    },
+    {
+      "path": "{HOME}",
+      "mode": null
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": null
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": null
+}

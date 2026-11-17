@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "tags-cwd-differs-root",
+  "kind": "tags",
+  "divergence": null,
+  "stdoutBase64": "",
+  "stderrBase64": "",
+  "exitCode": 0,
+  "prompts": [],
+  "progress": [],
+  "opCalls": [],
+  "readCounts": {},
+  "factoryCalls": [],
+  "updateCalls": [],
+  "files": [],
+  "writtenFiles": [],
+  "directories": [
+    {
+      "path": "{TMP}\\alpha",
+      "mode": null
+    },
+    {
+      "path": "{TMP}\\app",
+      "mode": null
+    },
+    {
+      "path": "{APP}",
+      "mode": null
+    },
+    {
+      "path": "{ROOT}",
+      "mode": null
+    },
+    {
+      "path": "{HOME}",
+      "mode": null
+    },
+    {
+      "path": "{OUTSIDE}",
+      "mode": null
+    }
+  ],
+  "leftoverTempFiles": [],
+  "result": {
+    "tags": {
+      "base": [
+        "p:alpha"
+      ]
+    },
+    "candidates": [
+      "p:alpha",
+      "env:local"
+    ]
+  }
+}
