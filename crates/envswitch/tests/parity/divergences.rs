@@ -10,10 +10,6 @@ fn require(ok: bool, message: &str) -> Result<(), String> {
 fn text(t: &J, key: &str, b: &Bridge) -> String {
     String::from_utf8_lossy(&b.decode_base64(t.get(key).text())).into_owned()
 }
-/// Most reads another worker can still have in flight when one fails
-/// (`READ_CONCURRENCY - 1` in `switcher/merge.rs`).
-const MAX_IN_FLIGHT_EXTRAS: usize = 5;
-
 /// DIVERGENCES l1, applied to every scenario: a target's env reads overlap,
 /// so their order within that target is free. Only the run of `item get`
 /// calls directly after the candidate `op item list` (not the
@@ -23,9 +19,12 @@ const MAX_IN_FLIGHT_EXTRAS: usize = 5;
 /// splits the run into targets (`reading` events per `processing` segment);
 /// each target's reads must be a permutation of the oracle's, in target order,
 /// so no read ever crosses into a later target. The last target alone may add
-/// up to `MAX_IN_FLIGHT_EXTRAS` reads that were already in flight, and only
-/// when the oracle failed on an env read (nonzero exit, last progress event
-/// `reading`). Every other call and `readCounts` per key stay exact. Accepted
+/// reads that other workers claimed before the failure was seen (not bounded:
+/// they keep claiming while a slow read fails), and only when the oracle
+/// failed on an env read (nonzero exit, last progress event `reading`). Their
+/// target membership is not checked here; successful multi-target scenarios
+/// and `later_targets_are_not_read_before_earlier_targets_are_written` guard
+/// the target boundary. Every other call and `readCounts` per key stay exact. Accepted
 /// transcripts adopt the actual order.
 fn overlapped_reads(s: &J, e: &mut J, a: &J) -> Result<(), String> {
     fn is_get(call: &J) -> bool {
@@ -144,8 +143,7 @@ fn overlapped_reads(s: &J, e: &mut J, a: &J) -> Result<(), String> {
     if extras > 0 {
         let progress = e.get("progress").items();
         require(
-            extras <= MAX_IN_FLIGHT_EXTRAS
-                && index + 1 == expected_runs.len()
+            index + 1 == expected_runs.len()
                 && e.get("exitCode").int() != 0
                 && progress
                     .last()
@@ -616,22 +614,6 @@ mod overlapped_reads_tests {
         let mut e = transcript(2, &failed, vec![list(), get("a"), get("c")]);
         let a = transcript(2, &failed, vec![list(), get("b"), get("a"), get("c")]);
         assert!(overlapped_reads(&scenario(), &mut e, &a).is_err());
-        // More extras than other workers could have had in flight.
-        let failed = ["processing api", "reading a"];
-        let mut e = transcript(2, &failed, vec![list(), get("a")]);
-        let mut calls = vec![list(), get("a")];
-        calls.extend(["b", "c", "d", "e", "f", "g"].map(get));
-        let s = J::object([(
-            "op",
-            J::object([(
-                "items",
-                J::array(
-                    ["a", "b", "c", "d", "e", "f", "g"]
-                        .map(|id| J::object([("id", J::string(id))])),
-                ),
-            )]),
-        )]);
-        assert!(overlapped_reads(&s, &mut e, &transcript(2, &failed, calls)).is_err());
     }
 
     #[test]
