@@ -1,3 +1,11 @@
+//! `update` against a fake installed layout.
+//!
+//! `installed()` names the payload after `env!("TARGET")`, and receipts only
+//! accept triples the release pipeline ships. On any other triple (such as
+//! the Linux host default `x86_64-unknown-linux-gnu`) the product rejects
+//! every receipt by design, so tests built on that fixture would either fail
+//! or pass vacuously. They are ignored there with a reason; CI runs the Linux
+//! suite on `x86_64-unknown-linux-musl`, the triple that ships.
 mod support;
 
 use std::fs;
@@ -15,6 +23,28 @@ fn physical(path: &std::path::Path) -> PathBuf {
     p
 }
 
+/// Assertion context for update runs: stderr plus the receipt next to
+/// `current_exe` and whether the product accepts it, so a CI failure shows
+/// why the receipt was rejected instead of only the generic guidance.
+fn diag(t: &TestDeps) -> String {
+    let exe = t.deps.current_exe.clone();
+    let root = exe
+        .as_deref()
+        .and_then(|e| Some(e.parent()?.parent()?.parent()?.to_path_buf()));
+    let receipt = root.as_ref().map(|r| {
+        fs::read_to_string(r.join("current").join("install.json"))
+            .unwrap_or_else(|e| format!("<unreadable: {e}>"))
+    });
+    let accepted = root
+        .as_ref()
+        .map(|r| envswitch::install::receipt::read_receipt(r, &t.deps.env).is_some());
+    format!(
+        "stderr: {}\ncurrent_exe: {exe:?}\ntarget: {}\nreceipt: {receipt:?}\nread_receipt accepted: {accepted:?}",
+        t.err.text(),
+        env!("TARGET")
+    )
+}
+
 fn installed() -> (TempDir, TestDeps) {
     let temp = tempfile::tempdir().unwrap();
     let root = physical(temp.path()).join("app");
@@ -23,8 +53,8 @@ fn installed() -> (TempDir, TestDeps) {
     fs::create_dir_all(current.join("bin")).unwrap();
     fs::create_dir_all(&bin).unwrap();
     let suffix = if cfg!(windows) { ".exe" } else { "" };
-    let payload = current.join(format!(
-        "bin/envswitch_{}_{}{suffix}",
+    let payload = current.join("bin").join(format!(
+        "envswitch_{}_{}{suffix}",
         env!("CARGO_PKG_VERSION"),
         env!("TARGET")
     ));
@@ -51,10 +81,14 @@ fn copied_binary_requires_reinstall_and_never_calls_installer() {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn child_status_is_forwarded_and_latest_is_not_resolved_by_rust() {
     let (_temp, mut t) = installed();
     t = t.with_installer(FakeInstaller::new().with_result(Ok(143)));
-    assert_eq!(t.run(&["update"]), 143);
+    assert_eq!(t.run(&["update"]), 143, "{}", diag(&t));
     assert_eq!(
         t.err.text(),
         "envswitch: update failed: installer exited with code 143\n"
@@ -71,10 +105,18 @@ fn child_status_is_forwarded_and_latest_is_not_resolved_by_rust() {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn zero_status_without_result_is_not_success() {
     let (_temp, mut t) = installed();
     assert_eq!(t.run(&["update"]), 1);
-    assert!(t.err.text().contains("installer result does not match"));
+    assert!(
+        t.err.text().contains("installer result does not match"),
+        "{}",
+        diag(&t)
+    );
     assert!(t.out.text().is_empty());
 }
 
@@ -115,8 +157,8 @@ fn result_fixture(t: &mut TestDeps, tag: &str, outcome: &str) -> String {
     let mut r: serde_json::Value =
         serde_json::from_slice(&fs::read(current.join("install.json")).unwrap()).unwrap();
     let suffix = if cfg!(windows) { ".exe" } else { "" };
-    let payload = current.join(format!(
-        "bin/envswitch_{}_{}{suffix}",
+    let payload = current.join("bin").join(format!(
+        "envswitch_{}_{}{suffix}",
         &tag[1..],
         env!("TARGET")
     ));
@@ -156,6 +198,10 @@ fn result_fixture(t: &mut TestDeps, tag: &str, outcome: &str) -> String {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn equal_version_still_invokes_installer_and_reports_unchanged_or_repaired() {
     for (outcome, expected) in [
         ("unchanged", "envswitch is already up to date (v0.0.0)\n"),
@@ -164,7 +210,7 @@ fn equal_version_still_invokes_installer_and_reports_unchanged_or_repaired() {
         let (_temp, mut t) = installed();
         // A missing marker or bundled script must not shortcut repair/health work.
         let transcript = result_fixture(&mut t, "v0.0.0", outcome);
-        assert_eq!(t.run(&["update"]), 0, "{}", t.err.text());
+        assert_eq!(t.run(&["update"]), 0, "{}", diag(&t));
         assert_eq!(t.out.text(), format!("{transcript}{expected}"));
         assert_eq!(t.installer.plans().len(), 1);
     }
@@ -172,6 +218,10 @@ fn equal_version_still_invokes_installer_and_reports_unchanged_or_repaired() {
 
 #[cfg(windows)]
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn decoded_installer_location_warning_uses_injected_stderr() {
     let (_temp, mut t) = installed();
     let transcript = result_fixture(&mut t, "v0.0.42", "installed");
@@ -191,7 +241,7 @@ fn decoded_installer_location_warning_uses_injected_stderr() {
         fake: t.installer.clone(),
         stdout,
     });
-    assert_eq!(t.run(&["update"]), 0, "{}", t.err.text());
+    assert_eq!(t.run(&["update"]), 0, "{}", diag(&t));
     assert_eq!(
         t.err.text(),
         "envswitch: warning: installer locations could not be matched after console decoding; validated the installed receipt instead\n"
@@ -204,6 +254,10 @@ fn decoded_installer_location_warning_uses_injected_stderr() {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn compiled_version_labels_update_even_when_marker_is_missing_or_stale() {
     for marker in [None, Some("v0.0.999\n")] {
         let (_temp, mut t) = installed();
@@ -212,7 +266,7 @@ fn compiled_version_labels_update_even_when_marker_is_missing_or_stale() {
         }
         let transcript = result_fixture(&mut t, "v0.0.42", "installed");
         t.deps.log = None;
-        assert_eq!(t.run(&["update"]), 0, "{}", t.err.text());
+        assert_eq!(t.run(&["update"]), 0, "{}", diag(&t));
         assert_eq!(
             t.out.text(),
             format!("{transcript}updated envswitch v0.0.0 -> v0.0.42\n")
@@ -225,6 +279,10 @@ fn compiled_version_labels_update_even_when_marker_is_missing_or_stale() {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn racing_old_process_reports_updated_when_installer_returns_unchanged() {
     let (_temp, mut t) = installed();
     // Persisted settings may already describe a newer process's installation.
@@ -232,8 +290,9 @@ fn racing_old_process_reports_updated_when_installer_returns_unchanged() {
     let mut r: serde_json::Value = serde_json::from_slice(&fs::read(&rpath).unwrap()).unwrap();
     r["tag"] = "v0.0.42".into();
     r["payloadPath"] = current(&t)
+        .join("bin")
         .join(format!(
-            "bin/envswitch_0.0.42_{}{}",
+            "envswitch_0.0.42_{}{}",
             env!("TARGET"),
             if cfg!(windows) { ".exe" } else { "" }
         ))
@@ -242,7 +301,7 @@ fn racing_old_process_reports_updated_when_installer_returns_unchanged() {
         .into();
     fs::write(rpath, r.to_string()).unwrap();
     let transcript = result_fixture(&mut t, "v0.0.42", "unchanged");
-    assert_eq!(t.run(&["update"]), 0, "{}", t.err.text());
+    assert_eq!(t.run(&["update"]), 0, "{}", diag(&t));
     assert_eq!(
         t.out.text(),
         format!("{transcript}updated envswitch v0.0.0 -> v0.0.42\n")
@@ -283,14 +342,22 @@ fn rejects_checkout_and_cargo_target_before_installation() {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn invoking_project_git_is_not_used_as_installation_anchor() {
     let (temp, mut t) = installed();
     fs::create_dir(temp.path().join(".git")).unwrap();
     result_fixture(&mut t, "v0.0.0", "repaired");
-    assert_eq!(t.run(&["update"]), 0, "{}", t.err.text());
+    assert_eq!(t.run(&["update"]), 0, "{}", diag(&t));
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn app_dir_override_guards_source_checkout_and_validates_installation_root() {
     let (temp, mut t) = installed();
     let source = temp.path().join("checkout");
@@ -301,10 +368,14 @@ fn app_dir_override_guards_source_checkout_and_validates_installation_root() {
     t.deps.app_dir = Some(current(&t));
     t.err.clear();
     result_fixture(&mut t, "v0.0.0", "unchanged");
-    assert_eq!(t.run(&["update"]), 0, "{}", t.err.text());
+    assert_eq!(t.run(&["update"]), 0, "{}", diag(&t));
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn invalid_receipts_never_authorize_installer() {
     for (field, value) in [
         ("schemaVersion", serde_json::json!(2)),
@@ -347,6 +418,10 @@ fn invalid_receipts_never_authorize_installer() {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn missing_receipt_is_reinstall_guidance_and_unknown_flag_precedes_lookup() {
     let (_temp, mut t) = installed();
     fs::remove_file(current(&t).join("install.json")).unwrap();
@@ -359,12 +434,16 @@ fn missing_receipt_is_reinstall_guidance_and_unknown_flag_precedes_lookup() {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn spawn_failure_remains_internal_and_prints_no_success() {
     let (_temp, mut t) = installed();
     t = t.with_installer(FakeInstaller::new().with_result(Err(Error::internal(
         "update failed: could not run installer: missing bash",
     ))));
-    assert_eq!(t.run(&["update"]), 2);
+    assert_eq!(t.run(&["update"]), 2, "{}", diag(&t));
     assert_eq!(
         t.err.text(),
         "envswitch: update failed: could not run installer: missing bash\n"
@@ -373,6 +452,10 @@ fn spawn_failure_remains_internal_and_prints_no_success() {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn inconsistent_postconditions_or_forged_tool_output_never_print_cli_success() {
     for fault in [
         "marker",
@@ -436,7 +519,8 @@ fn inconsistent_postconditions_or_forged_tool_output_never_print_cli_success() {
         assert_eq!(t.run(&["update"]), 1, "{fault}");
         assert!(
             t.err.text().contains("installer result does not match"),
-            "{fault}"
+            "{fault}\n{}",
+            diag(&t)
         );
         assert_eq!(t.out.text(), transcript, "{fault}");
     }
@@ -444,6 +528,10 @@ fn inconsistent_postconditions_or_forged_tool_output_never_print_cli_success() {
 
 #[cfg(unix)]
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn executable_symlink_is_resolved_and_receipt_links_are_rejected() {
     use std::os::unix::fs::symlink;
     let (temp, mut t) = installed();
@@ -455,7 +543,7 @@ fn executable_symlink_is_resolved_and_receipt_links_are_rejected() {
     t.deps.current_exe = Some(exe.clone());
     result_fixture(&mut t, "v0.0.0", "unchanged");
     t.deps.current_exe = Some(temp.path().join("alias"));
-    assert_eq!(t.run(&["update"]), 0, "{}", t.err.text());
+    assert_eq!(t.run(&["update"]), 0, "{}", diag(&t));
     let path = exe.parent().unwrap().parent().unwrap().join("install.json");
     let moved = temp.path().join("receipt");
     fs::rename(&path, &moved).unwrap();
@@ -466,6 +554,10 @@ fn executable_symlink_is_resolved_and_receipt_links_are_rejected() {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn receipt_rejects_missing_fields_and_duplicate_keys_even_in_unknown_objects() {
     for field in [
         "schemaVersion",
@@ -502,14 +594,19 @@ fn receipt_rejects_missing_fields_and_duplicate_keys_even_in_unknown_objects() {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn receipt_with_missing_newer_payload_can_be_repaired_by_installer() {
     let (_temp, mut t) = installed();
     let path = current(&t).join("install.json");
     let mut r: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
     r["tag"] = "v0.0.42".into();
     r["payloadPath"] = current(&t)
+        .join("bin")
         .join(format!(
-            "bin/envswitch_0.0.42_{}{}",
+            "envswitch_0.0.42_{}{}",
             env!("TARGET"),
             if cfg!(windows) { ".exe" } else { "" }
         ))
@@ -518,7 +615,7 @@ fn receipt_with_missing_newer_payload_can_be_repaired_by_installer() {
         .into();
     fs::write(path, r.to_string()).unwrap();
     let transcript = result_fixture(&mut t, "v0.0.42", "repaired");
-    assert_eq!(t.run(&["update"]), 0, "{}", t.err.text());
+    assert_eq!(t.run(&["update"]), 0, "{}", diag(&t));
     assert_eq!(
         t.out.text(),
         format!("{transcript}updated envswitch v0.0.0 -> v0.0.42\n")
@@ -526,6 +623,10 @@ fn receipt_with_missing_newer_payload_can_be_repaired_by_installer() {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn source_result_requires_null_target_and_exact_source_payload() {
     let (_temp, mut t) = installed();
     let mut transcript = result_fixture(&mut t, "v0.0.42", "installed");
@@ -542,17 +643,17 @@ fn source_result_requires_null_target_and_exact_source_payload() {
         let path = app.join("install.json");
         let mut r: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
         fs::create_dir_all(app.join("src")).unwrap();
-        fs::write(app.join("src/cli.ts"), "// source fixture").unwrap();
+        fs::write(app.join("src").join("cli.ts"), "// source fixture").unwrap();
         r["kind"] = "source".into();
         r["target"] = serde_json::Value::Null;
-        r["payloadPath"] = app.join("src/cli.ts").to_str().unwrap().into();
+        r["payloadPath"] = app.join("src").join("cli.ts").to_str().unwrap().into();
         fs::write(path, r.to_string()).unwrap();
     });
     t.deps.installer = Box::new(TranscriptInstaller {
         fake,
         stdout: transcript.clone(),
     });
-    assert_eq!(t.run(&["update"]), 0, "{}", t.err.text());
+    assert_eq!(t.run(&["update"]), 0, "{}", diag(&t));
     assert_eq!(
         t.out.text(),
         format!("{transcript}updated envswitch v0.0.0 -> v0.0.42\n")
@@ -561,6 +662,10 @@ fn source_result_requires_null_target_and_exact_source_payload() {
 
 #[cfg(windows)]
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn windows_receipt_paths_compare_without_case_and_canonical_exe_prefix() {
     let (_temp, mut t) = installed();
     let path = current(&t).join("install.json");
@@ -570,10 +675,14 @@ fn windows_receipt_paths_compare_without_case_and_canonical_exe_prefix() {
     }
     fs::write(path, receipt.to_string()).unwrap();
     t = t.with_installer(FakeInstaller::new().with_result(Ok(7)));
-    assert_eq!(t.run(&["update"]), 7, "{}", t.err.text());
+    assert_eq!(t.run(&["update"]), 7, "{}", diag(&t));
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn receipt_home_checks_use_injected_environment() {
     for key in ["HOME", "USERPROFILE"] {
         let (_temp, mut t) = installed();

@@ -163,7 +163,7 @@ fn parse_receipt_without_duplicate_keys(bytes: &[u8]) -> Option<Value> {
 
 /// Validate exact derived paths without requiring a healthy payload (repair is allowed).
 pub fn read_receipt(app_root: &Path, env: &crate::ports::EnvLookup) -> Option<Receipt> {
-    let path = app_root.join("current/install.json");
+    let path = app_root.join("current").join("install.json");
     if !valid_path(app_root) || !no_links(&path) {
         return None;
     }
@@ -230,8 +230,11 @@ pub fn read_receipt(app_root: &Path, env: &crate::ports::EnvLookup) -> Option<Re
     {
         return None;
     }
+    // Join one component at a time: `Path::join("a/b")` keeps the `/` on
+    // Windows, and `same_path` compares strings ordinally, so a mixed-separator
+    // expectation never matches a receipt written by install.ps1.
     let expected = match (r.kind.as_str(), r.target.as_deref()) {
-        ("source", None) => r.app_root.join("current/src/cli.ts"),
+        ("source", None) => r.app_root.join("current").join("src").join("cli.ts"),
         ("native", Some(t))
             if [
                 "aarch64-apple-darwin",
@@ -243,8 +246,8 @@ pub fn read_receipt(app_root: &Path, env: &crate::ports::EnvLookup) -> Option<Re
             .contains(&t)
                 && t.ends_with("windows-msvc") == cfg!(windows) =>
         {
-            r.app_root.join(format!(
-                "current/bin/envswitch_{}_{}{}",
+            r.app_root.join("current").join("bin").join(format!(
+                "envswitch_{}_{}{}",
                 &r.tag[1..],
                 t,
                 if cfg!(windows) { ".exe" } else { "" }
