@@ -344,12 +344,20 @@ for action,pin,code in [('0',None,0),('7','v0.0.42',7),('signal',None,143),('int
 
 #[cfg(unix)]
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn embedded_installer_uses_hermetic_d2b_release() {
     hermetic_release();
 }
 
 #[cfg(windows)]
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn windows_powershell_51_embedded_installer_end_to_end() {
     hermetic_release();
 }

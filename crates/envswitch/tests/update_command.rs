@@ -1,3 +1,11 @@
+//! `update` against a fake installed layout.
+//!
+//! `installed()` names the payload after `env!("TARGET")`, and receipts only
+//! accept triples the release pipeline ships. On any other triple (such as
+//! the Linux host default `x86_64-unknown-linux-gnu`) the product rejects
+//! every receipt by design, so tests built on that fixture would either fail
+//! or pass vacuously. They are ignored there with a reason; CI runs the Linux
+//! suite on `x86_64-unknown-linux-musl`, the triple that ships.
 mod support;
 
 use std::fs;
@@ -51,6 +59,10 @@ fn copied_binary_requires_reinstall_and_never_calls_installer() {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn child_status_is_forwarded_and_latest_is_not_resolved_by_rust() {
     let (_temp, mut t) = installed();
     t = t.with_installer(FakeInstaller::new().with_result(Ok(143)));
@@ -71,6 +83,10 @@ fn child_status_is_forwarded_and_latest_is_not_resolved_by_rust() {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn zero_status_without_result_is_not_success() {
     let (_temp, mut t) = installed();
     assert_eq!(t.run(&["update"]), 1);
@@ -156,6 +172,10 @@ fn result_fixture(t: &mut TestDeps, tag: &str, outcome: &str) -> String {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn equal_version_still_invokes_installer_and_reports_unchanged_or_repaired() {
     for (outcome, expected) in [
         ("unchanged", "envswitch is already up to date (v0.0.0)\n"),
@@ -172,6 +192,10 @@ fn equal_version_still_invokes_installer_and_reports_unchanged_or_repaired() {
 
 #[cfg(windows)]
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn decoded_installer_location_warning_uses_injected_stderr() {
     let (_temp, mut t) = installed();
     let transcript = result_fixture(&mut t, "v0.0.42", "installed");
@@ -204,6 +228,10 @@ fn decoded_installer_location_warning_uses_injected_stderr() {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn compiled_version_labels_update_even_when_marker_is_missing_or_stale() {
     for marker in [None, Some("v0.0.999\n")] {
         let (_temp, mut t) = installed();
@@ -225,6 +253,10 @@ fn compiled_version_labels_update_even_when_marker_is_missing_or_stale() {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn racing_old_process_reports_updated_when_installer_returns_unchanged() {
     let (_temp, mut t) = installed();
     // Persisted settings may already describe a newer process's installation.
@@ -284,6 +316,10 @@ fn rejects_checkout_and_cargo_target_before_installation() {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn invoking_project_git_is_not_used_as_installation_anchor() {
     let (temp, mut t) = installed();
     fs::create_dir(temp.path().join(".git")).unwrap();
@@ -292,6 +328,10 @@ fn invoking_project_git_is_not_used_as_installation_anchor() {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn app_dir_override_guards_source_checkout_and_validates_installation_root() {
     let (temp, mut t) = installed();
     let source = temp.path().join("checkout");
@@ -306,6 +346,10 @@ fn app_dir_override_guards_source_checkout_and_validates_installation_root() {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn invalid_receipts_never_authorize_installer() {
     for (field, value) in [
         ("schemaVersion", serde_json::json!(2)),
@@ -348,6 +392,10 @@ fn invalid_receipts_never_authorize_installer() {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn missing_receipt_is_reinstall_guidance_and_unknown_flag_precedes_lookup() {
     let (_temp, mut t) = installed();
     fs::remove_file(current(&t).join("install.json")).unwrap();
@@ -360,6 +408,10 @@ fn missing_receipt_is_reinstall_guidance_and_unknown_flag_precedes_lookup() {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn spawn_failure_remains_internal_and_prints_no_success() {
     let (_temp, mut t) = installed();
     t = t.with_installer(FakeInstaller::new().with_result(Err(Error::internal(
@@ -374,6 +426,10 @@ fn spawn_failure_remains_internal_and_prints_no_success() {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn inconsistent_postconditions_or_forged_tool_output_never_print_cli_success() {
     for fault in [
         "marker",
@@ -445,6 +501,10 @@ fn inconsistent_postconditions_or_forged_tool_output_never_print_cli_success() {
 
 #[cfg(unix)]
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn executable_symlink_is_resolved_and_receipt_links_are_rejected() {
     use std::os::unix::fs::symlink;
     let (temp, mut t) = installed();
@@ -467,6 +527,10 @@ fn executable_symlink_is_resolved_and_receipt_links_are_rejected() {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn receipt_rejects_missing_fields_and_duplicate_keys_even_in_unknown_objects() {
     for field in [
         "schemaVersion",
@@ -503,6 +567,10 @@ fn receipt_rejects_missing_fields_and_duplicate_keys_even_in_unknown_objects() {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn receipt_with_missing_newer_payload_can_be_repaired_by_installer() {
     let (_temp, mut t) = installed();
     let path = current(&t).join("install.json");
@@ -528,6 +596,10 @@ fn receipt_with_missing_newer_payload_can_be_repaired_by_installer() {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn source_result_requires_null_target_and_exact_source_payload() {
     let (_temp, mut t) = installed();
     let mut transcript = result_fixture(&mut t, "v0.0.42", "installed");
@@ -563,6 +635,10 @@ fn source_result_requires_null_target_and_exact_source_payload() {
 
 #[cfg(windows)]
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn windows_receipt_paths_compare_without_case_and_canonical_exe_prefix() {
     let (_temp, mut t) = installed();
     let path = current(&t).join("install.json");
@@ -576,6 +652,10 @@ fn windows_receipt_paths_compare_without_case_and_canonical_exe_prefix() {
 }
 
 #[test]
+#[cfg_attr(
+    not(envswitch_release_target),
+    ignore = "needs a release target triple (see build.rs); on Linux run with --target x86_64-unknown-linux-musl"
+)]
 fn receipt_home_checks_use_injected_environment() {
     for key in ["HOME", "USERPROFILE"] {
         let (_temp, mut t) = installed();
