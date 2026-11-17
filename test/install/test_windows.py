@@ -75,9 +75,12 @@ class WindowsInstall(unittest.TestCase):
                 self.serve(fault=fault); self.assertIn('error:',self.invoke(ok=False).stderr)
                 self.assertFalse((self.dest/'envswitch.cmd').exists())
     def test_pin_and_whatif(self):
-        # PowerShell keeps its own caches under LOCALAPPDATA\Microsoft (module analysis, startup profile data); they are not installer writes.
-        cache=self.home/'LOCALAPPDATA'/'Microsoft'
-        snapshot=lambda: {str(p):p.read_bytes() for p in self.home.rglob('*') if p.is_file() and cache not in p.parents}
+        # PowerShell's own caches (module analysis, startup profile data) are not installer writes. 5.1 follows
+        # LOCALAPPDATA; pwsh resolves the profile folder, so they land in either Microsoft\[Windows\]PowerShell.
+        def powershell_cache(p):
+            parts=[x.lower() for x in p.relative_to(self.home).parts]
+            return any(parts[i:i+2]==['microsoft','powershell'] or parts[i:i+3]==['microsoft','windows','powershell'] for i in range(len(parts)))
+        snapshot=lambda: {str(p):p.read_bytes() for p in self.home.rglob('*') if p.is_file() and not powershell_cache(p)}
         self.serve(); before=snapshot()
         r=self.invoke('-WhatIf','-Version','0.0.42','-VerifyAttestations')
         self.assertEqual(len(r.stdout.splitlines()),6); self.assertEqual(self.server.requests,[])

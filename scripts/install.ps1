@@ -662,7 +662,11 @@ try {
     if (-not $PSCommandPath) { $global:LASTEXITCODE=130; return }; exit 130
 } catch {
     if ($_.Exception.Message.StartsWith('error: ')) { [Console]::Error.WriteLine($_.Exception.Message) }
-    else { [Console]::Error.WriteLine('error: envswitch installation failed: '+$_.Exception.GetType().Name) }
+    else {
+        [Console]::Error.WriteLine('error: envswitch installation failed: '+$_.Exception.GetType().Name)
+        # Test mode only: the full exception and script stack, since the type name alone hides the cause.
+        if ($state.TestMode) { [Console]::Error.WriteLine($_.Exception.ToString()); [Console]::Error.WriteLine($_.ScriptStackTrace) }
+    }
     $state.ExitCode=1
     if (-not $PSCommandPath) { $global:LASTEXITCODE=1; return }; exit 1
 } finally {
