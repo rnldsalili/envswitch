@@ -706,18 +706,22 @@ fn caches_item_reads_across_targets() {
             "info:reading alpha-web",
         ]
     );
+    // A target's reads overlap (DIVERGENCES l1): the set per target is fixed,
+    // and every api read happens before any web read.
+    let sorted = |reads: &[String]| {
+        let mut reads = reads.to_vec();
+        reads.sort_unstable();
+        reads
+    };
+    let reads = op.reads();
+    assert_eq!(reads.len(), 8, "{reads:?}");
     assert_eq!(
-        op.reads(),
-        [
-            "shared",
-            "api-group",
-            "api-target",
-            "alpha",
-            "alpha-api",
-            "app-group",
-            "web-target",
-            "alpha-web",
-        ]
+        sorted(&reads[..5]),
+        ["alpha", "alpha-api", "api-group", "api-target", "shared"]
+    );
+    assert_eq!(
+        sorted(&reads[5..]),
+        ["alpha-web", "app-group", "web-target"]
     );
 }
 
@@ -740,7 +744,9 @@ fn cache_key_is_id_or_title_and_events_use_title_or_id() {
     let (result, events) = merge(&op, &candidates, "api", &matcher, &mut cache);
     let result = result.unwrap();
     assert_eq!(events, ["info:reading only-title", "info:reading id-1"]);
-    assert_eq!(op.reads(), ["only-title", "id-1"]);
+    let mut reads = op.reads();
+    reads.sort_unstable();
+    assert_eq!(reads, ["id-1", "only-title"]);
     assert_eq!(result.layers.len(), 3);
     assert_eq!(result.layers[2].values, env(&[("B", "2")]));
     assert!(result.overwritten_keys.is_empty());
