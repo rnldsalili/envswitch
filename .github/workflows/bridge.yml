@@ -1,0 +1,44 @@
+name: TS bridge update
+# Windows integration for the final TypeScript bridge `envswitch update`
+# (INSTALLER-PROTOCOL §7.1, §7.3): the installer runner and migration rows run
+# against D2b's loopback fixture server with isolated USERPROFILE/LOCALAPPDATA/
+# APPDATA/TEMP and ENVSWITCH_INSTALL_TEST_USER_PATH_FILE, so the real
+# persistent User PATH is never written. Linux/macOS rows run in `bun run test`.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+env:
+  POWERSHELL_TELEMETRY_OPTOUT: '1'
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  PYTHONDONTWRITEBYTECODE: '1'
+jobs:
+  windows:
+    name: Bridge runner and migration (Windows)
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.0
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+      # The bridge always hands off to Windows PowerShell 5.1 (protocol argv);
+      # the README reinstall row runs under the step's own host shell.
+      - name: Bridge tests from pwsh
+        shell: pwsh
+        run: |
+          $env:ENVSWITCH_TEST_POWERSHELL = (Get-Process -Id $PID).Path
+          bun test test/cli.test.ts -t 'console code page handling|update helpers|update installer runner|bridge migration end-to-end'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Bridge tests from Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $env:ENVSWITCH_TEST_POWERSHELL = (Get-Process -Id $PID).Path
+          bun test test/cli.test.ts -t 'console code page handling|update helpers|update installer runner|bridge migration end-to-end'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
