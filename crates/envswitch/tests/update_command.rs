@@ -125,6 +125,9 @@ use envswitch::ports::{InstallPlan, InstallerRunner};
 use std::io::Write;
 use std::path::PathBuf;
 
+/// The compiled version: the release build stamps the real one (v0.0.0 only in development).
+const CURRENT: &str = concat!("v", env!("CARGO_PKG_VERSION"));
+
 struct TranscriptInstaller {
     fake: FakeInstaller,
     stdout: String,
@@ -204,12 +207,15 @@ fn result_fixture(t: &mut TestDeps, tag: &str, outcome: &str) -> String {
 )]
 fn equal_version_still_invokes_installer_and_reports_unchanged_or_repaired() {
     for (outcome, expected) in [
-        ("unchanged", "envswitch is already up to date (v0.0.0)\n"),
-        ("repaired", "repaired envswitch v0.0.0\n"),
+        (
+            "unchanged",
+            format!("envswitch is already up to date ({CURRENT})\n"),
+        ),
+        ("repaired", format!("repaired envswitch {CURRENT}\n")),
     ] {
         let (_temp, mut t) = installed();
         // A missing marker or bundled script must not shortcut repair/health work.
-        let transcript = result_fixture(&mut t, "v0.0.0", outcome);
+        let transcript = result_fixture(&mut t, CURRENT, outcome);
         assert_eq!(t.run(&["update"]), 0, "{}", diag(&t));
         assert_eq!(t.out.text(), format!("{transcript}{expected}"));
         assert_eq!(t.installer.plans().len(), 1);
@@ -249,7 +255,7 @@ fn decoded_installer_location_warning_uses_injected_stderr() {
     assert!(
         t.out
             .text()
-            .ends_with("updated envswitch v0.0.0 -> v0.0.42\n")
+            .ends_with(&format!("updated envswitch {CURRENT} -> v0.0.42\n"))
     );
 }
 
@@ -269,11 +275,11 @@ fn compiled_version_labels_update_even_when_marker_is_missing_or_stale() {
         assert_eq!(t.run(&["update"]), 0, "{}", diag(&t));
         assert_eq!(
             t.out.text(),
-            format!("{transcript}updated envswitch v0.0.0 -> v0.0.42\n")
+            format!("{transcript}updated envswitch {CURRENT} -> v0.0.42\n")
         );
         assert_eq!(
             t.err.text(),
-            "envswitch [info] updating envswitch v0.0.0 -> latest\n"
+            format!("envswitch [info] updating envswitch {CURRENT} -> latest\n")
         );
     }
 }
@@ -304,7 +310,7 @@ fn racing_old_process_reports_updated_when_installer_returns_unchanged() {
     assert_eq!(t.run(&["update"]), 0, "{}", diag(&t));
     assert_eq!(
         t.out.text(),
-        format!("{transcript}updated envswitch v0.0.0 -> v0.0.42\n")
+        format!("{transcript}updated envswitch {CURRENT} -> v0.0.42\n")
     );
 }
 
@@ -349,7 +355,7 @@ fn rejects_checkout_and_cargo_target_before_installation() {
 fn invoking_project_git_is_not_used_as_installation_anchor() {
     let (temp, mut t) = installed();
     fs::create_dir(temp.path().join(".git")).unwrap();
-    result_fixture(&mut t, "v0.0.0", "repaired");
+    result_fixture(&mut t, CURRENT, "repaired");
     assert_eq!(t.run(&["update"]), 0, "{}", diag(&t));
 }
 
@@ -367,7 +373,7 @@ fn app_dir_override_guards_source_checkout_and_validates_installation_root() {
     assert!(t.err.text().contains("looks like a source checkout"));
     t.deps.app_dir = Some(current(&t));
     t.err.clear();
-    result_fixture(&mut t, "v0.0.0", "unchanged");
+    result_fixture(&mut t, CURRENT, "unchanged");
     assert_eq!(t.run(&["update"]), 0, "{}", diag(&t));
 }
 
@@ -541,7 +547,7 @@ fn executable_symlink_is_resolved_and_receipt_links_are_rejected() {
     // Resolve through the alias before constructing the fixture.
     let exe = t.deps.current_exe.as_ref().unwrap().canonicalize().unwrap();
     t.deps.current_exe = Some(exe.clone());
-    result_fixture(&mut t, "v0.0.0", "unchanged");
+    result_fixture(&mut t, CURRENT, "unchanged");
     t.deps.current_exe = Some(temp.path().join("alias"));
     assert_eq!(t.run(&["update"]), 0, "{}", diag(&t));
     let path = exe.parent().unwrap().parent().unwrap().join("install.json");
@@ -618,7 +624,7 @@ fn receipt_with_missing_newer_payload_can_be_repaired_by_installer() {
     assert_eq!(t.run(&["update"]), 0, "{}", diag(&t));
     assert_eq!(
         t.out.text(),
-        format!("{transcript}updated envswitch v0.0.0 -> v0.0.42\n")
+        format!("{transcript}updated envswitch {CURRENT} -> v0.0.42\n")
     );
 }
 
@@ -656,7 +662,7 @@ fn source_result_requires_null_target_and_exact_source_payload() {
     assert_eq!(t.run(&["update"]), 0, "{}", diag(&t));
     assert_eq!(
         t.out.text(),
-        format!("{transcript}updated envswitch v0.0.0 -> v0.0.42\n")
+        format!("{transcript}updated envswitch {CURRENT} -> v0.0.42\n")
     );
 }
 
