@@ -3,8 +3,7 @@ on:
   workflow_call:
   pull_request:
     paths: ['parity/**', 'crates/**', 'Cargo.*', 'docs/rust-port/**', '.github/workflows/parity.yml']
-  push:
-    branches: [rust-port]
+  # Pushes to main run it through release.yml (required before publishing).
   workflow_dispatch:
 permissions:
   contents: read

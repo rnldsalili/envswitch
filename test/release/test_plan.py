@@ -27,19 +27,32 @@ class Planning(unittest.TestCase):
         manifest.touch()
         (self.root / 'rust-toolchain.toml').touch()
 
-    def test_push_auto_selects_source_until_both_rust_files_exist_and_never_publishes(self):
-        self.env['PUBLISH_REQUESTED'] = 'true'
-        for native in (False, True):
-            if native:
-                self.rust_workspace()
-            result = r.plan(self.root, self.env)
-            self.assertEqual(result['kind'], 'native' if native else 'source')
-            self.assertEqual(result['publish'], 'false')
-            self.assertEqual((result['version'], result['tag'], result['sha']), ('0.0.42', 'v0.0.42', 'a' * 40))
-        (self.root / 'rust-toolchain.toml').unlink()
+    def test_push_selects_native_with_both_rust_files_and_source_only_with_the_ts_app(self):
+        with self.assertRaises(ValueError):  # neither Rust files nor package.json
+            r.plan(self.root, self.env)
+        (self.root / 'package.json').write_bytes(b'{}')
         self.assertEqual(r.plan(self.root, self.env)['kind'], 'source')
+        self.rust_workspace()
+        result = r.plan(self.root, self.env)
+        self.assertEqual(result['kind'], 'native')
+        self.assertEqual((result['version'], result['tag'], result['sha']), ('0.0.42', 'v0.0.42', 'a' * 40))
+        (self.root / 'package.json').unlink()
+        self.assertEqual(r.plan(self.root, self.env)['kind'], 'native')
+        (self.root / 'rust-toolchain.toml').unlink()
+        with self.assertRaises(ValueError):
+            r.plan(self.root, self.env)
+
+    def test_pushes_publish_only_on_main(self):
+        self.rust_workspace()
+        for ref, expected in (('refs/heads/main', 'true'), ('refs/heads/topic', 'false'), ('refs/tags/v0.0.42', 'false')):
+            self.env['GITHUB_REF'] = ref
+            self.assertEqual(r.plan(self.root, self.env)['publish'], expected)
+        self.env.update(GITHUB_REF='refs/heads/main', GITHUB_EVENT_NAME='pull_request')
+        self.assertEqual(r.plan(self.root, self.env)['publish'], 'false')
 
     def test_dispatch_kind_is_explicit_and_publication_requires_main_and_true(self):
+        self.rust_workspace()
+        (self.root / 'package.json').write_bytes(b'{}')
         self.env.update(GITHUB_EVENT_NAME='workflow_dispatch')
         for kind in ('source', 'native'):
             self.env['DISPATCH_KIND'] = kind
@@ -56,17 +69,20 @@ class Planning(unittest.TestCase):
         with self.assertRaises(ValueError):
             r.plan(self.root, self.env)
 
-    def test_plan_cli_writes_workflow_outputs_and_detects_bun_independently_of_kind(self):
+    def test_source_dispatch_is_refused_without_the_ts_app(self):
         self.rust_workspace()
-        (self.root / 'package.json').write_bytes(b'{}')
+        self.env.update(GITHUB_EVENT_NAME='workflow_dispatch', DISPATCH_KIND='source', PUBLISH_REQUESTED='false')
+        with self.assertRaisesRegex(ValueError, 'TypeScript app'):
+            r.plan(self.root, self.env)
+
+    def test_plan_cli_writes_workflow_outputs(self):
+        self.rust_workspace()
         output = self.root / 'outputs'
         subprocess.run([sys.executable, str(ROOT / 'scripts/release/release.py'), 'plan', str(self.root)],
                        env=dict(os.environ, **self.env, GITHUB_OUTPUT=str(output)), check=True, capture_output=True)
         outputs = dict(line.split('=', 1) for line in output.read_text().splitlines())
-        self.assertEqual(outputs['kind'], 'native')
-        self.assertEqual(outputs['bun'], 'true')
-        (self.root / 'package.json').unlink()
-        self.assertEqual(r.plan(self.root, self.env)['bun'], 'false')
+        self.assertEqual((outputs['kind'], outputs['tag'], outputs['publish']), ('native', 'v0.0.42', 'true'))
+        self.assertNotIn('bun', outputs)
 
     def test_linkage_checks_reject_non_system_macos_libs_and_windows_dynamic_crt(self):
         r.check_linkage_output('aarch64-apple-darwin', 'envswitch:\n\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0)\n')

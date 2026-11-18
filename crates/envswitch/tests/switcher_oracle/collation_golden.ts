@@ -1,10 +1,11 @@
 // Generates crates/envswitch/src/switcher/collation_golden.rs from the TS
 // oracle (src/switcher.ts at 53de029) running on Bun 1.4.0. Owner: C3.
 //
-// Run from a checkout whose src/ matches 53de029, then rustfmt the output:
+// Point it at the materialized oracle (main no longer has src/), then rustfmt the output:
 //
+//   bun parity/oracle/materialize.ts "$ORACLE"
 //   LANG=en_US.UTF-8 bun crates/envswitch/tests/switcher_oracle/collation_golden.ts \
-//     . crates/envswitch/src/switcher/collation_golden.rs && cargo fmt
+//     "$ORACLE" crates/envswitch/src/switcher/collation_golden.rs && cargo fmt
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";

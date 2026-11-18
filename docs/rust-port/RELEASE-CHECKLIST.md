@@ -47,6 +47,6 @@ Branches (all local until step 1):
 
 ## 4. After the first native release
 
-1. Restore push-to-main publishing in `scripts/release/release.py` `plan`, keeping main-only publication, the required suites, and the latest-order guard (see the `release.yml` header).
-2. Remove the TypeScript app from `main` (`src/`, `test/cli.test.ts`, `package.json`, `bun.lock`, `tsconfig.json`). Keep the parity oracle reachable by SHA `53de029`: `parity/oracle/materialize.*` exports it with `git archive`.
+1. ✅ Done: pushes to `main` publish again (`scripts/release/release.py` `plan`), keeping main-only publication, the required suites, and the latest-order guard (see the `release.yml` header).
+2. ✅ Done: the TypeScript app is removed from `main` (`src/`, its Bun tests, `package.json`, `bun.lock`, `tsconfig.json`, the bridge workflow). The parity oracle stays reachable by SHA `53de029`: `parity/oracle/materialize.*` exports it with `git archive`. Source releases can no longer be built; v0.0.10 remains the last (bridge) source release.
 3. Follow-up behavior fixes listed in [PLAN.md](PLAN.md) §9, each in its own PR.

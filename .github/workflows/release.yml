@@ -1,18 +1,12 @@
 name: Release
 
 # Single publisher/version authority: keep this path and its run-number sequence.
-# Transition: pushes NEVER publish. Every M1a/M1b/native publication requires a
-# workflow_dispatch on main with publish=true and an explicit source/native kind.
-# Push verification selects native only when the crate manifest AND toolchain exist.
-# M1a copies both release.yml and build-native.yml verbatim, plus scripts/release/**
-# and test/release/**. With installers.yml absent, M1a must also copy
-# scripts/release/legacy-installers.yml to .github/workflows/installers.yml: that
-# reusable fallback runs the OLD Bash installer suite on Linux and macOS.
-# A referenced workflow must exist at load time, even when a job would be skipped.
-# M1b replaces that shim with D2b's real installers.yml (with workflow_call).
-# Parity: native releases require the oracle parity workflow (parity.yml).
-# After the first native release AND live migration checks, restore push publishing
-# in release.py plan; keep main-only publication, required suites, and latest guard.
+# Every push to main builds, verifies and publishes a native release once the native
+# builds, installer suites (installers.yml) and oracle parity (parity.yml) all pass;
+# publish.py promotes it to latest only in numeric order. A workflow_dispatch verifies
+# without publishing unless publish=true, and publication is restricted to main.
+# The TypeScript app was removed after the native cutover, so source releases can no
+# longer be built (release.py plan refuses them); older source releases stay as published.
 
 on:
   push:
@@ -24,7 +18,7 @@ on:
         type: choice
         required: true
         default: native
-        options: [source, native]
+        options: [native]
       publish:
         description: Publish/promote after all checks (main only)
         type: boolean
@@ -46,7 +40,6 @@ jobs:
       sha: ${{ steps.plan.outputs.sha }}
       kind: ${{ steps.plan.outputs.kind }}
       publish: ${{ steps.plan.outputs.publish }}
-      bun: ${{ steps.plan.outputs.bun }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -59,7 +52,7 @@ jobs:
         run: python3 scripts/release/release.py plan .
 
   verify:
-    name: Verify helpers and source tests
+    name: Verify release helpers
     needs: plan
     runs-on: ubuntu-24.04
     steps:
@@ -71,18 +64,6 @@ jobs:
           persist-credentials: false
       - name: Release helper tests
         run: python3 -m unittest discover -s test/release -v
-      - name: Setup Bun whenever the TypeScript app exists
-        if: needs.plan.outputs.bun == 'true'
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: 1.4.0
-      - name: Bun tests and typecheck
-        if: needs.plan.outputs.bun == 'true'
-        run: |
-          set -euo pipefail
-          bun install --frozen-lockfile
-          bun run test
-          bun run typecheck
 
   native:
     needs: plan
@@ -100,7 +81,7 @@ jobs:
       publish: ${{ needs.plan.outputs.publish == 'true' }}
 
   package:
-    name: Package standalone installers and optional source
+    name: Package standalone installers
     needs: plan
     runs-on: ubuntu-24.04
     permissions:
@@ -119,15 +100,6 @@ jobs:
           set -euo pipefail
           mkdir -p dist/common
           cp scripts/install.sh scripts/install.ps1 dist/common/
-      - name: Package source (M1a and bridge)
-        if: needs.plan.outputs.kind == 'source'
-        run: python3 scripts/release/release.py package "$VERSION" source --output dist/common
-      - name: Attest source in producing job
-        if: needs.plan.outputs.kind == 'source' && needs.plan.outputs.publish == 'true'
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
-        with:
-          subject-path: dist/common/*_source.tar.gz
-          create-storage-record: false
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-common
@@ -137,7 +109,7 @@ jobs:
           overwrite: true
 
   installers:
-    name: Required installer suites (legacy shim on M1a, D2b on M1b)
+    name: Required installer suites
     needs: plan
     uses: ./.github/workflows/installers.yml
 
@@ -146,12 +118,6 @@ jobs:
     needs: plan
     if: needs.plan.outputs.kind == 'native'
     uses: ./.github/workflows/parity.yml
-
-  bridge:
-    name: Required TS bridge Windows suites (source releases)
-    needs: plan
-    if: needs.plan.outputs.kind == 'source'
-    uses: ./.github/workflows/bridge.yml
 
   assemble:
     name: Assemble and verify complete asset set (also on pushes)
@@ -195,20 +161,18 @@ jobs:
 
   publish:
     name: Draft, verify, then promote
-    # Pushes never enter this queue; builds cannot cancel a pending publication.
+    # Builds cannot cancel a pending publication.
     # Concurrency is not FIFO, so publish.py still checks numeric latest ordering.
     concurrency:
       group: envswitch-publish
       cancel-in-progress: false
-    needs: [plan, verify, native, package, installers, bridge, parity, assemble]
+    needs: [plan, verify, native, package, installers, parity, assemble]
     if: >-
       always() && !cancelled() && needs.plan.outputs.publish == 'true' &&
       github.ref == 'refs/heads/main' && needs.verify.result == 'success' &&
       needs.package.result == 'success' && needs.installers.result == 'success' &&
-      (needs.parity.result == 'success' || (needs.plan.outputs.kind == 'source' && needs.parity.result == 'skipped')) &&
-      needs.assemble.result == 'success' &&
-      (needs.native.result == 'success' || needs.native.result == 'skipped') &&
-      (needs.bridge.result == 'success' || (needs.bridge.result == 'skipped' && needs.plan.outputs.kind != 'source'))
+      needs.parity.result == 'success' && needs.assemble.result == 'success' &&
+      needs.native.result == 'success'
     runs-on: ubuntu-24.04
     permissions:
       contents: write

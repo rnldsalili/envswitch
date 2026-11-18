@@ -29,6 +29,8 @@ def version_number(version):
 
 
 def plan(root, environ):
+    """One release identity per run. Pushes to main publish (restored after the first native
+    release); dispatches publish only with publish=true, and only from main."""
     version = '0.0.' + environ['GITHUB_RUN_NUMBER']
     if version_number(version) == 0 or not re.fullmatch(r'[0-9a-f]{40}', environ['GITHUB_SHA']):
         raise ValueError('invalid release run number or source SHA')
@@ -40,11 +42,17 @@ def plan(root, environ):
                 and (root / 'rust-toolchain.toml').is_file() else 'source')
     if kind not in ('source', 'native'):
         raise ValueError('dispatch requires an explicit source or native kind')
-    publish = dispatch and environ.get('PUBLISH_REQUESTED') == 'true'
-    if publish and environ['GITHUB_REF'] != 'refs/heads/main':
-        raise ValueError('publication is restricted to refs/heads/main')
+    if kind == 'source' and not (root / 'package.json').is_file():
+        raise ValueError('source releases need the TypeScript app (package.json); publish a native release')
+    main = environ['GITHUB_REF'] == 'refs/heads/main'
+    if dispatch:
+        publish = environ.get('PUBLISH_REQUESTED') == 'true'
+        if publish and not main:
+            raise ValueError('publication is restricted to refs/heads/main')
+    else:
+        publish = environ['GITHUB_EVENT_NAME'] == 'push' and main
     return dict(version=version, tag='v' + version, sha=environ['GITHUB_SHA'], kind=kind,
-                publish=str(publish).lower(), bun=str((root / 'package.json').is_file()).lower())
+                publish=str(publish).lower())
 
 
 def check_linkage_output(target, output):
